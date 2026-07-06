@@ -1,0 +1,16 @@
+# sudoers rule for the Xymon "smart" extension.
+#
+# smartctl needs raw device access; the Xymon client usually runs as
+# user "xymon". Install this file with visudo -f:
+#
+#   Linux:    visudo -f /etc/sudoers.d/xymon-smart
+#   FreeBSD:  visudo -f /usr/local/etc/sudoers.d/xymon-smart
+#
+# Keep exactly one uncommented line matching your platform's smartctl
+# path. The rule only allows read-only SMART queries as root.
+
+# Debian/Ubuntu and Rocky/EL:
+xymon ALL=(root) NOPASSWD: /usr/sbin/smartctl
+
+# FreeBSD (smartmontools from ports/packages):
+#xymon ALL=(root) NOPASSWD: /usr/local/sbin/smartctl

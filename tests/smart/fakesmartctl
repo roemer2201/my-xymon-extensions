@@ -1,0 +1,31 @@
+#!/bin/sh
+# Minimal smartctl stand-in for the unit tests: returns canned output
+# depending on the device (last argument).
+set -u
+
+case "$*" in
+    *--version*)
+        echo "smartctl 7.4 (fake, for unit tests)"
+        exit 0
+        ;;
+    *--scan*)
+        exit 0
+        ;;
+esac
+
+last=""
+for arg; do
+    last=$arg
+done
+
+datadir="$(dirname "$0")/data"
+
+case "$last" in
+    /dev/tsda)   cat "$datadir/ata-seagate.txt" ;;
+    /dev/tssd)   cat "$datadir/ata-samsung-ssd.txt" ;;
+    /dev/tnvme0) cat "$datadir/nvme-samsung.txt" ;;
+    *)
+        echo "Smartctl open device: $last failed: No such device"
+        exit 2
+        ;;
+esac

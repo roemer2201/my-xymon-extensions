@@ -25,6 +25,12 @@ my-xymon-extensions/
 └── Makefile             # Entry point: build, test, package
 ```
 
+## Available extensions
+
+| Name | Column | Description |
+|------|--------|-------------|
+| [smart](extensions/smart/) | `smart` | SMART disk health for SATA/ATA, NVMe and (basic) SAS disks: vendor-normalized metrics, thresholds/alerts and per-disk RRD graphs |
+
 ## Design principles
 
 - **POSIX shell only.** Every script starts with `#!/bin/sh` and must run
