@@ -29,6 +29,7 @@ my-xymon-extensions/
 
 | Name | Column | Description |
 |------|--------|-------------|
+| [diskio](extensions/diskio/) | `diskio` | Disk I/O throughput, latency, IOPS, utilization and queue depth for physical disks and aggregated volumes (md-RAID, LVM, dm-crypt, ZFS, GEOM), with per-device RRD graphs and optional thresholds |
 | [smart](extensions/smart/) | `smart` | SMART disk health for SATA/ATA, NVMe and (basic) SAS disks: vendor-normalized metrics, thresholds/alerts and per-disk RRD graphs |
 
 ## Design principles

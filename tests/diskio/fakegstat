@@ -1,0 +1,14 @@
+#!/bin/sh
+# Minimal gstat stand-in for the unit tests: returns one canned batch
+# sample regardless of the requested interval.
+set -u
+
+case "$*" in
+    *-b*)
+        cat "$(dirname "$0")/data/gstat-batch.txt"
+        ;;
+    *)
+        echo "fakegstat: expected batch mode (-b)" >&2
+        exit 1
+        ;;
+esac

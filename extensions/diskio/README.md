@@ -1,9 +1,5 @@
 # diskio — local disk I/O metrics (throughput, latency, IOPS, saturation)
 
-> **Status: concept.** This document describes the planned extension.
-> Implementation details and developer guidance live in
-> [`CLAUDE.md`](CLAUDE.md). Nothing in this directory is shipped yet.
-
 Xymon client extension that measures local block-device I/O — read/write
 throughput, per-operation latency, IOPS, utilization and queue depth —
 and feeds the values into the Xymon server's RRD graphs (trends column).
@@ -59,6 +55,7 @@ Every monitored device becomes one *instance*, named
 | `md_`  | Linux md software RAID         | `md_md0`                        | `/proc/diskstats`               |
 | `lv_`  | LVM logical volume             | `lv_vg0_root`                   | `/proc/diskstats` (dm-*)        |
 | `cr_`  | dm-crypt / LUKS mapping        | `cr_cryptdata`                  | `/proc/diskstats` (dm-*)        |
+| `dm_`  | other device-mapper targets    | `dm_mpatha` (multipath, …)      | `/proc/diskstats` (dm-*)        |
 | `zp_`  | ZFS pool                       | `zp_tank`                       | `zpool iostat`                  |
 | `gm_`  | FreeBSD GEOM mirror/raid       | `gm_gm0`                        | `gstat`                         |
 
@@ -95,16 +92,16 @@ Read from `$XYMONHOME/etc/diskio.cfg`; the extension works without it.
 
 ```sh
 # Layers to report (default: all detected)
-LAYERS="pd md lv cr zp gm"
+LAYERS="pd md lv cr dm zp gm"
 
 # Device name patterns to skip (shell patterns, matched against the
-# bare kernel name). Default skips pseudo/removable devices:
-EXCLUDE="loop* ram* sr* fd* cd* zram* pass* md127"
+# bare kernel/mapper/pool name). Default skips pseudo devices:
+EXCLUDE="loop* ram* sr* fd* cd* zram* zd* nbd* pass*"
 
 # Only monitor matching devices (empty = all not excluded)
 INCLUDE=""
 
-# FreeBSD gstat / zpool iostat sampling window in seconds
+# FreeBSD gstat / zpool iostat sampling window in seconds (1..60)
 SAMPLE_SECONDS=10
 
 # Optional alerting — default: none, column stays green.
@@ -116,9 +113,10 @@ SAMPLE_SECONDS=10
 ```
 
 A device (instance) that violates a `threshold` line turns the column
-yellow/red and is flagged in the status text. Without `threshold`
-lines the column is always `green` — or `clear` when the platform
-offers no usable data source at all.
+yellow/red and is flagged in the status text; the first matching
+`threshold` line wins per value. Without `threshold` lines the column
+is always `green` — or `clear` when the platform offers no usable
+data source at all.
 
 ## Status column content
 
@@ -142,18 +140,33 @@ GRAPHS="...,diskiorbps,diskiowbps,diskioriops,diskiowiops,diskiorlat,diskiowlat,
 GRAPHS_diskio="diskiorbps,diskiowbps,diskiorlat,diskiowlat"
 ```
 
-Graph definitions will be shipped in `server/graphs-diskio.cfg`
-(one graph per metric, all instances as lines — same pattern as
-`server/graphs-smart.cfg` of the smart extension), and a
-`server/README.md` with the full walk-through.
+Graph definitions are shipped in
+[`server/graphs-diskio.cfg`](server/graphs-diskio.cfg) (one graph per
+metric, all instances as lines — same pattern as the smart
+extension), and [`server/README.md`](server/README.md) contains the
+full walk-through.
 
-## Installation (once implemented)
+## Client installation
 
 1. Copy `diskio.sh` to `$XYMONHOME/ext/diskio.sh` (executable).
 2. Optional: copy `diskio.cfg` to `$XYMONHOME/etc/diskio.cfg`.
 3. Install the `tasks.d` snippet
-   (`packaging/common/tasks.d/diskio.cfg`), restart the Xymon client.
+   (`packaging/common/tasks.d/diskio.cfg`, `INTERVAL 5m`), restart
+   the Xymon client.
 4. Do the one-time server-side setup above.
+
+The packages built from this repository do steps 1–3 automatically.
+
+### Manual test run
+
+```sh
+sh extensions/diskio/diskio.sh
+```
+
+Without the Xymon environment variables the script prints the status
+and data messages to stdout instead of sending them. Remember that on
+Linux the first run only stores the baseline — run it twice (at least
+30 seconds apart) to see values.
 
 No root/sudo is required on Linux (`/proc/diskstats` is world-readable)
 or for `zpool iostat`. FreeBSD `gstat` needs read access to

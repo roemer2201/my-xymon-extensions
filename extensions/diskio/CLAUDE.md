@@ -1,6 +1,6 @@
-# CLAUDE.md — diskio extension (implementation concept)
+# CLAUDE.md — diskio extension (implementation notes)
 
-Developer guidance for implementing the `diskio` extension. Read the
+Developer guidance for the `diskio` extension. Read the
 repository-level `CLAUDE.md` first — all portability rules apply
 unchanged. The user-facing feature description is in
 [`README.md`](README.md); this file fixes the *how*.
@@ -20,24 +20,25 @@ unchanged. The user-facing feature description is in
    `threshold` lines in `diskio.cfg`. `clear` when no data source
    exists on the platform.
 
-## Files to create
+## File layout
 
 ```
 extensions/diskio/
 ├── diskio.sh                  # POSIX sh, #!/bin/sh, set -u
 ├── diskio.cfg                 # defaults, all optional (see README)
-├── README.md                  # (exists — keep in sync!)
+├── README.md                  # (keep in sync with the code!)
 ├── CLAUDE.md                  # this file
 └── server/
-    ├── README.md              # split-NCV walk-through (mirror smart/server)
+    ├── README.md              # split-NCV walk-through (mirrors smart/server)
     └── graphs-diskio.cfg      # 8 graph definitions, FNPATTERN diskio,(.+)_<metric>.rrd
 packaging/common/tasks.d/diskio.cfg   # INTERVAL 5m (not 10m — I/O trending wants 5m)
-tests/diskio/                  # fixtures + test cfg (see "Testing")
+tests/diskio/                  # fixtures + test cfgs (see "Testing")
 ```
 
-Plus: update `packaging/deb`, `packaging/rpm`, `packaging/freebsd`
-and the extension table in the top-level `README.md`. A change is not
-complete until all three packagings ship the new files.
+The `packaging/deb`, `packaging/rpm` and `packaging/freebsd` package
+definitions do not exist yet (repo-wide TODO, see the top-level
+Makefile); when they are created, they must ship the files above. The
+extension table in the top-level `README.md` lists diskio.
 
 ## Data flow
 
@@ -191,8 +192,10 @@ ms/w → wlat    %busy → util       name → instance
   internal variables `DISKIO_PROC`/`DISKIO_SYS` (default `/proc`,
   `/sys`) overridable via environment — test hook, documented only in
   the test README.
-- Unit tests assert the exact `NAME : VALUE` output for the fixture
-  deltas (golden-file comparison), including the edge cases above.
+- Unit tests (`tests/run.sh`) assert the exact `NAME : VALUE` output
+  for the fixture deltas with anchored patterns, including the edge
+  cases above (first run, counter reset, div-by-zero latency,
+  partition/exclude filtering).
 - `shellcheck --shell=sh` zero warnings; `make test` green before
   every commit.
 
@@ -208,12 +211,14 @@ ms/w → wlat    %busy → util       name → instance
 - **Histogram latencies** (`zpool iostat -w`, blk-mq stats) — RRD
   wants scalars.
 
-## Open questions (decide before/while implementing)
+## Resolved design questions
 
-1. Should `dm` targets that are neither LVM nor crypt (multipath,
-   dm-raid used by LVM raid LVs) get their own prefix or be folded
-   into `lv_`? Current plan: generic `dm_` prefix, report them.
-2. `tasks.d` INTERVAL: 5m proposed (matches RRD step). OK, or align
-   with smart's 10m for lower load?
-3. Instance explosion guard: a host with 50+ disks × 8 metrics = 400+
-   RRDs. Acceptable, or add a `MAXDEVICES` safety valve in the cfg?
+1. **dm targets that are neither LVM nor crypt** (multipath, …) get
+   the generic `dm_` layer prefix and are reported; the layer can be
+   dropped via `LAYERS`.
+2. **`tasks.d` INTERVAL is 5m**, matching the default RRD step so
+   every slot gets a fresh interval average.
+3. **No `MAXDEVICES` safety valve.** Hosts with very many devices
+   trim the instance list with `EXCLUDE`/`INCLUDE`/`LAYERS` instead —
+   an implicit cut-off that silently drops devices would be worse
+   than many RRD files.

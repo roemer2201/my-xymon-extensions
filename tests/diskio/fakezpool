@@ -1,0 +1,17 @@
+#!/bin/sh
+# Minimal zpool stand-in for the unit tests: two pools, canned
+# two-block "zpool iostat -Hpl <interval> 2" output.
+set -u
+
+case "${1:-}" in
+    list)
+        printf 'tank\nempty\n'
+        ;;
+    iostat)
+        cat "$(dirname "$0")/data/zpool-iostat.txt"
+        ;;
+    *)
+        echo "fakezpool: unsupported subcommand '${1:-}'" >&2
+        exit 1
+        ;;
+esac
