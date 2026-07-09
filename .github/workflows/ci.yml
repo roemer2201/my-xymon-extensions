@@ -14,6 +14,19 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y shellcheck
       - run: make test
 
+  busybox:
+    name: unit tests under BusyBox (OpenWrt-like)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install BusyBox
+        run: sudo apt-get update && sudo apt-get install -y busybox
+      - name: Run unit tests with BusyBox sh and userland
+        run: |
+          mkdir -p /tmp/bb
+          busybox --install -s /tmp/bb
+          PATH="/tmp/bb:$PATH" TESTSH="busybox sh" busybox sh tests/run.sh
+
   deb:
     name: build .deb (Ubuntu)
     runs-on: ubuntu-latest
@@ -44,6 +57,23 @@ jobs:
         with:
           name: rpm-package
           path: build/rpm/RPMS/noarch/*.rpm
+
+  opkg:
+    name: build .ipk (OpenWrt/TurrisOS)
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+      - run: make opkg
+      - name: Verify package contents
+        run: |
+          tar -tzf build/opkg/out/*.ipk
+          tar -xzOf build/opkg/out/*.ipk ./control.tar.gz | tar -tz
+          tar -xzOf build/opkg/out/*.ipk ./data.tar.gz | tar -tz
+      - uses: actions/upload-artifact@v4
+        with:
+          name: opkg-package
+          path: build/opkg/out/*.ipk
 
   freebsd:
     name: unit tests + build .pkg (FreeBSD VM)

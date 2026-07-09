@@ -11,9 +11,11 @@ systems monitor. Every extension must run unmodified on:
 - **Ubuntu** (current LTS releases)
 - **Rocky Linux** (and other Enterprise-Linux derivatives)
 - **FreeBSD** (currently supported releases)
+- **OpenWrt/TurrisOS** (BusyBox userland; no Xymon client exists there —
+  extensions run through the `standalone/` runner instead)
 
-From this repository, native **deb**, **rpm** and **FreeBSD pkg** packages
-are built.
+From this repository, native **deb**, **rpm**, **FreeBSD pkg** and
+**opkg (.ipk)** packages are built.
 
 ## Hard portability rules
 
@@ -31,6 +33,10 @@ target platform.
   substitution `<(...)`, `&>` redirection.
 - Use `command -v`, never `which`.
 - `shellcheck --shell=sh` must pass with zero warnings.
+- Scripts must also run under **BusyBox ash with BusyBox userland**
+  (OpenWrt/TurrisOS): stick to POSIX options of `awk`, `sed`, `grep`,
+  `tr`, `sort` etc. — BusyBox implements little beyond POSIX. CI runs
+  the test suite under BusyBox to enforce this.
 
 ### Userland tool differences (GNU vs. BSD)
 
@@ -68,6 +74,10 @@ target platform.
   - FreeBSD (ports `net-mgmt/xymon-client`): `/usr/local/www/xymon/client`
 - Status reports go through `$XYMON $XYMSRV "status ..."` — never call a
   hardcoded binary path or open sockets yourself.
+- Do not assume a full Xymon client installation: on OpenWrt/TurrisOS
+  the environment and `$XYMON` are provided by `standalone/xymon-run.sh`
+  and `standalone/xymon-send.sh`. Anything an extension needs beyond
+  the documented environment variables breaks the standalone mode.
 - One extension reports exactly **one column**. Column names are
   lowercase, max ~8 chars, no dots.
 - Colors: `green` (ok), `yellow` (warning), `red` (critical), `clear`
@@ -84,10 +94,13 @@ target platform.
   - `README.md` — purpose, column name, thresholds, platform notes
 - Add a `tasks.d` snippet for the extension under
   `packaging/common/tasks.d/<name>.cfg` so all three packages ship it.
-- Update all three packagings (`packaging/deb`, `packaging/rpm`,
-  `packaging/freebsd`) whenever an extension is added, renamed or gains
-  new installed files. A change is not complete until all three package
-  definitions are consistent.
+- The installed file list lives in exactly one place,
+  `packaging/common/stage.sh` — extend it whenever an extension is
+  added, renamed or gains new installed files, and check that all four
+  packagings (`packaging/deb`, `packaging/rpm`, `packaging/freebsd`,
+  `packaging/opkg`) still cover the change (conffiles lists, plist,
+  etc.). A change is not complete until all package definitions are
+  consistent.
 - Version is maintained in one place (`VERSION` file at the repo root)
   and consumed by all package builds.
 
@@ -98,11 +111,12 @@ make test       # shellcheck + unit tests — run this before every commit
 make deb        # build .deb  (requires Debian/Ubuntu tooling)
 make rpm        # build .rpm  (requires rpmbuild)
 make freebsd    # build .pkg  (requires FreeBSD pkg(8))
+make opkg       # build .ipk  (plain tar+gzip, builds anywhere)
 ```
 
-`make deb|rpm|freebsd` only work on the matching platform; CI builds all
-three. Never mark packaging work as verified unless the corresponding
-build actually ran.
+`make deb|rpm|freebsd` only work on the matching platform; CI builds
+all packages. Never mark packaging work as verified unless the
+corresponding build actually ran.
 
 ## Style
 

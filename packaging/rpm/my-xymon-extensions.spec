@@ -56,5 +56,9 @@ my-xymon-extensions: to activate the "smart" extension:
 EOF
 
 %changelog
+* Thu Jul 09 2026 roemer2201 <r.oliver@web.de> - 0.2.0-1
+- 0.2.0: standalone runner for clientless hosts added to the repo
+  (shipped in the opkg package only; no rpm content changes)
+
 * Mon Jul 06 2026 roemer2201 <r.oliver@web.de> - 0.1.0-1
 - Initial package: smart extension (SMART disk monitoring, SATA + NVMe)

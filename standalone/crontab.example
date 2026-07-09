@@ -1,0 +1,13 @@
+# Cron schedule for the standalone Xymon extension runner.
+#
+# OpenWrt/TurrisOS: append to /etc/crontabs/root (or use "crontab -e"),
+# then restart cron:  /etc/init.d/cron restart
+#
+# Keep the interval well below 30 minutes, otherwise the status
+# columns turn purple (stale) on the Xymon server.
+
+# Run all installed extensions every 10 minutes:
+*/10 * * * * /usr/lib/xymon-standalone/xymon-run.sh all
+
+# Or schedule extensions individually:
+#*/5 * * * * /usr/lib/xymon-standalone/xymon-run.sh smart

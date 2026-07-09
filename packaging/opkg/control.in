@@ -1,0 +1,15 @@
+Package: my-xymon-extensions
+Version: @VERSION@-1
+Depends: smartmontools
+Section: net
+Priority: optional
+Architecture: all
+Maintainer: roemer2201 <r.oliver@web.de>
+Source: https://github.com/roemer2201/my-xymon-extensions
+Description: Portable Xymon client extensions with standalone runner
+ Custom monitoring tests for the Xymon systems monitor, bundled with a
+ minimal standalone runner (xymon-run.sh) and protocol sender
+ (xymon-send.sh) for hosts without a Xymon client, such as
+ OpenWrt/TurrisOS routers.
+ Included extensions: smart - S.M.A.R.T. disk health monitoring for
+ SATA/ATA and NVMe disks.

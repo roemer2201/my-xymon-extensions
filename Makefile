@@ -9,7 +9,7 @@ all: test
 test: shellcheck unittest
 
 shellcheck:
-	shellcheck --shell=sh extensions/*/*.sh tests/run.sh tests/smart/fakesmartctl packaging/*/*.sh
+	shellcheck --shell=sh extensions/*/*.sh standalone/*.sh tests/run.sh tests/smart/fakesmartctl packaging/*/*.sh
 
 unittest:
 	sh tests/run.sh
@@ -25,7 +25,11 @@ rpm:
 freebsd:
 	sh packaging/freebsd/build.sh
 
+# The OpenWrt/TurrisOS .ipk is plain tar+gzip and builds anywhere.
+opkg:
+	sh packaging/opkg/build.sh
+
 clean:
 	rm -rf build
 
-.PHONY: all test shellcheck unittest deb rpm freebsd clean
+.PHONY: all test shellcheck unittest deb rpm freebsd opkg clean

@@ -17,11 +17,16 @@ my-xymon-extensions/
 │       ├── <name>.sh    # The extension script (POSIX sh)
 │       ├── <name>.cfg   # Default configuration (optional)
 │       └── README.md    # What it monitors, columns, thresholds
+├── standalone/          # Run extensions WITHOUT a Xymon client
+│   ├── xymon-run.sh     # xymonlaunch replacement (env + scheduler glue)
+│   └── xymon-send.sh    # xymon(1) replacement (protocol sender)
 ├── packaging/
-│   ├── deb/             # Debian/Ubuntu packaging (debian/ tree)
-│   ├── rpm/             # RPM spec file(s) for Rocky/EL
-│   └── freebsd/         # FreeBSD pkg manifest / port skeleton
-├── scripts/             # Shared helpers and build scripts
+│   ├── common/          # Shared staging logic + tasks.d snippets
+│   ├── deb/             # Debian/Ubuntu packaging
+│   ├── rpm/             # RPM spec for Rocky/EL
+│   ├── freebsd/         # FreeBSD pkg manifest + plist
+│   └── opkg/            # OpenWrt/TurrisOS .ipk (standalone runner)
+├── tests/               # Unit tests (canned command output)
 └── Makefile             # Entry point: build, test, package
 ```
 
@@ -64,14 +69,26 @@ my-xymon-extensions/
 
 4. Restart the Xymon client.
 
+## Hosts without a Xymon client (OpenWrt / TurrisOS)
+
+No Xymon client exists for OpenWrt/TurrisOS — the extensions run there
+anyway: [`standalone/`](standalone/) contains a minimal replacement for
+the client's environment (`xymon-run.sh`) and for the `xymon` sender
+binary (`xymon-send.sh`, plain TCP via BusyBox `nc`/`ncat`/`socat`).
+Extensions run unmodified on top of it, scheduled by cron, and the
+same mechanism works for every future extension in this repository.
+`make opkg` builds an installable `.ipk` package. See
+[standalone/README.md](standalone/README.md).
+
 ## Building packages
 
 Package builds are driven by the top-level `Makefile`:
 
 ```sh
-make deb        # Build .deb (on Debian/Ubuntu, requires dpkg-dev, debhelper)
-make rpm        # Build .rpm (on Rocky/EL, requires rpm-build, rpmdevtools)
+make deb        # Build .deb (on Debian/Ubuntu, requires dpkg-deb)
+make rpm        # Build .rpm (on Rocky/EL, requires rpm-build)
 make freebsd    # Build FreeBSD .pkg (on FreeBSD, requires pkg(8))
+make opkg       # Build OpenWrt/TurrisOS .ipk (builds on any platform)
 make test       # Run shellcheck + unit tests
 ```
 
@@ -83,8 +100,10 @@ extension is active after installation without manual editing.
 
 - `shellcheck` (with `--shell=sh`) must pass for all scripts.
 - Linux targets are tested in Ubuntu and Rocky Linux containers.
-- FreeBSD is tested in CI using a FreeBSD VM (e.g. `vmactions/freebsd-vm`
+- FreeBSD is tested in CI using a FreeBSD VM (`vmactions/freebsd-vm`
   on GitHub Actions).
+- OpenWrt/TurrisOS compatibility is enforced by running the test suite
+  under BusyBox `sh` with BusyBox userland in CI.
 
 ## Contributing
 

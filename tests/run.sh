@@ -1,11 +1,15 @@
 #!/bin/sh
-# Unit tests for the extensions in this repository.
-# Runs the scripts against canned command output - no real hardware,
-# no Xymon server needed. Exit code 0 = all tests passed.
+# Unit tests for the extensions and the standalone runner in this
+# repository. Runs everything against canned command output - no real
+# hardware, no Xymon server needed. Exit code 0 = all tests passed.
+#
+# TESTSH selects the shell used to run the scripts under test
+# (default "sh"); CI also runs the suite with TESTSH="busybox sh".
 set -u
 
 TESTDIR=$(cd "$(dirname "$0")" && pwd)
 REPO=$(dirname "$TESTDIR")
+TESTSH="${TESTSH:-sh}"
 TMP=$(mktemp -d) || exit 1
 trap 'rm -rf "$TMP"' EXIT INT TERM
 
@@ -36,9 +40,10 @@ export FAKESMARTCTL="$TESTDIR/smart/fakesmartctl"
 export SMART_CFG="$TESTDIR/smart/smart_test.cfg"
 export XYMONTMP="$TMP"
 export MACHINE="testhost"
-unset XYMON XYMSRV 2>/dev/null || true
+unset XYMON XYMSRV XYMONHOME 2>/dev/null || true
 
-out=$(sh "$REPO/extensions/smart/smart.sh")
+# shellcheck disable=SC2086  # TESTSH may be multi-word ("busybox sh")
+out=$($TESTSH "$REPO/extensions/smart/smart.sh")
 rc=$?
 if [ "$rc" -ne 0 ]; then
     echo "FAIL: smart.sh exited with $rc"
@@ -82,6 +87,117 @@ expect "$out" '^tnvme0_unsafeshut : 42$' "NVMe unsafe shutdowns"
 # Status display must not contain NCV-style "name : value" lines other
 # than in the data section (they would pollute the RRDs).
 expect "$out" 'pending=8' "status section uses key=value, not key : value"
+
+# ----------------------------------------------------------------------
+echo "--- standalone: xymon-send.sh ---"
+
+# Fake "nc" that records its arguments and stdin instead of connecting.
+SBIN="$TMP/sbin"
+mkdir -p "$SBIN"
+cat > "$SBIN/nc" <<'EOF'
+#!/bin/sh
+case "${1:-}" in -h) exit 0 ;; esac
+{ echo "ARGS: $*"; cat; echo "---EOM---"; } >> "${NC_CAPTURE:?}"
+EOF
+chmod +x "$SBIN/nc"
+
+export NC_CAPTURE="$TMP/capture-send"
+: > "$NC_CAPTURE"
+# shellcheck disable=SC2086
+PATH="$SBIN:$PATH" $TESTSH "$REPO/standalone/xymon-send.sh" \
+    192.0.2.1 "status foo.bar green hello"
+expect "$(cat "$NC_CAPTURE")" '^ARGS: 192\.0\.2\.1 1984$' \
+    "sender connects to the server on default port 1984"
+expect "$(cat "$NC_CAPTURE")" '^status foo\.bar green hello$' \
+    "sender delivers the message verbatim"
+
+: > "$NC_CAPTURE"
+# shellcheck disable=SC2086
+PATH="$SBIN:$PATH" $TESTSH "$REPO/standalone/xymon-send.sh" \
+    192.0.2.1:2984 "ping"
+expect "$(cat "$NC_CAPTURE")" '^ARGS: 192\.0\.2\.1 2984$' \
+    "host:port syntax overrides the port"
+
+: > "$NC_CAPTURE"
+# shellcheck disable=SC2086
+printf 'line1\nline2\n' | PATH="$SBIN:$PATH" $TESTSH \
+    "$REPO/standalone/xymon-send.sh" 192.0.2.1 -
+expect "$(cat "$NC_CAPTURE")" '^line2$' "message on stdin works ('-')"
+
+: > "$NC_CAPTURE"
+# shellcheck disable=SC2086
+PATH="$SBIN:$PATH" $TESTSH "$REPO/standalone/xymon-send.sh" \
+    "192.0.2.1 192.0.2.2:3984" "multi"
+expect "$(cat "$NC_CAPTURE")" '^ARGS: 192\.0\.2\.2 3984$' \
+    "space-separated server list reaches every server"
+
+# ----------------------------------------------------------------------
+echo "--- standalone: xymon-run.sh + smart ---"
+
+# Simulated install tree, as the opkg package would lay it out.
+STAGE="$TMP/xymon-standalone"
+mkdir -p "$STAGE/ext" "$STAGE/etc"
+cp "$REPO/standalone/xymon-run.sh" "$REPO/standalone/xymon-send.sh" "$STAGE/"
+cp "$REPO/extensions/smart/smart.sh" "$STAGE/ext/smart.sh"
+cp "$TESTDIR/smart/smart_test.cfg" "$STAGE/etc/smart.cfg"
+cat > "$STAGE/etc/standalone.cfg" <<EOF
+XYMSRV="127.0.0.1"
+MACHINEDOTS="turris.example.org"
+EOF
+
+# The extension must find its config via \$XYMONHOME/etc, not SMART_CFG.
+unset SMART_CFG 2>/dev/null || true
+export STANDALONE_CFG="$STAGE/etc/standalone.cfg"
+export NC_CAPTURE="$TMP/capture-run"
+: > "$NC_CAPTURE"
+
+# shellcheck disable=SC2086
+PATH="$SBIN:$PATH" $TESTSH "$STAGE/xymon-run.sh" all
+rc=$?
+if [ "$rc" -eq 0 ]; then
+    echo "ok:   xymon-run.sh all exits 0"
+else
+    echo "FAIL: xymon-run.sh all exited with $rc"
+    FAIL=1
+fi
+
+captured=$(cat "$NC_CAPTURE")
+expect "$captured" '^ARGS: 127\.0\.0\.1 1984$' \
+    "runner sends to the configured XYMSRV"
+expect "$captured" '^status turris,example,org\.smart yellow ' \
+    "status message with comma-encoded FQDN from MACHINEDOTS"
+expect "$captured" '^data turris,example,org\.smart$' \
+    "data message for the RRD graphs is sent too"
+expect "$captured" '^tsda_pending : 8$' \
+    "NCV payload arrives through the standalone transport"
+if [ -f "$TMP/smart.log" ]; then
+    echo "ok:   extension run log written to \$XYMONCLIENTLOGS"
+else
+    echo "FAIL: extension run log missing ($TMP/smart.log)"
+    FAIL=1
+fi
+
+# Dry run: nothing sent, report on stdout
+: > "$NC_CAPTURE"
+# shellcheck disable=SC2086
+dryout=$(PATH="$SBIN:$PATH" $TESTSH "$STAGE/xymon-run.sh" -n smart)
+expect "$dryout" '^status turris,example,org\.smart yellow ' \
+    "dry run (-n) prints the report to stdout"
+if [ -s "$NC_CAPTURE" ]; then
+    echo "FAIL: dry run must not send anything"
+    FAIL=1
+else
+    echo "ok:   dry run sends nothing"
+fi
+
+# Unknown extension -> error
+# shellcheck disable=SC2086
+if PATH="$SBIN:$PATH" $TESTSH "$STAGE/xymon-run.sh" nosuchext 2>/dev/null; then
+    echo "FAIL: unknown extension should fail"
+    FAIL=1
+else
+    echo "ok:   unknown extension reports an error"
+fi
 
 echo ""
 if [ "$FAIL" -eq 0 ]; then
