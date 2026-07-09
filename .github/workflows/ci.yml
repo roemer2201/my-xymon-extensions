@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    name: shellcheck + unit tests (Ubuntu)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install shellcheck
+        run: sudo apt-get update && sudo apt-get install -y shellcheck
+      - run: make test
+
+  deb:
+    name: build .deb (Ubuntu)
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+      - run: make deb
+      - name: Verify package contents
+        run: dpkg-deb -I build/*.deb && dpkg-deb -c build/*.deb
+      - uses: actions/upload-artifact@v4
+        with:
+          name: deb-package
+          path: build/*.deb
+
+  rpm:
+    name: build .rpm (Rocky Linux)
+    runs-on: ubuntu-latest
+    needs: test
+    container: rockylinux:9
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install build tools
+        run: dnf install -y rpm-build make tar gzip
+      - run: make rpm
+      - name: Verify package contents
+        run: rpm -qlp build/rpm/RPMS/noarch/*.rpm
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rpm-package
+          path: build/rpm/RPMS/noarch/*.rpm
+
+  freebsd:
+    name: unit tests + build .pkg (FreeBSD VM)
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run tests and build package on FreeBSD
+        uses: vmactions/freebsd-vm@v1
+        with:
+          release: "14.2"
+          usesh: true
+          run: |
+            set -e
+            sh tests/run.sh
+            make freebsd
+      - uses: actions/upload-artifact@v4
+        with:
+          name: freebsd-package
+          path: build/freebsd/out/*

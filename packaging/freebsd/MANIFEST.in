@@ -1,0 +1,18 @@
+name: "my-xymon-extensions"
+version: "@VERSION@"
+origin: "net-mgmt/my-xymon-extensions"
+comment: "Portable Xymon client extensions (SMART disk monitoring)"
+www: "https://github.com/roemer2201/my-xymon-extensions"
+maintainer: "r.oliver@web.de"
+prefix: "/usr/local"
+categories: ["net-mgmt"]
+desc: "Custom monitoring tests (extensions) for the Xymon systems monitor.
+
+Included extensions:
+* smart - S.M.A.R.T. disk health monitoring for SATA/ATA, NVMe and
+  basic SAS disks, with vendor-normalized metrics, thresholds and
+  per-disk RRD graphing support.
+
+Requires net-mgmt/xymon-client and sysutils/smartmontools (>= 7.0).
+Activation steps (sudoers rule, tasks.d include, server-side graphs)
+are documented in share/doc/my-xymon-extensions/."

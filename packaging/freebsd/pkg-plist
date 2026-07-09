@@ -1,0 +1,8 @@
+www/xymon/client/ext/smart.sh
+@sample www/xymon/client/etc/smart.cfg.sample
+@sample www/xymon/client/etc/tasks.d/smart.cfg.sample
+share/doc/my-xymon-extensions/README.md
+share/doc/my-xymon-extensions/smart/README.md
+share/doc/my-xymon-extensions/smart/sudoers.example
+share/doc/my-xymon-extensions/smart/server/README.md
+share/doc/my-xymon-extensions/smart/server/graphs-smart.cfg

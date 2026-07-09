@@ -1,0 +1,18 @@
+#!/bin/sh
+set -e
+
+case "${1:-}" in
+    configure)
+        cat <<'EOF'
+my-xymon-extensions: to activate the "smart" extension:
+ 1. Grant the xymon user access to smartctl - see
+    /usr/share/doc/my-xymon-extensions/smart/sudoers.example
+ 2. Make sure /etc/xymon/clientlaunch.cfg loads the tasks.d directory
+    (add this line once if it is missing):
+      directory /etc/xymon/tasks.d
+ 3. Restart the client: service xymon-client restart
+EOF
+        ;;
+esac
+
+exit 0

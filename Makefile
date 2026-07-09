@@ -9,14 +9,23 @@ all: test
 test: shellcheck unittest
 
 shellcheck:
-	shellcheck --shell=sh extensions/*/*.sh tests/run.sh tests/smart/fakesmartctl
+	shellcheck --shell=sh extensions/*/*.sh tests/run.sh tests/smart/fakesmartctl packaging/*/*.sh
 
 unittest:
 	sh tests/run.sh
 
-# Packaging targets only work on the matching platform (see CLAUDE.md).
-deb rpm freebsd:
-	@echo "Packaging target '$@' is not implemented yet."
-	@exit 1
+# Packaging targets only work on the matching platform (see CLAUDE.md
+# and packaging/README.md). Output lands in build/.
+deb:
+	sh packaging/deb/build.sh
 
-.PHONY: all test shellcheck unittest deb rpm freebsd
+rpm:
+	sh packaging/rpm/build.sh
+
+freebsd:
+	sh packaging/freebsd/build.sh
+
+clean:
+	rm -rf build
+
+.PHONY: all test shellcheck unittest deb rpm freebsd clean
