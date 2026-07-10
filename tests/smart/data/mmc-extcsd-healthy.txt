@@ -1,0 +1,37 @@
+=============================================
+  Extended CSD rev 1.8 (MMC 5.1)
+=============================================
+
+Card Supported Command sets [S_CMD_SET: 0x01]
+HPI Features [HPI_FEATURE: 0x01]: implementation based on CMD13
+Background operations support [BKOPS_SUPPORT: 0x01]
+Cache Size [CACHE_SIZE] is 512 KiB
+Sector Count [SEC_COUNT: 0x00e90000]
+ Device is block-addressed
+Card Type [CARD_TYPE: 0x57]
+ HS400 Dual Data Rate eMMC @200MHz 1.8VI/O
+ HS200 Single Data Rate eMMC @200MHz 1.8VI/O
+CSD structure version [CSD_STRUCTURE: 0x02]
+Power class [POWER_CLASS: 0x04]
+High-speed interface timing [HS_TIMING: 0x01]
+Boot configuration bytes [PARTITION_CONFIG: 0x00]
+ Not boot enable
+ No access to boot partition
+Write reliability parameter register [WR_REL_PARAM]: 0x15
+ Device supports writing EXT_CSD_WR_REL_SET
+ Device supports the enhanced def. of reliable write
+Vendor Specific Fields [VENDOR_SPECIFIC_FIELD[67]]: 0x01
+Native sector size [NATIVE_SECTOR_SIZE]: 0x01
+Power Off Notification [POWER_OFF_NOTIFICATION]: 0x01
+Control to turn the Cache ON/OFF [CACHE_CTRL]: 0x01
+eMMC Firmware Version:
+eMMC Life Time Estimation A [EXT_CSD_DEVICE_LIFE_TIME_EST_TYP_A]: 0x01
+eMMC Life Time Estimation B [EXT_CSD_DEVICE_LIFE_TIME_EST_TYP_B]: 0x00
+eMMC Pre EOL information [EXT_CSD_PRE_EOL_INFO]: 0x01
+Secure Removal Type [SECURE_REMOVAL_TYPE]: 0x39
+ information is configured to be removed using a vendor defined
+Command Queue Support [CMDQ_SUPPORT]: 0x01
+Command Queue Depth [CMDQ_DEPTH]: 32
+Command Enabled [CMDQ_MODE_EN]: 0x00
+Note: CMDQ_MODE_EN may not indicate the runtime CMDQ ON or OFF.
+Please check sysfs node '/sys/devices/.../mmc_host/mmcX/mmcX:XXXX/cmdq_en'

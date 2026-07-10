@@ -34,7 +34,7 @@ my-xymon-extensions/
 
 | Name | Column | Description |
 |------|--------|-------------|
-| [smart](extensions/smart/) | `smart` | SMART disk health for SATA/ATA, NVMe and (basic) SAS disks: vendor-normalized metrics, thresholds/alerts and per-disk RRD graphs |
+| [smart](extensions/smart/) | `smart` | SMART disk health for SATA/ATA, NVMe and (basic) SAS disks plus eMMC wear/pre-EOL health (Linux, via mmc-utils): vendor-normalized metrics, thresholds/alerts and per-disk RRD graphs |
 
 ## Design principles
 

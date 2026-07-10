@@ -25,8 +25,9 @@ Custom monitoring tests (extensions) for the Xymon systems monitor.
 
 Included extensions:
 * smart - S.M.A.R.T. disk health monitoring for SATA/ATA, NVMe and
-  basic SAS disks, with vendor-normalized metrics, thresholds and
-  per-disk RRD graphing support.
+  basic SAS disks, plus eMMC wear/pre-EOL health (via mmc-utils),
+  with vendor-normalized metrics, thresholds and per-disk RRD
+  graphing support.
 
 %prep
 %setup -q
@@ -56,6 +57,12 @@ my-xymon-extensions: to activate the "smart" extension:
 EOF
 
 %changelog
+* Fri Jul 10 2026 roemer2201 <r.oliver@web.de> - 0.3.0-1
+- smart: eMMC health monitoring (Linux) via mmc-utils - EXT_CSD life
+  time estimation mapped to the wear metric, PRE_EOL_INFO as health
+  verdict; clear hints when mmc-utils or smartmontools are missing
+  for present devices
+
 * Thu Jul 09 2026 roemer2201 <r.oliver@web.de> - 0.2.0-1
 - 0.2.0: standalone runner for clientless hosts added to the repo
   (shipped in the opkg package only; no rpm content changes)

@@ -14,3 +14,6 @@ xymon ALL=(root) NOPASSWD: /usr/sbin/smartctl
 
 # FreeBSD (smartmontools from ports/packages):
 #xymon ALL=(root) NOPASSWD: /usr/local/sbin/smartctl
+
+# Linux hosts with eMMC devices (mmc-utils; read-only EXT_CSD query):
+#xymon ALL=(root) NOPASSWD: /usr/bin/mmc extcsd read /dev/mmcblk*

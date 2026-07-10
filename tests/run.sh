@@ -37,6 +37,7 @@ expect_not() {
 # ----------------------------------------------------------------------
 echo "--- smart ---"
 export FAKESMARTCTL="$TESTDIR/smart/fakesmartctl"
+export FAKEMMC="$TESTDIR/smart/fakemmc"
 export SMART_CFG="$TESTDIR/smart/smart_test.cfg"
 export XYMONTMP="$TMP"
 export MACHINE="testhost"
@@ -123,9 +124,45 @@ expect "$out" '^tnvme0_written : 15784$' \
 expect "$out" '^tnvme0_read : 22733$' \
     "NVMe read in GiB from Data Units Read"
 
+# eMMC devices (queried with mmc-utils, not smartctl)
+expect "$out" '&green /dev/tmmc0 - eMMC, MMC 5\.1 - health: Normal' \
+    "healthy eMMC device line green with pre-EOL verdict"
+expect "$out" '^tmmc0_wear : 10$' \
+    "eMMC wear from LIFE_TIME_EST_TYP_A (0x01 -> up to 10% used)"
+expect "$out" '&yellow /dev/tmmc1: eMMC pre-EOL: Warning' \
+    "worn eMMC pre-EOL 0x02 flagged yellow"
+expect "$out" '&yellow /dev/tmmc1: wear=80' \
+    "worn eMMC wear 80 hits the WEAR_WARN threshold"
+expect "$out" '^tmmc1_wear : 80$' \
+    "eMMC wear is the worst of estimates A (0x08) and B (0x02)"
+
 # Status display must not contain NCV-style "name : value" lines other
 # than in the data section (they would pollute the RRDs).
 expect "$out" 'pending=8' "status section uses key=value, not key : value"
+
+# eMMC present but mmc-utils not installed: per-device clear hint,
+# the column itself keeps the color of the checkable devices.
+# shellcheck disable=SC2086
+out=$(SMART_CFG="$TESTDIR/smart/smart_test_nommc.cfg" \
+    $TESTSH "$REPO/extensions/smart/smart.sh")
+expect "$out" '^status testhost\.smart green ' \
+    "missing mmc-utils does not degrade the column color"
+expect "$out" '&clear /dev/tmmc0: eMMC device present but mmc-utils is not installed' \
+    "missing mmc-utils yields a clear hint for the eMMC device"
+expect_not "$out" '^tmmc0_wear' \
+    "no eMMC data without mmc-utils"
+
+# No smartctl at all, but an eMMC device with mmc-utils (typical
+# OpenWrt/TurrisOS router): the eMMC is still monitored.
+# shellcheck disable=SC2086
+out=$(SMART_CFG="$TESTDIR/smart/smart_test_mmconly.cfg" \
+    $TESTSH "$REPO/extensions/smart/smart.sh")
+expect "$out" '^status testhost\.smart green ' \
+    "eMMC-only mode (no smartctl) reports green"
+expect "$out" '&green /dev/tmmc0 - eMMC, MMC 5\.1 - health: Normal' \
+    "eMMC checked although smartctl is missing"
+expect "$out" '^tmmc0_wear : 10$' \
+    "eMMC-only mode still delivers the wear metric"
 
 # ----------------------------------------------------------------------
 echo "--- standalone: xymon-send.sh ---"

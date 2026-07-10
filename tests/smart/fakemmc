@@ -1,0 +1,15 @@
+#!/bin/sh
+# Minimal mmc(1) stand-in for the unit tests: returns canned "extcsd
+# read" output depending on the device.
+set -u
+
+datadir="$(dirname "$0")/data"
+
+case "$*" in
+    "extcsd read /dev/tmmc0") cat "$datadir/mmc-extcsd-healthy.txt" ;;
+    "extcsd read /dev/tmmc1") cat "$datadir/mmc-extcsd-worn.txt" ;;
+    *)
+        echo "Could not open device: ${3:-?}"
+        exit 1
+        ;;
+esac

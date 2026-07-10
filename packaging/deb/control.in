@@ -5,6 +5,7 @@ Priority: optional
 Architecture: all
 Depends: xymon-client, smartmontools
 Recommends: sudo
+Suggests: mmc-utils
 Maintainer: roemer2201 <r.oliver@web.de>
 Homepage: https://github.com/roemer2201/my-xymon-extensions
 Description: Portable Xymon client extensions
@@ -12,5 +13,6 @@ Description: Portable Xymon client extensions
  .
  Included extensions:
   * smart - S.M.A.R.T. disk health monitoring for SATA/ATA, NVMe and
-    basic SAS disks, with vendor-normalized metrics, thresholds and
-    per-disk RRD graphing support.
+    basic SAS disks, plus eMMC wear/pre-EOL health (via mmc-utils),
+    with vendor-normalized metrics, thresholds and per-disk RRD
+    graphing support.
