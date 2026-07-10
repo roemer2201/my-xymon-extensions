@@ -32,7 +32,7 @@ chmod 0644 "$ROOT/DEBIAN/conffiles" || exit 1
 cp packaging/deb/postinst "$ROOT/DEBIAN/postinst" || exit 1
 chmod 0755 "$ROOT/DEBIAN/postinst" || exit 1
 
-dpkg-deb --build --root-owner-group "$ROOT" \
-    "build/${PKG}_${VERSION}-1_all.deb" || exit 1
+DEBFILE="build/${PKG}_${VERSION}-1_all.deb"
+dpkg-deb --build --root-owner-group "$ROOT" "$DEBFILE" || exit 1
 
-echo "Created: build/${PKG}_${VERSION}-1_all.deb"
+echo "Created: $(pwd)/$DEBFILE"

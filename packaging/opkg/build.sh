@@ -53,5 +53,4 @@ echo "2.0" > "$BUILD/debian-binary"
 (cd "$BUILD" && tar $TAROWN -czf "out/${PKG}_${VERSION}-1_all.ipk" \
     ./debian-binary ./control.tar.gz ./data.tar.gz) || exit 1
 
-echo "Created:"
-ls -l "$OUT"
+echo "Created: $(pwd)/$OUT/${PKG}_${VERSION}-1_all.ipk"

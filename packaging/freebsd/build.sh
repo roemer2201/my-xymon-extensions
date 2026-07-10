@@ -33,4 +33,4 @@ pkg create -M "$BUILD/MANIFEST" -p packaging/freebsd/pkg-plist \
     -r "$STAGE" -o "$BUILD/out" || exit 1
 
 echo "Created:"
-ls -l "$BUILD/out"
+find "$(pwd)/$BUILD/out" -type f
