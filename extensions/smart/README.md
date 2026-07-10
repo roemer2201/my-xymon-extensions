@@ -49,6 +49,19 @@ extension attacks this in three layers:
    `Wear_Leveling_Count`, `SSD_Life_Left`, `Media_Wearout_Indicator` and
    `Percent_Lifetime_Remain` all become `wear`, converted so that the
    value is always "percent of life used".
+
+   For drives that are **not in smartctl's drive database** (smartctl
+   prints `Device is: Not in smartctl database`, common on OpenWrt/
+   TurrisOS builds without drivedb updates), the name-based matching
+   cannot work: vendor attributes show up as `Unknown_Attribute`, and
+   241/242 get the generic `Total_LBAs_Written`/`_Read` labels even on
+   drives that count in other units. The built-in map therefore starts
+   with model-specific entries matched by attribute *ID* for known
+   drive families (e.g. Kingston KC600: 241/242 count 32-MiB units,
+   231 is "SSD life left"). Such drives are marked
+   `(not in smartctl drive database)` on the status page; if metrics
+   look wrong there, update the drive database
+   (`update-smart-drivedb`) or add an `attrmap` override.
 3. **Per-model overrides** in `smart.cfg` handle the remaining oddballs:
 
    ```sh
