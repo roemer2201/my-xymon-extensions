@@ -21,15 +21,21 @@ mkdir -p "$DATA" "$CTRL" "$OUT" || exit 1
 # Extensions and their configs (shared file list); no docs on routers.
 sh packaging/common/stage.sh "$DATA" "$LIBDIR/ext" "$LIBDIR/etc" - || exit 1
 
+# No install(1) here: BusyBox on OpenWrt/TurrisOS has no install
+# applet, and this build must run there.
+inst() { # inst MODE SRC DST
+    cp "$2" "$3" && chmod "$1" "$3"
+}
+
 # Standalone runtime + main config
-install -m 0755 standalone/xymon-run.sh "$DATA$LIBDIR/xymon-run.sh" || exit 1
-install -m 0755 standalone/xymon-send.sh "$DATA$LIBDIR/xymon-send.sh" || exit 1
-install -d "$DATA/etc" || exit 1
-install -m 0644 standalone/standalone.cfg "$DATA/etc/xymon-standalone.cfg" || exit 1
+inst 0755 standalone/xymon-run.sh "$DATA$LIBDIR/xymon-run.sh" || exit 1
+inst 0755 standalone/xymon-send.sh "$DATA$LIBDIR/xymon-send.sh" || exit 1
+mkdir -p "$DATA/etc" || exit 1
+inst 0644 standalone/standalone.cfg "$DATA/etc/xymon-standalone.cfg" || exit 1
 
 sed -e "s/@VERSION@/$VERSION/" packaging/opkg/control.in > "$CTRL/control" || exit 1
-install -m 0644 packaging/opkg/conffiles "$CTRL/conffiles" || exit 1
-install -m 0755 packaging/opkg/postinst "$CTRL/postinst" || exit 1
+inst 0644 packaging/opkg/conffiles "$CTRL/conffiles" || exit 1
+inst 0755 packaging/opkg/postinst "$CTRL/postinst" || exit 1
 
 # GNU tar can normalize file ownership to root; with BSD tar the build
 # still works, the archive then records the building user.

@@ -25,8 +25,12 @@ sh packaging/common/stage.sh "$ROOT" \
     "/usr/share/doc/$PKG" || exit 1
 
 sed -e "s/@VERSION@/$VERSION/" packaging/deb/control.in > "$ROOT/DEBIAN/control" || exit 1
-install -m 0644 packaging/deb/conffiles "$ROOT/DEBIAN/conffiles" || exit 1
-install -m 0755 packaging/deb/postinst "$ROOT/DEBIAN/postinst" || exit 1
+# cp+chmod instead of install(1) for consistency with the scripts that
+# must run under BusyBox (see packaging/common/stage.sh).
+cp packaging/deb/conffiles "$ROOT/DEBIAN/conffiles" || exit 1
+chmod 0644 "$ROOT/DEBIAN/conffiles" || exit 1
+cp packaging/deb/postinst "$ROOT/DEBIAN/postinst" || exit 1
+chmod 0755 "$ROOT/DEBIAN/postinst" || exit 1
 
 dpkg-deb --build --root-owner-group "$ROOT" \
     "build/${PKG}_${VERSION}-1_all.deb" || exit 1

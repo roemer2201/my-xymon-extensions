@@ -27,20 +27,25 @@ ETCDIR=$3
 DOCDIR=$4
 SUF=${5:-}
 
-install -d "$DESTDIR$EXTDIR" \
-           "$DESTDIR$ETCDIR/tasks.d" || exit 1
+# No install(1) here: BusyBox on OpenWrt/TurrisOS has no install
+# applet, and the opkg build must run there.
+inst() { # inst MODE SRC DST
+    cp "$2" "$3" && chmod "$1" "$3"
+}
 
-install -m 0755 extensions/smart/smart.sh "$DESTDIR$EXTDIR/smart.sh" || exit 1
-install -m 0644 extensions/smart/smart.cfg "$DESTDIR$ETCDIR/smart.cfg$SUF" || exit 1
-install -m 0644 packaging/common/tasks.d/smart.cfg "$DESTDIR$ETCDIR/tasks.d/smart.cfg$SUF" || exit 1
+mkdir -p "$DESTDIR$EXTDIR" "$DESTDIR$ETCDIR/tasks.d" || exit 1
+
+inst 0755 extensions/smart/smart.sh "$DESTDIR$EXTDIR/smart.sh" || exit 1
+inst 0644 extensions/smart/smart.cfg "$DESTDIR$ETCDIR/smart.cfg$SUF" || exit 1
+inst 0644 packaging/common/tasks.d/smart.cfg "$DESTDIR$ETCDIR/tasks.d/smart.cfg$SUF" || exit 1
 
 if [ "$DOCDIR" != "-" ]; then
-    install -d "$DESTDIR$DOCDIR/smart/server" || exit 1
-    install -m 0644 README.md "$DESTDIR$DOCDIR/README.md" || exit 1
-    install -m 0644 extensions/smart/README.md "$DESTDIR$DOCDIR/smart/README.md" || exit 1
-    install -m 0644 extensions/smart/sudoers.example "$DESTDIR$DOCDIR/smart/sudoers.example" || exit 1
-    install -m 0644 extensions/smart/server/README.md "$DESTDIR$DOCDIR/smart/server/README.md" || exit 1
-    install -m 0644 extensions/smart/server/graphs-smart.cfg "$DESTDIR$DOCDIR/smart/server/graphs-smart.cfg" || exit 1
+    mkdir -p "$DESTDIR$DOCDIR/smart/server" || exit 1
+    inst 0644 README.md "$DESTDIR$DOCDIR/README.md" || exit 1
+    inst 0644 extensions/smart/README.md "$DESTDIR$DOCDIR/smart/README.md" || exit 1
+    inst 0644 extensions/smart/sudoers.example "$DESTDIR$DOCDIR/smart/sudoers.example" || exit 1
+    inst 0644 extensions/smart/server/README.md "$DESTDIR$DOCDIR/smart/server/README.md" || exit 1
+    inst 0644 extensions/smart/server/graphs-smart.cfg "$DESTDIR$DOCDIR/smart/server/graphs-smart.cfg" || exit 1
 fi
 
 exit 0
