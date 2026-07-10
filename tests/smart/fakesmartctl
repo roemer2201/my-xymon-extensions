@@ -23,6 +23,7 @@ datadir="$(dirname "$0")/data"
 case "$last" in
     /dev/tsda)   cat "$datadir/ata-seagate.txt" ;;
     /dev/tssd)   cat "$datadir/ata-samsung-ssd.txt" ;;
+    /dev/tsdk)   cat "$datadir/ata-kingston-ssd.txt" ;;
     /dev/tnvme0) cat "$datadir/nvme-samsung.txt" ;;
     *)
         echo "Smartctl open device: $last failed: No such device"

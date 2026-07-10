@@ -1,0 +1,57 @@
+smartctl 7.4 2023-08-01 r5530 [armv7l-linux-6.6.142] (localbuild)
+Copyright (C) 2002-23, Bruce Allen, Christian Franke, www.smartmontools.org
+
+=== START OF INFORMATION SECTION ===
+Model Family:     Kingston SSDNow UV500
+Device Model:     KINGSTON SUV500MS480G
+Serial Number:    50026B7TEST
+LU WWN Device Id: 5 0026b7 78trst123
+Firmware Version: 003056RI
+User Capacity:    480,103,981,056 bytes [480 GB]
+Sector Size:      512 bytes logical/physical
+Rotation Rate:    Solid State Device
+Form Factor:      mSATA
+Device is:        In smartctl database 7.3/5528
+ATA Version is:   ACS-3 T13/2161-D revision 4
+SATA Version is:  SATA 3.2, 6.0 Gb/s (current: 6.0 Gb/s)
+Local Time is:    Fri Jul 10 21:10:33 2026 CEST
+SMART support is: Available - device has SMART capability.
+SMART support is: Enabled
+Power mode is:    ACTIVE or IDLE
+
+=== START OF READ SMART DATA SECTION ===
+SMART overall-health self-assessment test result: PASSED
+
+SMART Attributes Data Structure revision number: 48
+Vendor Specific SMART Attributes with Thresholds:
+ID# ATTRIBUTE_NAME          FLAG     VALUE WORST THRESH TYPE      UPDATED  WHEN_FAILED RAW_VALUE
+  1 Raw_Read_Error_Rate     0x002f   100   100   000    Pre-fail  Always       -       348
+  5 Reallocated_Sector_Ct   0x0033   100   100   010    Pre-fail  Always       -       0
+  9 Power_On_Hours          0x0032   100   100   000    Old_age   Always       -       47708
+ 12 Power_Cycle_Count       0x0032   100   100   000    Old_age   Always       -       24
+100 Unknown_Kingston_Attr   0x0032   100   100   000    Old_age   Always       -       8273504
+101 Unknown_Kingston_Attr   0x0032   100   100   000    Old_age   Always       -       1753664
+170 Reserved_Block_Count    0x0032   100   100   000    Old_age   Always       -       0
+171 Program_Fail_Count      0x0032   100   100   000    Old_age   Always       -       0
+172 Erase_Fail_Count        0x0032   100   100   000    Old_age   Always       -       0
+174 Unexpect_Power_Loss_Ct  0x0032   100   100   000    Old_age   Always       -       22
+175 Program_Fail_Count_Chip 0x0032   100   100   000    Old_age   Always       -       0
+176 Erase_Fail_Count_Chip   0x0032   100   100   000    Old_age   Always       -       0
+177 Wear_Leveling_Count     0x0032   091   091   000    Old_age   Always       -       2938
+178 Used_Rsvd_Blk_Cnt_Chip  0x0002   100   100   000    Old_age   Always       -       0
+180 Unused_Rsvd_Blk_Cnt_Tot 0x0002   100   100   000    Old_age   Always       -       1465
+183 Runtime_Bad_Block       0x0032   090   090   000    Old_age   Always       -       40
+187 Reported_Uncorrect      0x0033   100   100   000    Pre-fail  Always       -       0
+194 Temperature_Celsius     0x0022   041   100   000    Old_age   Always       -       41 (Min/Max 24/54)
+195 Hardware_ECC_Recovered  0x0032   100   100   000    Old_age   Always       -       348
+196 Reallocated_Event_Count 0x0032   100   100   000    Old_age   Always       -       0
+197 Current_Pending_Sector  0x0032   100   100   000    Old_age   Always       -       0
+199 UDMA_CRC_Error_Count    0x0012   100   100   000    Old_age   Always       -       0
+201 Unc_Read_Error_Rate     0x0032   100   100   000    Old_age   Always       -       0
+204 Soft_ECC_Correction     0x0032   100   100   000    Old_age   Always       -       348
+231 SSD_Life_Left           0x0032   090   090   000    Old_age   Always       -       10
+233 Media_Wearout_Indicator 0x0032   100   100   000    Old_age   Always       -       30908
+234 Unknown_Attribute       0x0032   100   100   000    Old_age   Always       -       20545
+241 Host_Writes_GiB         0x0032   100   100   000    Old_age   Always       -       21543
+242 Host_Reads_GiB          0x0032   100   100   000    Old_age   Always       -       7410
+250 Read_Retry_Count        0x0032   100   100   000    Old_age   Always       -       348
