@@ -66,6 +66,11 @@ MACHINE=$(printf '%s' "$MACHINEDOTS" | tr '.' ',')
 
 LOGDIR="${XYMONCLIENTLOGS:-$XYMONTMP}"
 
+# The configured directories may not exist yet: on OpenWrt /tmp is a
+# RAM disk (and /var a symlink to it), so anything below it is gone
+# after a reboot. Extensions expect $XYMONTMP to exist.
+mkdir -p "$XYMONTMP" "$LOGDIR" || exit 1
+
 if [ -n "$DRYRUN" ]; then
     # Empty XYMON/XYMSRV switch the extensions into print-to-stdout mode
     XYMON=""

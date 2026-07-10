@@ -65,7 +65,7 @@ expect "$out" '&green /dev/tnvme0 - Samsung SSD 980 PRO 1TB' \
 
 # Data (NCV) values - ATA disk
 expect "$out" '^tsda_temp : 39$' \
-    "attrmap override works: temp from 190 (39), not 194 (38)"
+    "attrmap override works: garbage 77 in 194 ignored, temp from 190 (39)"
 expect "$out" '^tsda_pending : 8$'  "tsda pending extracted"
 expect "$out" '^tsda_realloc : 0$'  "tsda realloc extracted"
 expect "$out" '^tsda_hours : 20573$' "tsda power-on hours extracted"
@@ -74,7 +74,22 @@ expect "$out" '^tsda_hours : 20573$' "tsda power-on hours extracted"
 expect "$out" '^tssd_wear : 9$' \
     "SSD wear from Wear_Leveling_Count normalized value (100-91)"
 expect "$out" '^tssd_temp : 31$'    "SSD temp from Airflow_Temperature_Cel"
+expect "$out" '^tssd_written : 23288$' \
+    "written normalized to GiB from Total_LBAs_Written (512-byte LBAs)"
 expect_not "$out" 'tssd_[a-z]*ECC'  "unmapped attributes are not reported"
+
+# Data (NCV) values - Kingston SSD: three attributes map to "wear"
+# (177 Wear_Leveling_Count -> 9, 231 SSD_Life_Left -> 10,
+# 233 Media_Wearout_Indicator -> 0, stuck at VALUE 100 on Kingston).
+# The worst value must win; the optimistic reading must not mask it.
+expect "$out" '&green /dev/tsdk - KINGSTON SUV500MS480G - health: PASSED' \
+    "Kingston device line green with model and health"
+expect "$out" '^tsdk_wear : 10$' \
+    "wear is the worst of all wear-mapped attributes"
+expect "$out" '^tsdk_temp : 41$'     "Kingston temp from 194"
+expect "$out" '^tsdk_hours : 47708$' "Kingston power-on hours extracted"
+expect "$out" '^tsdk_written : 21543$' "written from Host_Writes_GiB (already GiB)"
+expect "$out" '^tsdk_read : 7410$'     "read from Host_Reads_GiB (already GiB)"
 
 # Data (NCV) values - NVMe
 expect "$out" '^tnvme0_temp : 41$'      "NVMe composite temperature"
@@ -83,6 +98,10 @@ expect "$out" '^tnvme0_spare : 100$'    "NVMe Available Spare"
 expect "$out" '^tnvme0_hours : 8760$'   "NVMe hours (comma separator removed)"
 expect "$out" '^tnvme0_mediaerr : 0$'   "NVMe media errors"
 expect "$out" '^tnvme0_unsafeshut : 42$' "NVMe unsafe shutdowns"
+expect "$out" '^tnvme0_written : 15784$' \
+    "NVMe written in GiB from Data Units Written (1000x512 bytes)"
+expect "$out" '^tnvme0_read : 22733$' \
+    "NVMe read in GiB from Data Units Read"
 
 # Status display must not contain NCV-style "name : value" lines other
 # than in the data section (they would pollute the RRDs).
@@ -140,9 +159,14 @@ mkdir -p "$STAGE/ext" "$STAGE/etc"
 cp "$REPO/standalone/xymon-run.sh" "$REPO/standalone/xymon-send.sh" "$STAGE/"
 cp "$REPO/extensions/smart/smart.sh" "$STAGE/ext/smart.sh"
 cp "$TESTDIR/smart/smart_test.cfg" "$STAGE/etc/smart.cfg"
+# XYMONTMP/XYMONCLIENTLOGS deliberately do not exist yet: the runner
+# must create them (on OpenWrt /tmp is a RAM disk, configured
+# subdirectories are gone after every reboot).
 cat > "$STAGE/etc/standalone.cfg" <<EOF
 XYMSRV="127.0.0.1"
 MACHINEDOTS="turris.example.org"
+XYMONTMP="$TMP/work/tmp"
+XYMONCLIENTLOGS="$TMP/work/logs"
 EOF
 
 # The extension must find its config via \$XYMONHOME/etc, not SMART_CFG.
@@ -170,10 +194,10 @@ expect "$captured" '^data turris,example,org\.smart$' \
     "data message for the RRD graphs is sent too"
 expect "$captured" '^tsda_pending : 8$' \
     "NCV payload arrives through the standalone transport"
-if [ -f "$TMP/smart.log" ]; then
-    echo "ok:   extension run log written to \$XYMONCLIENTLOGS"
+if [ -f "$TMP/work/logs/smart.log" ]; then
+    echo "ok:   extension run log written to auto-created \$XYMONCLIENTLOGS"
 else
-    echo "FAIL: extension run log missing ($TMP/smart.log)"
+    echo "FAIL: extension run log missing ($TMP/work/logs/smart.log)"
     FAIL=1
 fi
 

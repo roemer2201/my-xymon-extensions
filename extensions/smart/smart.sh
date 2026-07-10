@@ -54,7 +54,7 @@ device() {
 "
 }
 
-# attrmap <model-glob> <attr-id-or-name-glob> <metric|none> [raw|norm|invnorm]
+# attrmap <model-glob> <attr-id-or-name-glob> <metric|none> [raw|norm|invnorm|gib|lba|mib32]
 # Map an ATA SMART attribute to a canonical metric, overriding the
 # built-in map below. Matched before the built-in map, first hit wins.
 # shellcheck disable=SC2317  # called indirectly from the sourced config
@@ -80,6 +80,9 @@ fi
 # source: raw     = first number of the RAW_VALUE column
 #         norm    = normalized VALUE column
 #         invnorm = 100 - VALUE (for "percent life left" style values)
+#         gib     = RAW_VALUE already in GiB
+#         lba     = RAW_VALUE in 512-byte sectors, converted to GiB
+#         mib32   = RAW_VALUE in 32-MiB units, converted to GiB
 # ----------------------------------------------------------------------
 DEFAULTMAP="\
 *|Temperature_Celsius|temp|raw
@@ -101,7 +104,15 @@ DEFAULTMAP="\
 *|Percent_Lifetime_Remain|wear|invnorm
 *|Percent_Life_Remaining|wear|invnorm
 *|Percentage_Used|wear|raw
-*|Perc_Rated_Life_Used|wear|raw"
+*|Perc_Rated_Life_Used|wear|raw
+*|Host_Writes_GiB|written|gib
+*|Lifetime_Writes_GiB|written|gib
+*|Host_Writes_32MiB|written|mib32
+*|Total_LBAs_Written|written|lba
+*|Host_Reads_GiB|read|gib
+*|Lifetime_Reads_GiB|read|gib
+*|Host_Reads_32MiB|read|mib32
+*|Total_LBAs_Read|read|lba"
 
 # ----------------------------------------------------------------------
 # Helpers
@@ -335,7 +346,10 @@ while IFS='|' read -r dev opts alias <&3; do
             case "$src" in
                 norm)    v=$a_value ;;
                 invnorm) v=$((100 - a_value)); [ "$v" -lt 0 ] && v=0 ;;
-                *)       v=$a_raw ;;
+                # totals can exceed 32-bit shell arithmetic - use awk
+                lba)     v=$(awk -v r="$a_raw" 'BEGIN { printf "%.0f", r * 512 / 1073741824 }') ;;
+                mib32)   v=$(awk -v r="$a_raw" 'BEGIN { printf "%.0f", r / 32 }') ;;
+                *)       v=$a_raw ;;   # raw and gib
             esac
             printf '%s %s\n' "$m" "$v" >> "$WORKDIR/metrics.raw"
         done < "$WORKDIR/attrs"
@@ -350,6 +364,9 @@ while IFS='|' read -r dev opts alias <&3; do
             /^Power Cycles:/                    { printf "cycles %.0f\n", num($2) }
             /^Unsafe Shutdowns:/                { printf "unsafeshut %.0f\n", num($2) }
             /^Media and Data Integrity Errors:/ { printf "mediaerr %.0f\n", num($2) }
+            # data units are 1000x 512 bytes each; report GiB
+            /^Data Units Written:/              { printf "written %.0f\n", num($2) * 512000 / 1073741824 }
+            /^Data Units Read:/                 { printf "read %.0f\n", num($2) * 512000 / 1073741824 }
         ' > "$WORKDIR/metrics.raw"
         critwarn=$(printf '%s\n' "$out" | sed -n -e 's/^Critical Warning: *//p' | head -n 1)
     else
@@ -360,9 +377,16 @@ while IFS='|' read -r dev opts alias <&3; do
         ' > "$WORKDIR/metrics.raw"
     fi
 
-    # Deduplicate: the last attribute wins per metric (e.g. attribute
-    # 194 Temperature_Celsius overrides 190 Airflow_Temperature_Cel).
-    awk '{ v[$1] = $2 } END { for (m in v) print m, v[m] }' \
+    # Deduplicate: when several attributes map to the same metric, the
+    # worst value wins (highest; lowest for spare). Vendors misuse
+    # attributes: Kingston's Media_Wearout_Indicator sits at VALUE 100
+    # (wear 0) forever while SSD_Life_Left carries the real wear - the
+    # optimistic reading must not mask the real one. Use attrmap in
+    # smart.cfg to ignore an attribute that reports garbage.
+    awk '
+        $1 == "spare" { if (!($1 in v) || $2 + 0 < v[$1] + 0) v[$1] = $2; next }
+                      { if (!($1 in v) || $2 + 0 > v[$1] + 0) v[$1] = $2 }
+        END { for (m in v) print m, v[m] }' \
         "$WORKDIR/metrics.raw" | sort > "$WORKDIR/metrics"
 
     if [ ! -s "$WORKDIR/metrics" ] && [ -z "$health" ]; then
