@@ -91,6 +91,26 @@ expect "$out" '^tsdk_hours : 47708$' "Kingston power-on hours extracted"
 expect "$out" '^tsdk_written : 21543$' "written from Host_Writes_GiB (already GiB)"
 expect "$out" '^tsdk_read : 7410$'     "read from Host_Reads_GiB (already GiB)"
 
+# Data (NCV) values - Kingston KC600: not in smartctl's drive database,
+# so vendor attributes carry generic default names. 241/242 are labelled
+# Total_LBAs_Written/_Read but actually count 32-MiB units (Silicon
+# Motion controller); the real wear sits in 231 (VALUE 99 -> 1% used)
+# while 177 Wear_Leveling_Count is stuck at VALUE 100. The built-in
+# model-specific ID map must recover all of that.
+expect "$out" '&green /dev/tsdc - KINGSTON SKC600MS512G - health: PASSED \(not in smartctl drive database\)' \
+    "KC600 device line notes the missing drivedb entry"
+expect "$out" '^tsdc_written : 2549$' \
+    "KC600 written in GiB from 241 as 32-MiB units (81572/32)"
+expect "$out" '^tsdc_read : 1191$' \
+    "KC600 read in GiB from 242 as 32-MiB units (38109/32)"
+expect_not "$out" '^tsdc_written : 0$' \
+    "KC600 written not misread as 512-byte LBAs"
+expect "$out" '^tsdc_wear : 1$' \
+    "KC600 wear from attribute 231 by ID (100-99), not stuck 177"
+expect "$out" '^tsdc_temp : 41$'    "KC600 temperature extracted"
+expect "$out" '^tsdc_hours : 1754$' "KC600 power-on hours extracted"
+expect "$out" '^tsdc_cycles : 39$'  "KC600 power cycles extracted"
+
 # Data (NCV) values - NVMe
 expect "$out" '^tnvme0_temp : 41$'      "NVMe composite temperature"
 expect "$out" '^tnvme0_wear : 3$'       "NVMe Percentage Used"

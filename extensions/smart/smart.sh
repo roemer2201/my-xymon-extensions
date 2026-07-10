@@ -77,6 +77,15 @@ fi
 # us vendor normalization for free. Drives that still deviate are
 # handled with attrmap overrides in smart.cfg (matched first).
 #
+# When a drive is NOT in smartctl's drive database (common on OpenWrt/
+# TurrisOS, whose smartmontools build ships without drivedb updates),
+# smartctl falls back to generic names: vendor attributes show up as
+# Unknown_Attribute, and 241/242 get the generic Total_LBAs_Written/
+# _Read labels even on drives that count in other units. The
+# model-specific entries at the top of the map recover the correct
+# interpretation for known drive families by attribute *ID*; they are
+# listed first so they win over the generic name matches.
+#
 # source: raw     = first number of the RAW_VALUE column
 #         norm    = normalized VALUE column
 #         invnorm = 100 - VALUE (for "percent life left" style values)
@@ -85,6 +94,9 @@ fi
 #         mib32   = RAW_VALUE in 32-MiB units, converted to GiB
 # ----------------------------------------------------------------------
 DEFAULTMAP="\
+KINGSTON SKC600*|231|wear|invnorm
+KINGSTON SKC600*|241|written|mib32
+KINGSTON SKC600*|242|read|mib32
 *|Temperature_Celsius|temp|raw
 *|Temperature_Cel*|temp|raw
 *|Airflow_Temperature_Cel|temp|raw
@@ -101,16 +113,19 @@ DEFAULTMAP="\
 *|Wear_Leveling_Count|wear|invnorm
 *|Media_Wearout_Indicator|wear|invnorm
 *|SSD_Life_Left|wear|invnorm
+*|Remaining_Lifetime_Perc|wear|invnorm
 *|Percent_Lifetime_Remain|wear|invnorm
 *|Percent_Life_Remaining|wear|invnorm
 *|Percentage_Used|wear|raw
 *|Perc_Rated_Life_Used|wear|raw
 *|Host_Writes_GiB|written|gib
 *|Lifetime_Writes_GiB|written|gib
+*|Total_Writes_GiB|written|gib
 *|Host_Writes_32MiB|written|mib32
 *|Total_LBAs_Written|written|lba
 *|Host_Reads_GiB|read|gib
 *|Lifetime_Reads_GiB|read|gib
+*|Total_Reads_GiB|read|gib
 *|Host_Reads_32MiB|read|mib32
 *|Total_LBAs_Read|read|lba"
 
@@ -326,6 +341,14 @@ while IFS='|' read -r dev opts alias <&3; do
         -e 's/^SMART overall-health self-assessment test result: *//p' \
         -e 's/^SMART Health Status: *//p' | head -n 1)
 
+    # Unknown to smartctl's drive database: vendor attributes keep their
+    # generic (sometimes wrong) default names, so mappings may be
+    # incomplete for models the built-in map does not cover by ID.
+    dbnote=""
+    case "$out" in
+        *"Not in smartctl database"*) dbnote=" (not in smartctl drive database)" ;;
+    esac
+
     critwarn=""
     : > "$WORKDIR/metrics.raw"
 
@@ -423,7 +446,7 @@ while IFS='|' read -r dev opts alias <&3; do
     {
         printf '&%s %s - %s' "$devcolor" "$dev" "$model"
         [ -n "$health" ] && printf ' - health: %s' "$health"
-        printf '\n'
+        printf '%s\n' "$dbnote"
         [ -n "$pairs" ] && printf '    %s\n' "${pairs# }"
         printf '\n'
     } >> "$STATUS"
