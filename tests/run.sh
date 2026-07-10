@@ -140,9 +140,14 @@ mkdir -p "$STAGE/ext" "$STAGE/etc"
 cp "$REPO/standalone/xymon-run.sh" "$REPO/standalone/xymon-send.sh" "$STAGE/"
 cp "$REPO/extensions/smart/smart.sh" "$STAGE/ext/smart.sh"
 cp "$TESTDIR/smart/smart_test.cfg" "$STAGE/etc/smart.cfg"
+# XYMONTMP/XYMONCLIENTLOGS deliberately do not exist yet: the runner
+# must create them (on OpenWrt /tmp is a RAM disk, configured
+# subdirectories are gone after every reboot).
 cat > "$STAGE/etc/standalone.cfg" <<EOF
 XYMSRV="127.0.0.1"
 MACHINEDOTS="turris.example.org"
+XYMONTMP="$TMP/work/tmp"
+XYMONCLIENTLOGS="$TMP/work/logs"
 EOF
 
 # The extension must find its config via \$XYMONHOME/etc, not SMART_CFG.
@@ -170,10 +175,10 @@ expect "$captured" '^data turris,example,org\.smart$' \
     "data message for the RRD graphs is sent too"
 expect "$captured" '^tsda_pending : 8$' \
     "NCV payload arrives through the standalone transport"
-if [ -f "$TMP/smart.log" ]; then
-    echo "ok:   extension run log written to \$XYMONCLIENTLOGS"
+if [ -f "$TMP/work/logs/smart.log" ]; then
+    echo "ok:   extension run log written to auto-created \$XYMONCLIENTLOGS"
 else
-    echo "FAIL: extension run log missing ($TMP/smart.log)"
+    echo "FAIL: extension run log missing ($TMP/work/logs/smart.log)"
     FAIL=1
 fi
 
