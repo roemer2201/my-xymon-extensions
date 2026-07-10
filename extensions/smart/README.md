@@ -6,11 +6,12 @@ a small set of canonical metrics, alerts on thresholds and feeds RRD
 graphs on the Xymon server.
 
 - **Column:** `smart`
-- **Platforms:** Ubuntu, Rocky Linux/EL, FreeBSD
+- **Platforms:** Ubuntu, Rocky Linux/EL, FreeBSD, OpenWrt/TurrisOS
+  (via the standalone runner)
 - **Disk types:** SATA/ATA (HDD & SSD), NVMe, SAS/SCSI (temperature and
-  grown defects only)
-- **Requires:** smartmontools (≥ 7.0 recommended for NVMe), root or a
-  sudo rule (see below)
+  grown defects only), eMMC (Linux only, wear and pre-EOL health)
+- **Requires:** smartmontools (≥ 7.0 recommended for NVMe), mmc-utils
+  for eMMC devices, root or a sudo rule (see below)
 
 ## Canonical metrics
 
@@ -33,6 +34,35 @@ graphs on the Xymon server.
 Additionally, the SMART overall health verdict (`PASSED`/`FAILED`) turns
 the column **red** on failure, and NVMe *Critical Warning* flags turn it
 yellow — independent of the metric thresholds.
+
+## eMMC devices (Linux)
+
+eMMC (soldered flash on routers, SBCs, appliances — e.g. Turris Omnia)
+is not covered by smartctl. For these devices the extension reads the
+standardized JEDEC health fields from the EXT_CSD register using
+`mmc extcsd read` from **mmc-utils** (OpenWrt/TurrisOS:
+`opkg install mmc-utils`; Debian/Ubuntu: `apt install mmc-utils`) and
+maps them into the same schema:
+
+| EXT_CSD field                  | Mapping                                       |
+|--------------------------------|-----------------------------------------------|
+| `DEVICE_LIFE_TIME_EST_TYP_A/B` | `wear` — reported in 10% steps (`0x01` = 0–10% used … `0x0B` = exceeded). The worse of the two estimates wins (A and B cover different flash regions, typically SLC and MLC); the upper bound of the step is reported, so `0x01` shows as `wear=10`. Uses the normal `WEAR_WARN`/`WEAR_CRIT` thresholds. |
+| `PRE_EOL_INFO`                 | health verdict, like SMART `PASSED`/`FAILED`: `0x01` Normal → green, `0x02` Warning (80% of reserved blocks consumed) → **yellow**, `0x03` Urgent (90%) → **red**. |
+
+Notes:
+
+- Auto-discovery checks every `/dev/mmcblkN` whose sysfs type is `MMC`.
+  **SD cards** (type `SD`) have no EXT_CSD and are skipped. Override
+  with `MMC_DEVICES` in `smart.cfg` (`"none"` disables the check);
+  `EXCLUDE` applies here too.
+- These fields exist since eMMC 5.0; older devices report
+  `no usable eMMC health data` (clear).
+- If an eMMC device is present but mmc-utils is not installed, the
+  device is shown as `clear` with an installation hint — mirroring the
+  behaviour when disks are present but smartmontools is missing.
+- `mmc extcsd read` needs root; when running unprivileged add the mmc
+  line from `sudoers.example`. On OpenWrt the standalone runner is
+  driven by root's crontab, so no sudo setup is needed there.
 
 ## How vendor normalization works
 

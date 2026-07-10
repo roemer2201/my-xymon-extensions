@@ -1,6 +1,6 @@
 Package: my-xymon-extensions
 Version: @VERSION@-1
-Depends: smartmontools
+Depends: smartmontools, mmc-utils
 Section: net
 Priority: optional
 Architecture: all
@@ -12,4 +12,4 @@ Description: Portable Xymon client extensions with standalone runner
  (xymon-send.sh) for hosts without a Xymon client, such as
  OpenWrt/TurrisOS routers.
  Included extensions: smart - S.M.A.R.T. disk health monitoring for
- SATA/ATA and NVMe disks.
+ SATA/ATA and NVMe disks, plus eMMC wear/pre-EOL health via mmc-utils.

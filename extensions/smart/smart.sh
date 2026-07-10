@@ -3,7 +3,8 @@
 # smart.sh -- Xymon client extension: S.M.A.R.T. disk health monitoring
 #
 # Collects SMART data for all local disks (SATA/ATA, NVMe, basic SAS)
-# using smartctl(8), maps the vendor-specific attributes to a small set
+# using smartctl(8), plus eMMC health data (Linux) using mmc(1) from
+# mmc-utils, maps the vendor-specific attributes to a small set
 # of canonical metrics and reports:
 #
 #   - one "smart" status column (green/yellow/red/clear), and
@@ -32,6 +33,8 @@ SMARTCTL=""            # path to smartctl; empty = search $PATH
 USE_SUDO="auto"        # auto | yes | no
 NOSPINUP="yes"         # yes = do not wake up disks in standby
 EXCLUDE=""             # ERE of devices to skip, e.g. '^/dev/da[5-9]'
+MMC_UTILS=""           # path to mmc(1) from mmc-utils; empty = search $PATH
+MMC_DEVICES=""         # eMMC devices; empty = auto-scan, "none" = disable
 
 # Thresholds; setting a value to 0 disables that check.
 TEMP_WARN=55       TEMP_CRIT=65       # degrees Celsius
@@ -243,12 +246,55 @@ clear_report() {
     exit 0
 }
 
-# --- locate smartctl ---------------------------------------------------
+# --- locate smartctl and mmc --------------------------------------------
 if [ -z "$SMARTCTL" ]; then
     SMARTCTL=$(command -v smartctl || true)
 fi
-if [ -z "$SMARTCTL" ] || [ ! -x "$SMARTCTL" ]; then
-    clear_report "smartctl not found - install smartmontools to enable this test"
+if [ -n "$SMARTCTL" ] && [ ! -x "$SMARTCTL" ]; then
+    SMARTCTL=""
+fi
+if [ -z "$MMC_UTILS" ]; then
+    MMC_UTILS=$(command -v mmc || true)
+fi
+if [ -n "$MMC_UTILS" ] && [ ! -x "$MMC_UTILS" ]; then
+    MMC_UTILS=""
+fi
+
+# --- eMMC discovery ------------------------------------------------------
+# eMMC health is not covered by smartctl; it lives in the EXT_CSD
+# register, read with mmc(1) from mmc-utils. Only whole eMMC devices
+# qualify (sysfs type "MMC"); SD cards ("SD") have no EXT_CSD and are
+# skipped. Linux only - other platforms expose no such interface.
+MMCLIST=""
+if [ "$MMC_DEVICES" = "none" ]; then
+    :
+elif [ -n "$MMC_DEVICES" ]; then
+    MMCLIST=$MMC_DEVICES
+elif [ "$(uname -s)" = "Linux" ]; then
+    for d in /dev/mmcblk[0-9] /dev/mmcblk[0-9][0-9]; do
+        [ -e "$d" ] || continue
+        mtype=$(cat "/sys/block/${d#/dev/}/device/type" 2>/dev/null)
+        [ "$mtype" = "MMC" ] || continue
+        MMCLIST="$MMCLIST $d"
+    done
+    MMCLIST=${MMCLIST# }
+fi
+if [ -n "$MMCLIST" ] && [ -n "$EXCLUDE" ]; then
+    mkeep=""
+    for d in $MMCLIST; do
+        printf '%s\n' "$d" | grep -Eq "$EXCLUDE" && continue
+        mkeep="$mkeep $d"
+    done
+    MMCLIST=${mkeep# }
+fi
+
+if [ -z "$SMARTCTL" ]; then
+    if [ -z "$MMCLIST" ]; then
+        clear_report "smartctl not found - install smartmontools to enable this test"
+    fi
+    if [ -z "$MMC_UTILS" ]; then
+        clear_report "eMMC device present but mmc-utils is not installed (OpenWrt: opkg install mmc-utils), and smartctl not found - install smartmontools; nothing can be checked"
+    fi
 fi
 
 # --- privileges ---------------------------------------------------------
@@ -261,7 +307,9 @@ if [ "$(id -u)" -ne 0 ]; then
             SUDO="sudo -n"
             ;;
         *)
-            if sudo -n "$SMARTCTL" --version >/dev/null 2>&1; then
+            if [ -z "$SMARTCTL" ]; then
+                :   # eMMC only: try without sudo; failures show as clear
+            elif sudo -n "$SMARTCTL" --version >/dev/null 2>&1; then
                 SUDO="sudo -n"
             else
                 clear_report "not running as root and passwordless sudo for smartctl is not configured (see sudoers.example)"
@@ -276,7 +324,21 @@ smartrun() {
 }
 
 # --- device discovery ---------------------------------------------------
-if [ -z "$DEVLIST" ]; then
+if [ -z "$SMARTCTL" ]; then
+    # eMMC-only mode: no smartctl, so no SMART devices can be checked.
+    # Hint if disk device nodes exist that would need smartmontools
+    # (same logic as the mmc-utils hint for eMMC devices below).
+    : > "$WORKDIR/devices"
+    ndisk=0
+    for d in /dev/sd[a-z] /dev/sd[a-z][a-z] /dev/nvme[0-9] \
+             /dev/ada[0-9] /dev/da[0-9]; do
+        [ -e "$d" ] && ndisk=$((ndisk + 1))
+    done
+    if [ "$ndisk" -gt 0 ]; then
+        printf '&clear %s disk device(s) present but smartctl is not installed - install smartmontools to enable SMART checks\n\n' \
+            "$ndisk" >> "$STATUS"
+    fi
+elif [ -z "$DEVLIST" ]; then
     # Take only the device path from "smartctl --scan" and let smartctl
     # autodetect the type; exotic setups (RAID controllers, USB bridges)
     # are declared explicitly with device() in smart.cfg.
@@ -291,7 +353,7 @@ if [ -n "$EXCLUDE" ]; then
     mv "$WORKDIR/devices.tmp" "$WORKDIR/devices"
 fi
 
-if [ ! -s "$WORKDIR/devices" ]; then
+if [ ! -s "$WORKDIR/devices" ] && [ -z "$MMCLIST" ]; then
     clear_report "no SMART-capable devices found (smartctl --scan returned nothing)"
 fi
 
@@ -454,6 +516,115 @@ while IFS='|' read -r dev opts alias <&3; do
     OVERALL=$(worst "$OVERALL" "$devcolor")
 done 3< "$WORKDIR/devices"
 
+# --- per-eMMC-device checks ----------------------------------------------
+# JEDEC eMMC 5.0+ exposes three standardized health fields in EXT_CSD:
+#   DEVICE_LIFE_TIME_EST_TYP_A/B: rated life used in 10% steps
+#     (0x01 = 0-10% ... 0x0A = 90-100%, 0x0B = exceeded; 0x00 = not
+#     reported). Mapped to the "wear" metric as the upper bound of the
+#     worse of the two estimates (A and B cover different flash regions,
+#     typically SLC and MLC).
+#   PRE_EOL_INFO: reserved-block based end-of-life verdict
+#     (0x01 Normal, 0x02 Warning = 80% of reserved blocks consumed,
+#     0x03 Urgent = 90%). Treated like the SMART overall-health verdict.
+
+mmcrun() {
+    # shellcheck disable=SC2086  # $SUDO is intentionally word-split
+    $SUDO "$MMC_UTILS" "$@" </dev/null 2>&1
+}
+
+# hexval <0xNN> -- prints the decimal value, nothing if unparsable
+hexval() {
+    case "${1:-}" in
+        0x[0-9a-fA-F]|0x[0-9a-fA-F][0-9a-fA-F]) printf '%d\n' "$(($1))" ;;
+    esac
+}
+
+for dev in $MMCLIST; do
+    NDEV=$((NDEV + 1))
+    name=$(printf '%s' "$(basename "$dev")" | tr -c 'A-Za-z0-9' '_')
+
+    if [ -z "$MMC_UTILS" ]; then
+        printf '&clear %s: eMMC device present but mmc-utils is not installed (OpenWrt: opkg install mmc-utils) - eMMC health not checked\n\n' \
+            "$dev" >> "$STATUS"
+        continue
+    fi
+
+    out=$(mmcrun extcsd read "$dev")
+
+    if ! printf '%s\n' "$out" | grep -q "Extended CSD rev"; then
+        {
+            printf '&clear %s: cannot read eMMC EXT_CSD:\n' "$dev"
+            printf '%s\n' "$out" | tail -n 2 | sed -e 's/^/    /'
+            printf '\n'
+        } >> "$STATUS"
+        continue
+    fi
+
+    mname=$(cat "/sys/block/${dev#/dev/}/device/name" 2>/dev/null)
+    csdver=$(printf '%s\n' "$out" | sed -n \
+        -e 's/.*Extended CSD rev [0-9.]* (\(MMC [0-9.]*\)).*/\1/p' | head -n 1)
+    model="eMMC${mname:+ $mname}${csdver:+, $csdver}"
+
+    lifea=$(hexval "$(printf '%s\n' "$out" | sed -n \
+        -e 's/.*\[EXT_CSD_DEVICE_LIFE_TIME_EST_TYP_A\]: *//p' | head -n 1)")
+    lifeb=$(hexval "$(printf '%s\n' "$out" | sed -n \
+        -e 's/.*\[EXT_CSD_DEVICE_LIFE_TIME_EST_TYP_B\]: *//p' | head -n 1)")
+    preeol=$(hexval "$(printf '%s\n' "$out" | sed -n \
+        -e 's/.*\[EXT_CSD_PRE_EOL_INFO\]: *//p' | head -n 1)")
+
+    devcolor=green
+    health=""
+    case "${preeol:-0}" in
+        1)  health="Normal" ;;
+        2)  health="Warning"
+            devcolor=yellow
+            printf '&yellow %s: eMMC pre-EOL: Warning - 80%% of reserved blocks consumed\n' \
+                "$dev" >> "$NOTES"
+            ;;
+        3)  health="Urgent"
+            devcolor=red
+            printf '&red %s: eMMC pre-EOL: Urgent - 90%% of reserved blocks consumed\n' \
+                "$dev" >> "$NOTES"
+            ;;
+    esac
+
+    wear=""
+    w=0
+    [ -n "$lifea" ] && [ "$lifea" -gt "$w" ] && w=$lifea
+    [ -n "$lifeb" ] && [ "$lifeb" -gt "$w" ] && w=$lifeb
+    if [ "$w" -gt 0 ]; then
+        wear=$((w * 10))
+        [ "$wear" -gt 100 ] && wear=100
+    fi
+
+    if [ -z "$wear" ] && [ -z "$health" ]; then
+        printf '&clear %s (%s): no usable eMMC health data\n\n' \
+            "$dev" "$model" >> "$STATUS"
+        continue
+    fi
+
+    pairs=""
+    if [ -n "$wear" ]; then
+        c=$(metric_color wear "$wear")
+        if [ "$c" != "green" ]; then
+            devcolor=$(worst "$devcolor" "$c")
+            printf '&%s %s: wear=%s\n' "$c" "$dev" "$wear" >> "$NOTES"
+        fi
+        pairs=" wear=$wear"
+        printf '%s_wear : %s\n' "$name" "$wear" >> "$DATA"
+    fi
+
+    {
+        printf '&%s %s - %s' "$devcolor" "$dev" "$model"
+        [ -n "$health" ] && printf ' - health: %s' "$health"
+        printf '\n'
+        [ -n "$pairs" ] && printf '    %s\n' "${pairs# }"
+        printf '\n'
+    } >> "$STATUS"
+
+    OVERALL=$(worst "$OVERALL" "$devcolor")
+done
+
 {
     if [ -s "$NOTES" ]; then
         cat "$NOTES"
@@ -462,7 +633,9 @@ done 3< "$WORKDIR/devices"
     fi
     printf '\n'
     cat "$STATUS"
-    printf 'Checked %s device(s), smartctl: %s\n' "$NDEV" "$SMARTCTL"
+    printf 'Checked %s device(s), smartctl: %s' "$NDEV" "${SMARTCTL:-not found}"
+    [ -n "$MMCLIST" ] && printf ', mmc: %s' "${MMC_UTILS:-not found}"
+    printf '\n'
 } > "$WORKDIR/final"
 
 send_report "$OVERALL" "$WORKDIR/final" "$DATA"

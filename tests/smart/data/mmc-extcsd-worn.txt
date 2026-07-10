@@ -1,0 +1,16 @@
+=============================================
+  Extended CSD rev 1.8 (MMC 5.1)
+=============================================
+
+Card Supported Command sets [S_CMD_SET: 0x01]
+Cache Size [CACHE_SIZE] is 512 KiB
+Sector Count [SEC_COUNT: 0x00e90000]
+ Device is block-addressed
+CSD structure version [CSD_STRUCTURE: 0x02]
+eMMC Firmware Version:
+eMMC Life Time Estimation A [EXT_CSD_DEVICE_LIFE_TIME_EST_TYP_A]: 0x08
+eMMC Life Time Estimation B [EXT_CSD_DEVICE_LIFE_TIME_EST_TYP_B]: 0x02
+eMMC Pre EOL information [EXT_CSD_PRE_EOL_INFO]: 0x02
+Command Queue Support [CMDQ_SUPPORT]: 0x01
+Command Queue Depth [CMDQ_DEPTH]: 32
+Command Enabled [CMDQ_MODE_EN]: 0x00

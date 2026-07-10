@@ -11,7 +11,8 @@ desc: "Custom monitoring tests (extensions) for the Xymon systems monitor.
 Included extensions:
 * smart - S.M.A.R.T. disk health monitoring for SATA/ATA, NVMe and
   basic SAS disks, with vendor-normalized metrics, thresholds and
-  per-disk RRD graphing support.
+  per-disk RRD graphing support. (The eMMC health support of this
+  extension is Linux-only and inactive on FreeBSD.)
 
 Requires net-mgmt/xymon-client and sysutils/smartmontools (>= 7.0).
 Activation steps (sudoers rule, tasks.d include, server-side graphs)
