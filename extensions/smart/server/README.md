@@ -10,12 +10,18 @@ The Xymon server turns those into RRD files and graphs via
 
 Append the `smart` test to `TEST2RRD` and define a split-NCV rule
 (in `xymonserver.cfg`, usually `/etc/xymon/` on Debian/Ubuntu,
-`$XYMONHOME/etc/` elsewhere):
+`$XYMONHOME/etc/` elsewhere). Xymon's config files support appending
+to an already-defined variable with `NAME+="value"`, so there is no
+need to edit the existing `TEST2RRD` line — just add these lines at
+the end of the file (or in a local include):
 
 ```
-TEST2RRD="...existing list...,smart=ncv"
+TEST2RRD+=",smart=ncv"
 SPLITNCV_smart="*:GAUGE"
 ```
+
+Note the leading comma: `+=` concatenates verbatim and does not
+insert a separator.
 
 `SPLITNCV_smart` (as opposed to `NCV_smart`) makes xymond_rrd create
 **one RRD file per variable**, named `smart,<disk>_<metric>.rrd`, each
@@ -27,7 +33,7 @@ To make the graphs appear on the trends column and on the `smart`
 status page, also extend:
 
 ```
-GRAPHS="...existing list...,smarttemp,smartwear,smartspare,smartrealloc,smartpending,smartuncorr,smartcrc,smartmediaerr,smarthours"
+GRAPHS+=",smarttemp,smartwear,smartspare,smartrealloc,smartpending,smartuncorr,smartcrc,smartmediaerr,smarthours,smartwritten,smartread"
 GRAPHS_smart="smarttemp,smartwear,smartrealloc,smartpending,smartcrc"
 ```
 
