@@ -27,6 +27,8 @@ graphs on the Xymon server.
 | `hours`      | power-on hours                     | 9 `Power_On_Hours`                         | `Power On Hours`                | graph only        |
 | `cycles`     | power cycles                       | 12 `Power_Cycle_Count`                     | `Power Cycles`                  | graph only        |
 | `unsafeshut` | unsafe shutdowns                   | —                                          | `Unsafe Shutdowns`              | graph only        |
+| `written`    | host data written (GiB)            | 241 `Total_LBAs_Written`, `Host_Writes_…`  | `Data Units Written`            | graph only        |
+| `read`       | host data read (GiB)               | 242 `Total_LBAs_Read`, `Host_Reads_…`      | `Data Units Read`               | graph only        |
 
 Additionally, the SMART overall health verdict (`PASSED`/`FAILED`) turns
 the column **red** on failure, and NVMe *Critical Warning* flags turn it
@@ -116,5 +118,10 @@ see [`server/README.md`](server/README.md).
   are deliberately **not** mapped by default.
 - A few drives report attribute 9 in minutes or other units; override
   with `attrmap` if the `hours` graph looks off by a constant factor.
+- `written`/`read` are normalized to **GiB** from whatever unit the
+  drive uses (`…_GiB` attributes, 512-byte LBAs, 32-MiB units, NVMe
+  data units). Some drives lie about the unit of `Total_LBAs_Written`;
+  if the value is off by a constant factor, override the source, e.g.
+  `attrmap "Intel SSD*" 241 written mib32`.
 - NVMe `Temperature` is the composite value; individual sensors are not
   reported separately.

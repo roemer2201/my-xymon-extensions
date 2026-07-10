@@ -33,7 +33,7 @@ ID# ATTRIBUTE_NAME          FLAG     VALUE WORST THRESH TYPE      UPDATED  WHEN_
   9 Power_On_Hours          0x0032   077   077   000    Old_age   Always       -       20573
  12 Power_Cycle_Count       0x0032   100   100   020    Old_age   Always       -       94
 190 Airflow_Temperature_Cel 0x0022   061   050   045    Old_age   Always       -       39 (Min/Max 24/44)
-194 Temperature_Celsius     0x0022   038   050   000    Old_age   Always       -       38 (0 24 0 0 0)
+194 Temperature_Celsius     0x0022   077   050   000    Old_age   Always       -       77 (0 24 0 0 0)
 197 Current_Pending_Sector  0x0012   100   100   000    Old_age   Always       -       8
 198 Offline_Uncorrectable   0x0010   100   100   000    Old_age   Offline      -       0
 199 UDMA_CRC_Error_Count    0x003e   200   200   000    Old_age   Always       -       3
