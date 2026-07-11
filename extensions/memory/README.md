@@ -57,17 +57,23 @@ a `memory` entry that maps the column to the built-in parser for
 full-client reports — that parser cannot read this extension's output.
 Two ways out:
 
-1. Edit the existing `TEST2RRD` value and change the `memory` entry to
-   `memory=ncv` (do **not** just append — the first match wins), or
-2. rename the column on the clientless hosts (`MEM_COLUMN="mem"` in
-   `memory.cfg`) and append a fresh entry: `TEST2RRD+=",mem=ncv"`.
+1. Rename the column on the clientless hosts and append a fresh
+   `TEST2RRD` entry (see below) — this is what the standalone runner
+   does automatically (`MEM_COLUMN` defaults to `mem` when run via
+   `xymon-run.sh`, see [standalone/README.md](../../standalone/README.md)),
+   or
+2. if this extension runs on a host that never has a full client
+   installed, edit the existing `TEST2RRD` value instead and change
+   the `memory` entry to `memory=ncv` (do **not** just append — the
+   first match wins), keeping the stock column name.
 
-Then (assuming the default column name and option 1):
+Then (assuming the standalone default column name `mem`, option 1):
 
 ```
-NCV_memory="used:GAUGE"
+TEST2RRD+=",mem=ncv"
+NCV_mem="used:GAUGE"
 GRAPHS+=",memused"
-GRAPHS_memory="memused"
+GRAPHS_mem="memused"
 ```
 
 and add a graph definition to `graphs.cfg`:
@@ -76,15 +82,16 @@ and add a graph definition to `graphs.cfg`:
 [memused]
     TITLE Memory used
     YAXIS Percent
-    DEF:used=memory.rrd:used:AVERAGE
+    DEF:used=mem.rrd:used:AVERAGE
     LINE2:used#0000FF:memory used
     GPRINT:used:LAST: %5.1lf%% (cur)
     GPRINT:used:MAX: %5.1lf%% (max)\n
 ```
 
-Restart the Xymon server side (`xymond_rrd`) and check that
-`memory.rrd` appears under `$XYMONVAR/rrd/<host>/` after the next
-report.
+Restart the Xymon server side (`xymond_rrd`) and check that `mem.rrd`
+appears under `$XYMONVAR/rrd/<host>/` after the next report. (With
+option 2, use `memory`/`memory.rrd`/`GRAPHS_memory` throughout
+instead.)
 
 ## OpenWrt / TurrisOS
 

@@ -683,8 +683,8 @@ expect "$captured" '^status turris,example,org\.la green ' \
     "la extension runs under the standalone runner"
 expect "$captured" '^la5 : 1\.20$' \
     "la NCV payload arrives, config read from \$XYMONHOME/etc"
-expect "$captured" '^status turris,example,org\.memory green ' \
-    "memory extension runs under the standalone runner"
+expect "$captured" '^status turris,example,org\.mem green ' \
+    "memory extension runs under the standalone runner, defaulted to column \"mem\""
 expect "$captured" '^used : 50\.0$' \
     "memory NCV payload arrives, config read from \$XYMONHOME/etc"
 if [ -f "$TMP/work/logs/smart.log" ]; then
@@ -735,14 +735,14 @@ expect "$captured" '^status turris,example,org\.temp ' \
     "TESTS: listed extension temp runs"
 expect "$captured" '^status turris,example,org\.la ' \
     "TESTS: listed extension la runs"
-expect_not "$captured" '^status turris,example,org\.(smart|memory) ' \
+expect_not "$captured" '^status turris,example,org\.(smart|mem) ' \
     "TESTS: unlisted extensions do not run"
 
 # Extensions named explicitly run even when not in TESTS
 : > "$NC_CAPTURE"
 # shellcheck disable=SC2086
 PATH="$SBIN:$PATH" $TESTSH "$STAGE/xymon-run.sh" memory
-expect "$(cat "$NC_CAPTURE")" '^status turris,example,org\.memory ' \
+expect "$(cat "$NC_CAPTURE")" '^status turris,example,org\.mem ' \
     "explicit extension runs regardless of TESTS"
 
 # A TESTS entry without an installed script -> error
