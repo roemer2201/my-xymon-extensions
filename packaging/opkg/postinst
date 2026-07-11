@@ -1,11 +1,19 @@
 #!/bin/sh
 cat <<'EOF'
 my-xymon-extensions: to activate the standalone Xymon reporting:
- 1. Set the Xymon server: edit /etc/xymon-standalone.cfg (XYMSRV)
+ 1. Set the Xymon server: edit /etc/xymon-standalone/standalone.cfg
+    (XYMSRV); the TESTS line there selects which extensions run.
  2. Schedule the checks, e.g. append to /etc/crontabs/root:
       */10 * * * * /usr/lib/xymon-standalone/xymon-run.sh all
     and restart cron: /etc/init.d/cron restart
  3. Add this host to hosts.cfg on the Xymon server.
  Dry run for testing: /usr/lib/xymon-standalone/xymon-run.sh -n all
 EOF
+if [ -f /etc/xymon-standalone.cfg ]; then
+    cat <<'EOF'
+ NOTE: the config moved to /etc/xymon-standalone/standalone.cfg.
+ Your old /etc/xymon-standalone.cfg is now ignored - move your
+ settings over and delete the old file.
+EOF
+fi
 exit 0

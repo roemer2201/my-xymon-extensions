@@ -22,7 +22,7 @@ place, `common/stage.sh`, which every build calls.
 | deb | `/usr/lib/xymon/client/ext/` | `/etc/xymon/` (conffiles; reachable as `$XYMONCLIENTHOME/etc` via Debian's symlink) | `/usr/share/doc/my-xymon-extensions/` |
 | rpm | `/usr/lib64/xymon/client/ext/` | `/usr/lib64/xymon/client/etc/` (`%config(noreplace)`) | `/usr/share/doc/my-xymon-extensions/` |
 | FreeBSD | `/usr/local/www/xymon/client/ext/` | `/usr/local/www/xymon/client/etc/` (`@sample`) | `/usr/local/share/doc/my-xymon-extensions/` |
-| opkg | `/usr/lib/xymon-standalone/ext/` | `/usr/lib/xymon-standalone/etc/` + `/etc/xymon-standalone.cfg` (conffiles) | none (flash space) |
+| opkg | `/usr/lib/xymon-standalone/ext/` | `/etc/xymon-standalone/` (conffiles; incl. `standalone.cfg`, no `tasks.d/` — no xymonlaunch; `/usr/lib/xymon-standalone/etc` is a symlink to it) | none (flash space) |
 
 The opkg package targets hosts **without** a Xymon client
 (OpenWrt/TurrisOS): it additionally ships the standalone runner

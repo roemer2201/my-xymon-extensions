@@ -6,7 +6,8 @@
 # Keep the interval well below 30 minutes, otherwise the status
 # columns turn purple (stale) on the Xymon server.
 
-# Run all installed extensions every 10 minutes:
+# Run the extensions selected by TESTS in standalone.cfg (all
+# installed ones if TESTS is unset) every 10 minutes:
 */10 * * * * /usr/lib/xymon-standalone/xymon-run.sh all
 
 # Or schedule extensions individually:
