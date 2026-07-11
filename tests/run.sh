@@ -716,6 +716,47 @@ else
     echo "ok:   unknown extension reports an error"
 fi
 
+# TESTS directive: "all" runs exactly the configured selection
+cat >> "$STAGE/etc/standalone.cfg" <<EOF
+TESTS="temp la"
+EOF
+: > "$NC_CAPTURE"
+# shellcheck disable=SC2086
+PATH="$SBIN:$PATH" $TESTSH "$STAGE/xymon-run.sh" all
+rc=$?
+if [ "$rc" -eq 0 ]; then
+    echo "ok:   xymon-run.sh all with TESTS exits 0"
+else
+    echo "FAIL: xymon-run.sh all with TESTS exited with $rc"
+    FAIL=1
+fi
+captured=$(cat "$NC_CAPTURE")
+expect "$captured" '^status turris,example,org\.temp ' \
+    "TESTS: listed extension temp runs"
+expect "$captured" '^status turris,example,org\.la ' \
+    "TESTS: listed extension la runs"
+expect_not "$captured" '^status turris,example,org\.(smart|memory) ' \
+    "TESTS: unlisted extensions do not run"
+
+# Extensions named explicitly run even when not in TESTS
+: > "$NC_CAPTURE"
+# shellcheck disable=SC2086
+PATH="$SBIN:$PATH" $TESTSH "$STAGE/xymon-run.sh" memory
+expect "$(cat "$NC_CAPTURE")" '^status turris,example,org\.memory ' \
+    "explicit extension runs regardless of TESTS"
+
+# A TESTS entry without an installed script -> error
+cat >> "$STAGE/etc/standalone.cfg" <<EOF
+TESTS="temp nosuchext"
+EOF
+# shellcheck disable=SC2086
+if PATH="$SBIN:$PATH" $TESTSH "$STAGE/xymon-run.sh" all 2>/dev/null; then
+    echo "FAIL: unknown extension in TESTS should fail"
+    FAIL=1
+else
+    echo "ok:   unknown extension in TESTS reports an error"
+fi
+
 echo ""
 if [ "$FAIL" -eq 0 ]; then
     echo "All tests passed."

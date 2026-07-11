@@ -34,25 +34,33 @@ opkg install smartmontools
 opkg install my-xymon-extensions_<version>_all.ipk   # built with "make opkg"
 ```
 
-The package installs to `/usr/lib/xymon-standalone/` and puts the
-config at `/etc/xymon-standalone.cfg` (preserved on sysupgrade).
+The package installs the scripts to `/usr/lib/xymon-standalone/` and
+all configuration to `/etc/xymon-standalone/` (preserved on
+sysupgrade): `standalone.cfg` for the runner itself plus one
+`<extension>.cfg` per extension. `/usr/lib/xymon-standalone/etc` is a
+symlink to `/etc/xymon-standalone`, so the extensions find their
+config through `$XYMONHOME/etc/<name>.cfg` as on a full client.
 
 ### Manual (three files + extension)
 
 ```sh
 DEST=/usr/lib/xymon-standalone
-mkdir -p $DEST/ext $DEST/etc
+mkdir -p $DEST/ext
+ssh root@router "ln -s /etc/xymon-standalone $DEST/etc"
 scp standalone/xymon-run.sh standalone/xymon-send.sh root@router:$DEST/
 scp extensions/smart/smart.sh root@router:$DEST/ext/
-scp extensions/smart/smart.cfg root@router:$DEST/etc/       # optional
-scp standalone/standalone.cfg root@router:/etc/xymon-standalone.cfg
+scp extensions/smart/smart.cfg root@router:/etc/xymon-standalone/  # optional
+scp standalone/standalone.cfg root@router:/etc/xymon-standalone/
 ```
 
 ## Setup
 
-1. Edit `/etc/xymon-standalone.cfg` — at minimum set `XYMSRV` (the
-   Xymon server) and check `MACHINEDOTS` (must match the host's entry
-   in the server's `hosts.cfg`).
+1. Edit `/etc/xymon-standalone/standalone.cfg` — at minimum set
+   `XYMSRV` (the Xymon server) and check `MACHINEDOTS` (must match the
+   host's entry in the server's `hosts.cfg`). The `TESTS` line selects
+   which extensions `xymon-run.sh all` runs; it defaults to the local
+   health tests (`la memory smart temp`). Commented out or empty, all
+   installed extensions run.
 2. Add the host to `hosts.cfg` on the Xymon server.
 3. Test interactively on the router:
 
@@ -82,7 +90,7 @@ Run logs go to `$XYMONTMP` (default `/tmp`, a RAM disk on OpenWrt) as
 - `smartctl` comes from the `smartmontools` package
   (`opkg install smartmontools`).
 - USB disks may need `-d sat` — use a `device` line in
-  `/usr/lib/xymon-standalone/etc/smart.cfg` as usual.
+  `/etc/xymon-standalone/smart.cfg` as usual.
 - BusyBox `nc` is part of the default OpenWrt/TurrisOS busybox build;
   if yours lacks it, install `netcat` or `socat`.
 - Only the extension columns are reported — this runner does not
@@ -90,6 +98,13 @@ Run logs go to `$XYMONTMP` (default `/tmp`, a RAM disk on OpenWrt) as
   extensions in this repository cover the most important local health
   metrics for such hosts (temperatures, load average, memory
   utilization); disk usage, network etc. remain unreported.
+- The FRITZ!Box pollers `fritzdsl`/`fritzwan` are installed but not in
+  the default `TESTS` list: they are remote pollers that query a
+  FRITZ!Box over the network, a job that normally belongs on the
+  Xymon server (via the deb/rpm package and its tasks.d snippets).
+  Run them from the router only when the server cannot reach the box
+  itself — configure `/etc/xymon-standalone/fritzdsl.cfg` (resp.
+  `fritzwan.cfg`) and add them to `TESTS`.
 - The transport is the plain Xymon protocol (unencrypted TCP :1984),
   exactly like a normal Xymon client — fine on a LAN/VPN, not meant to
   cross the open internet.
@@ -101,9 +116,10 @@ extension from this repository (or your own) on such a host:
 
 1. Copy `extensions/<name>/<name>.sh` to
    `/usr/lib/xymon-standalone/ext/<name>.sh`.
-2. Optional config to `/usr/lib/xymon-standalone/etc/<name>.cfg`.
-3. It is picked up by `xymon-run.sh all` automatically (or schedule
-   `xymon-run.sh <name>` separately).
+2. Optional config to `/etc/xymon-standalone/<name>.cfg`.
+3. Add it to `TESTS` in `/etc/xymon-standalone/standalone.cfg` so
+   `xymon-run.sh all` picks it up (or schedule `xymon-run.sh <name>`
+   separately).
 
 The `make opkg` package already ships every extension in the repo, so
 rebuilding and reinstalling the package achieves the same.

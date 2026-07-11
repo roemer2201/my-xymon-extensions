@@ -51,6 +51,7 @@ Included extensions:
 sh packaging/common/stage.sh "%{buildroot}" \
     "%{xymonhome}/ext" \
     "%{xymonhome}/etc" \
+    "%{xymonhome}/etc/tasks.d" \
     "%{_docdir}/%{name}"
 
 %files

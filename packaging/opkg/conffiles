@@ -1,7 +1,7 @@
-/etc/xymon-standalone.cfg
-/usr/lib/xymon-standalone/etc/smart.cfg
-/usr/lib/xymon-standalone/etc/temp.cfg
-/usr/lib/xymon-standalone/etc/la.cfg
-/usr/lib/xymon-standalone/etc/memory.cfg
-/usr/lib/xymon-standalone/etc/fritzdsl.cfg
-/usr/lib/xymon-standalone/etc/fritzwan.cfg
+/etc/xymon-standalone/standalone.cfg
+/etc/xymon-standalone/smart.cfg
+/etc/xymon-standalone/temp.cfg
+/etc/xymon-standalone/la.cfg
+/etc/xymon-standalone/memory.cfg
+/etc/xymon-standalone/fritzdsl.cfg
+/etc/xymon-standalone/fritzwan.cfg

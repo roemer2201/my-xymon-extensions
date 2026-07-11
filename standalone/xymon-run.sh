@@ -14,9 +14,14 @@
 #
 #   -n   dry run: do not send anything, print the reports to stdout
 #
+# "all" runs the extensions listed in TESTS in the config file; with
+# TESTS unset or empty it runs every extension installed in
+# $XYMONHOME/ext/. Naming extensions explicitly always runs exactly
+# those, whether in TESTS or not.
+#
 # Configuration (POSIX shell, sourced), first match wins:
-#   $STANDALONE_CFG, /etc/xymon-standalone.cfg,
-#   $XYMONHOME/etc/standalone.cfg
+#   $STANDALONE_CFG, /etc/xymon-standalone/standalone.cfg,
+#   /etc/xymon-standalone.cfg (legacy), $XYMONHOME/etc/standalone.cfg
 #
 # Typically driven by cron - see crontab.example.
 set -u
@@ -45,9 +50,11 @@ MACHINEDOTS="${MACHINEDOTS:-}"
 XYMONTMP="${XYMONTMP:-/tmp}"
 XYMONCLIENTLOGS="${XYMONCLIENTLOGS:-}"
 XYMONDPORT="${XYMONDPORT:-1984}"
+TESTS="${TESTS:-}"
 
 CFG=""
-for f in "${STANDALONE_CFG:-}" /etc/xymon-standalone.cfg "$XYMONHOME/etc/standalone.cfg"; do
+for f in "${STANDALONE_CFG:-}" /etc/xymon-standalone/standalone.cfg \
+         /etc/xymon-standalone.cfg "$XYMONHOME/etc/standalone.cfg"; do
     if [ -n "$f" ] && [ -r "$f" ]; then
         CFG=$f
         break
@@ -78,7 +85,7 @@ if [ -n "$DRYRUN" ]; then
 else
     if [ -z "$XYMSRV" ]; then
         echo "$0: XYMSRV is not set - configure the Xymon server address" \
-             "(e.g. in /etc/xymon-standalone.cfg)" >&2
+             "(e.g. in /etc/xymon-standalone/standalone.cfg)" >&2
         exit 1
     fi
     XYMON="$BASEDIR/xymon-send.sh"
@@ -105,16 +112,23 @@ run_ext() {
 
 RC=0
 if [ "$1" = "all" ]; then
-    found=""
-    for script in "$XYMONHOME"/ext/*.sh; do
-        [ -e "$script" ] || continue    # glob did not match anything
-        found=yes
-        ext=$(basename "$script" .sh)
-        run_ext "$ext" || RC=1
-    done
-    if [ -z "$found" ]; then
-        echo "$0: no extensions installed in $XYMONHOME/ext" >&2
-        RC=1
+    if [ -n "$TESTS" ]; then
+        # shellcheck disable=SC2086  # TESTS is intentionally word-split
+        for ext in $TESTS; do
+            run_ext "$ext" || RC=1
+        done
+    else
+        found=""
+        for script in "$XYMONHOME"/ext/*.sh; do
+            [ -e "$script" ] || continue    # glob did not match anything
+            found=yes
+            ext=$(basename "$script" .sh)
+            run_ext "$ext" || RC=1
+        done
+        if [ -z "$found" ]; then
+            echo "$0: no extensions installed in $XYMONHOME/ext" >&2
+            RC=1
+        fi
     fi
 else
     for ext in "$@"; do

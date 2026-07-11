@@ -22,6 +22,7 @@ mkdir -p "$ROOT/DEBIAN" || exit 1
 sh packaging/common/stage.sh "$ROOT" \
     /usr/lib/xymon/client/ext \
     /etc/xymon \
+    /etc/xymon/tasks.d \
     "/usr/share/doc/$PKG" || exit 1
 
 sed -e "s/@VERSION@/$VERSION/" packaging/deb/control.in > "$ROOT/DEBIAN/control" || exit 1
