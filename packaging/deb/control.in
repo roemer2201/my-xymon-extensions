@@ -20,3 +20,7 @@ Description: Portable Xymon client extensions
     line state, sync rate, noise margin, attenuation and error
     counters with thresholds and RRD graphing support; polls the box
     from the Xymon server, no software on the box.
+  * fritzwan - AVM FRITZ!Box WAN throughput monitoring (curl):
+    physical link state, average throughput, link capacity and
+    utilization from the box's 64-bit UPnP counters (TR-064
+    fallback), with optional utilization thresholds and RRD graphs.

@@ -11,10 +11,10 @@ my-xymon-extensions: to activate the "smart" extension:
     (add this line once if it is missing):
       directory /etc/xymon/tasks.d
  3. Restart the client: service xymon-client restart
-The "fritzdsl" extension (FRITZ!Box DSL monitoring) ships disabled:
- set FRITZ_USER/FRITZ_PASSWORD in /etc/xymon/fritzdsl.cfg, then remove
- the DISABLED line from /etc/xymon/tasks.d/fritzdsl.cfg and restart
- the client on the polling host (normally the Xymon server).
+The FRITZ!Box extensions "fritzdsl" and "fritzwan" ship disabled:
+ configure /etc/xymon/fritzdsl.cfg resp. fritzwan.cfg, then remove
+ the DISABLED line from the matching /etc/xymon/tasks.d/ snippet and
+ restart the client on the polling host (normally the Xymon server).
 EOF
         ;;
 esac

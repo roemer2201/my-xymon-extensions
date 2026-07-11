@@ -1,9 +1,12 @@
 www/xymon/client/ext/smart.sh
 www/xymon/client/ext/fritzdsl.sh
+www/xymon/client/ext/fritzwan.sh
 @sample www/xymon/client/etc/smart.cfg.sample
 @sample www/xymon/client/etc/tasks.d/smart.cfg.sample
 @sample www/xymon/client/etc/fritzdsl.cfg.sample
 @sample www/xymon/client/etc/tasks.d/fritzdsl.cfg.sample
+@sample www/xymon/client/etc/fritzwan.cfg.sample
+@sample www/xymon/client/etc/tasks.d/fritzwan.cfg.sample
 share/doc/my-xymon-extensions/README.md
 share/doc/my-xymon-extensions/smart/README.md
 share/doc/my-xymon-extensions/smart/sudoers.example
@@ -12,3 +15,6 @@ share/doc/my-xymon-extensions/smart/server/graphs-smart.cfg
 share/doc/my-xymon-extensions/fritzdsl/README.md
 share/doc/my-xymon-extensions/fritzdsl/server/README.md
 share/doc/my-xymon-extensions/fritzdsl/server/graphs-fritzdsl.cfg
+share/doc/my-xymon-extensions/fritzwan/README.md
+share/doc/my-xymon-extensions/fritzwan/server/README.md
+share/doc/my-xymon-extensions/fritzwan/server/graphs-fritzwan.cfg

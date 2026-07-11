@@ -36,6 +36,7 @@ my-xymon-extensions/
 |------|--------|-------------|
 | [smart](extensions/smart/) | `smart` | SMART disk health for SATA/ATA, NVMe and (basic) SAS disks plus eMMC wear/pre-EOL health (Linux, via mmc-utils): vendor-normalized metrics, thresholds/alerts and per-disk RRD graphs |
 | [fritzdsl](extensions/fritzdsl/) | `fritzdsl` | AVM FRITZ!Box DSL line monitoring via TR-064 (curl): line state, sync rate, noise margin, attenuation, error counters — thresholds/alerts and RRD graphs; polls the box from the Xymon server, no software on the box |
+| [fritzwan](extensions/fritzwan/) | `fritzwan` | AVM FRITZ!Box WAN throughput monitoring (curl): physical link state, average throughput, link capacity and utilization from the box's 64-bit UPnP counters (TR-064 fallback) — optional utilization thresholds and RRD graphs |
 
 ## Design principles
 

@@ -18,6 +18,11 @@ Included extensions:
   with thresholds and RRD graphing support. Polls the box from the
   Xymon server; requires ftp/curl and ships disabled until
   configured.
+* fritzwan - AVM FRITZ!Box WAN throughput monitoring: physical link
+  state, average throughput, link capacity and utilization from the
+  box's 64-bit UPnP counters (TR-064 fallback). Polls the box from
+  the Xymon server; requires ftp/curl and ships disabled until
+  configured.
 
 Requires net-mgmt/xymon-client and sysutils/smartmontools (>= 7.0).
 Activation steps (sudoers rule, tasks.d include, server-side graphs)

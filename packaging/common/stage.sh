@@ -43,8 +43,13 @@ inst 0755 extensions/fritzdsl/fritzdsl.sh "$DESTDIR$EXTDIR/fritzdsl.sh" || exit 
 inst 0644 extensions/fritzdsl/fritzdsl.cfg "$DESTDIR$ETCDIR/fritzdsl.cfg$SUF" || exit 1
 inst 0644 packaging/common/tasks.d/fritzdsl.cfg "$DESTDIR$ETCDIR/tasks.d/fritzdsl.cfg$SUF" || exit 1
 
+inst 0755 extensions/fritzwan/fritzwan.sh "$DESTDIR$EXTDIR/fritzwan.sh" || exit 1
+inst 0644 extensions/fritzwan/fritzwan.cfg "$DESTDIR$ETCDIR/fritzwan.cfg$SUF" || exit 1
+inst 0644 packaging/common/tasks.d/fritzwan.cfg "$DESTDIR$ETCDIR/tasks.d/fritzwan.cfg$SUF" || exit 1
+
 if [ "$DOCDIR" != "-" ]; then
-    mkdir -p "$DESTDIR$DOCDIR/smart/server" "$DESTDIR$DOCDIR/fritzdsl/server" || exit 1
+    mkdir -p "$DESTDIR$DOCDIR/smart/server" "$DESTDIR$DOCDIR/fritzdsl/server" \
+        "$DESTDIR$DOCDIR/fritzwan/server" || exit 1
     inst 0644 README.md "$DESTDIR$DOCDIR/README.md" || exit 1
     inst 0644 extensions/smart/README.md "$DESTDIR$DOCDIR/smart/README.md" || exit 1
     inst 0644 extensions/smart/sudoers.example "$DESTDIR$DOCDIR/smart/sudoers.example" || exit 1
@@ -53,6 +58,9 @@ if [ "$DOCDIR" != "-" ]; then
     inst 0644 extensions/fritzdsl/README.md "$DESTDIR$DOCDIR/fritzdsl/README.md" || exit 1
     inst 0644 extensions/fritzdsl/server/README.md "$DESTDIR$DOCDIR/fritzdsl/server/README.md" || exit 1
     inst 0644 extensions/fritzdsl/server/graphs-fritzdsl.cfg "$DESTDIR$DOCDIR/fritzdsl/server/graphs-fritzdsl.cfg" || exit 1
+    inst 0644 extensions/fritzwan/README.md "$DESTDIR$DOCDIR/fritzwan/README.md" || exit 1
+    inst 0644 extensions/fritzwan/server/README.md "$DESTDIR$DOCDIR/fritzwan/server/README.md" || exit 1
+    inst 0644 extensions/fritzwan/server/graphs-fritzwan.cfg "$DESTDIR$DOCDIR/fritzwan/server/graphs-fritzwan.cfg" || exit 1
 fi
 
 exit 0

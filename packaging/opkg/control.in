@@ -13,5 +13,6 @@ Description: Portable Xymon client extensions with standalone runner
  OpenWrt/TurrisOS routers.
  Included extensions: smart - S.M.A.R.T. disk health monitoring for
  SATA/ATA and NVMe disks, plus eMMC wear/pre-EOL health via mmc-utils;
- fritzdsl - AVM FRITZ!Box DSL line monitoring via TR-064 (needs the
- curl package, stays silent until configured).
+ fritzdsl - AVM FRITZ!Box DSL line monitoring via TR-064; fritzwan -
+ AVM FRITZ!Box WAN throughput monitoring (both need the curl package
+ and stay silent until configured).
