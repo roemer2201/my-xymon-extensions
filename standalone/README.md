@@ -85,9 +85,11 @@ Run logs go to `$XYMONTMP` (default `/tmp`, a RAM disk on OpenWrt) as
   `/usr/lib/xymon-standalone/etc/smart.cfg` as usual.
 - BusyBox `nc` is part of the default OpenWrt/TurrisOS busybox build;
   if yours lacks it, install `netcat` or `socat`.
-- Only the extension columns are reported. The standard client data
-  (cpu, disk, memory, …) still needs a real Xymon client — this runner
-  does not replace that part.
+- Only the extension columns are reported — this runner does not
+  replace a full Xymon client. The `temp`, `la` and `memory`
+  extensions in this repository cover the most important local health
+  metrics for such hosts (temperatures, load average, memory
+  utilization); disk usage, network etc. remain unreported.
 - The transport is the plain Xymon protocol (unencrypted TCP :1984),
   exactly like a normal Xymon client — fine on a LAN/VPN, not meant to
   cross the open internet.

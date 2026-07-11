@@ -28,6 +28,12 @@ Included extensions:
   basic SAS disks, plus eMMC wear/pre-EOL health (via mmc-utils),
   with vendor-normalized metrics, thresholds and per-disk RRD
   graphing support.
+* temp - all hardware temperature sensors from the Linux
+  hwmon/thermal sysfs, per-sensor thresholds and RRD graphing.
+* la - load average with per-CPU-core thresholds (task disabled by
+  default: the Xymon client already covers this on full clients).
+* memory - memory utilization in percent (task disabled by default:
+  the Xymon client already covers this on full clients).
 
 %prep
 %setup -q
@@ -40,9 +46,18 @@ sh packaging/common/stage.sh "%{buildroot}" \
 
 %files
 %{xymonhome}/ext/smart.sh
+%{xymonhome}/ext/temp.sh
+%{xymonhome}/ext/la.sh
+%{xymonhome}/ext/memory.sh
 %config(noreplace) %{xymonhome}/etc/smart.cfg
+%config(noreplace) %{xymonhome}/etc/temp.cfg
+%config(noreplace) %{xymonhome}/etc/la.cfg
+%config(noreplace) %{xymonhome}/etc/memory.cfg
 %dir %{xymonhome}/etc/tasks.d
 %config(noreplace) %{xymonhome}/etc/tasks.d/smart.cfg
+%config(noreplace) %{xymonhome}/etc/tasks.d/temp.cfg
+%config(noreplace) %{xymonhome}/etc/tasks.d/la.cfg
+%config(noreplace) %{xymonhome}/etc/tasks.d/memory.cfg
 %{_docdir}/%{name}/
 
 %post
@@ -57,6 +72,13 @@ my-xymon-extensions: to activate the "smart" extension:
 EOF
 
 %changelog
+* Sat Jul 11 2026 roemer2201 <r.oliver@web.de> - 0.4.0-1
+- new extensions temp, la and memory: local health metrics for
+  clientless hosts (Turris Omnia / OpenWrt via the standalone runner)
+  - hwmon/thermal temperature sensors, load average with per-core
+  thresholds, memory utilization; NCV lines for RRD graphing; the
+  la/memory task snippets ship disabled on full clients
+
 * Fri Jul 10 2026 roemer2201 <r.oliver@web.de> - 0.3.0-1
 - smart: eMMC health monitoring (Linux) via mmc-utils - EXT_CSD life
   time estimation mapped to the wear metric, PRE_EOL_INFO as health
