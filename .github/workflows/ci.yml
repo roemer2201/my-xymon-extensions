@@ -75,22 +75,24 @@ jobs:
           name: opkg-package
           path: build/opkg/out/*.ipk
 
-  freebsd:
-    name: unit tests + build .pkg (FreeBSD VM)
-    runs-on: ubuntu-latest
-    needs: test
-    steps:
-      - uses: actions/checkout@v4
-      - name: Run tests and build package on FreeBSD
-        uses: vmactions/freebsd-vm@v1
-        with:
-          release: "14.2"
-          usesh: true
-          run: |
-            set -e
-            sh tests/run.sh
-            make freebsd
-      - uses: actions/upload-artifact@v4
-        with:
-          name: freebsd-package
-          path: build/freebsd/out/*
+  # Temporarily disabled: the FreeBSD VM job is slow and not needed on
+  # every merge right now. Re-enable by uncommenting when required.
+  # freebsd:
+  #   name: unit tests + build .pkg (FreeBSD VM)
+  #   runs-on: ubuntu-latest
+  #   needs: test
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - name: Run tests and build package on FreeBSD
+  #       uses: vmactions/freebsd-vm@v1
+  #       with:
+  #         release: "14.2"
+  #         usesh: true
+  #         run: |
+  #           set -e
+  #           sh tests/run.sh
+  #           make freebsd
+  #     - uses: actions/upload-artifact@v4
+  #       with:
+  #         name: freebsd-package
+  #         path: build/freebsd/out/*
