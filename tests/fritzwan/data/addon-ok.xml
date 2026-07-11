@@ -1,0 +1,22 @@
+<?xml version="1.0"?>
+<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
+<s:Body>
+<u:GetAddonInfosResponse xmlns:u="urn:schemas-upnp-org:service:WANCommonInterfaceConfig:1">
+<NewByteSendRate>256000</NewByteSendRate>
+<NewByteReceiveRate>2560000</NewByteReceiveRate>
+<NewPacketSendRate>0</NewPacketSendRate>
+<NewPacketReceiveRate>0</NewPacketReceiveRate>
+<NewTotalBytesSent>3661154880</NewTotalBytesSent>
+<NewTotalBytesReceived>1554372608</NewTotalBytesReceived>
+<NewAutoDisconnectTime>0</NewAutoDisconnectTime>
+<NewIdleDisconnectTime>0</NewIdleDisconnectTime>
+<NewDNSServer1>192.168.178.1</NewDNSServer1>
+<NewDNSServer2>0.0.0.0</NewDNSServer2>
+<NewUpnpControlEnabled>0</NewUpnpControlEnabled>
+<NewRoutedBridgedModeBoth>1</NewRoutedBridgedModeBoth>
+<NewX_AVM_DE_TotalBytesSent64>111075000000</NewX_AVM_DE_TotalBytesSent64>
+<NewX_AVM_DE_TotalBytesReceived64>250750000000</NewX_AVM_DE_TotalBytesReceived64>
+<NewX_AVM_DE_WANAccessType>DSL</NewX_AVM_DE_WANAccessType>
+</u:GetAddonInfosResponse>
+</s:Body>
+</s:Envelope>

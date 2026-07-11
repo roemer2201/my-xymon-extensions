@@ -165,6 +165,273 @@ expect "$out" '^tmmc0_wear : 10$' \
     "eMMC-only mode still delivers the wear metric"
 
 # ----------------------------------------------------------------------
+echo "--- fritzdsl ---"
+export FAKECURL="$TESTDIR/fritzdsl/fakecurl"
+export FRITZDSL_CFG="$TESTDIR/fritzdsl/fritzdsl_test.cfg"
+unset FAKECURL_GETINFO FAKECURL_STATS FAKECURL_PPP FAKECURL_FAIL FAKECURL_401 2>/dev/null || true
+rm -f "$TMP"/fritzdsl.*.state
+
+# Healthy line
+# shellcheck disable=SC2086
+out=$($TESTSH "$REPO/extensions/fritzdsl/fritzdsl.sh")
+rc=$?
+if [ "$rc" -ne 0 ]; then
+    echo "FAIL: fritzdsl.sh exited with $rc"
+    printf '%s\n' "$out"
+    exit 1
+fi
+expect "$out" '^status fritzbox\.fritzdsl green ' \
+    "healthy line reports green to the configured REPORTHOST"
+expect "$out" 'DSL line: Up at 116797/46719 kbit/s' \
+    "summary line carries state and sync rate"
+expect "$out" '&green DSL line status: Up \(path: Interleaved\)' \
+    "line status detail with data path"
+expect "$out" '^data fritzbox\.fritzdsl$'   "data message for the RRDs is sent"
+expect "$out" '^rate_down : 116797$'        "downstream sync rate extracted"
+expect "$out" '^rate_up : 46719$'           "upstream sync rate extracted"
+expect "$out" '^maxrate_down : 130960$'     "attainable downstream rate extracted"
+expect "$out" '^margin_down : 6\.5$' \
+    "downstream noise margin converted from tenths of a dB"
+expect "$out" '^margin_up : 8\.0$'          "upstream noise margin converted"
+expect "$out" '^atten_down : 14\.2$'        "downstream attenuation converted"
+expect "$out" '^crc : 56$'                  "CRC error counter extracted"
+expect "$out" '^fec : 1234$'                "FEC error counter extracted"
+expect "$out" '^hec : 12$'                  "HEC error counter extracted"
+expect "$out" '^es : 42$'                   "errored seconds extracted"
+expect "$out" '^ses : 1$'                   "severely errored seconds extracted"
+expect "$out" '^retrain : 2$'               "link retrain counter extracted"
+expect "$out" '^uptime : 372705$'           "PPP uptime extracted"
+if [ -f "$TMP/fritzdsl.fritzbox.state" ]; then
+    echo "ok:   state file written for the CRC rate check"
+else
+    echo "FAIL: state file missing ($TMP/fritzdsl.fritzbox.state)"
+    FAIL=1
+fi
+
+# Rising CRC error rate + resync detection: fake a state file from
+# 5 minutes ago with counter 0 and a larger uptime. 56 CRC errors in
+# ~300 s = ~11.2/min, above the test threshold of 10/min; the uptime
+# going backwards must yield the resync note.
+printf '%s 0 999999\n' "$(($(date +%s) - 300))" > "$TMP/fritzdsl.fritzbox.state"
+# shellcheck disable=SC2086
+out=$($TESTSH "$REPO/extensions/fritzdsl/fritzdsl.sh")
+expect "$out" '^status fritzbox\.fritzdsl yellow ' \
+    "rising CRC error rate turns the column yellow"
+expect "$out" '&yellow CRC errors: 11\.[0-9]/min since the last poll' \
+    "CRC rate note shows the per-minute rate"
+expect "$out" 'connection was re-established since the last poll' \
+    "uptime going backwards yields the resync note"
+
+# Noise margin thresholds: downstream 4.5 dB (below warn 6),
+# upstream 2.8 dB (below crit 3)
+rm -f "$TMP"/fritzdsl.*.state
+# shellcheck disable=SC2086
+out=$(FAKECURL_GETINFO="$TESTDIR/fritzdsl/data/getinfo-lowmargin.xml" \
+    $TESTSH "$REPO/extensions/fritzdsl/fritzdsl.sh")
+expect "$out" '^status fritzbox\.fritzdsl red ' \
+    "noise margin below the critical threshold turns the column red"
+expect "$out" '&red upstream noise margin 2\.8 dB is below 3 dB' \
+    "critical upstream margin flagged"
+expect "$out" '&yellow downstream noise margin 4\.5 dB is below 6 dB' \
+    "low downstream margin flagged"
+
+# DSL line down
+rm -f "$TMP"/fritzdsl.*.state
+# shellcheck disable=SC2086
+out=$(FAKECURL_GETINFO="$TESTDIR/fritzdsl/data/getinfo-down.xml" \
+    $TESTSH "$REPO/extensions/fritzdsl/fritzdsl.sh")
+expect "$out" '^status fritzbox\.fritzdsl red ' "line down reports red"
+expect "$out" '&red DSL line status: Down'      "line down note present"
+expect_not "$out" 'noise margin 0\.0 dB is below' \
+    "margin thresholds are not applied while the line is down"
+
+# No PPP/IP WAN service (HTTP 404 on GetStatusInfo): no uptime metric,
+# but the column stays green
+rm -f "$TMP"/fritzdsl.*.state
+# shellcheck disable=SC2086
+out=$(FAKECURL_PPP=404 $TESTSH "$REPO/extensions/fritzdsl/fritzdsl.sh")
+expect "$out" '^status fritzbox\.fritzdsl green ' \
+    "missing WAN status service does not degrade the column"
+expect_not "$out" '^uptime :' "no uptime metric without a WAN status service"
+
+# Box unreachable
+# shellcheck disable=SC2086
+out=$(FAKECURL_FAIL=1 $TESTSH "$REPO/extensions/fritzdsl/fritzdsl.sh")
+expect "$out" '^status fritzbox\.fritzdsl red ' "unreachable box reports red"
+expect "$out" 'cannot reach the FRITZ!Box'      "unreachable note present"
+
+# Wrong credentials (HTTP 401)
+# shellcheck disable=SC2086
+out=$(FAKECURL_401=1 $TESTSH "$REPO/extensions/fritzdsl/fritzdsl.sh")
+expect "$out" '^status fritzbox\.fritzdsl yellow ' \
+    "authentication failure reports yellow"
+expect "$out" 'TR-064 authentication failed' "authentication note present"
+
+# curl not installed -> clear
+# shellcheck disable=SC2086
+out=$(FRITZDSL_CFG="$TESTDIR/fritzdsl/fritzdsl_test_nocurl.cfg" \
+    $TESTSH "$REPO/extensions/fritzdsl/fritzdsl.sh")
+expect "$out" '^status fritzbox\.fritzdsl clear ' "missing curl reports clear"
+expect "$out" 'curl not found'                    "missing curl hint present"
+
+# Not configured (no credentials): no report at all, hint on stderr
+# shellcheck disable=SC2086
+out=$(FRITZDSL_CFG="$TMP/does-not-exist.cfg" \
+    $TESTSH "$REPO/extensions/fritzdsl/fritzdsl.sh" 2>"$TMP/fritzdsl.stderr")
+rc=$?
+if [ "$rc" -ne 0 ]; then
+    echo "FAIL: unconfigured fritzdsl.sh exited with $rc"
+    FAIL=1
+fi
+if [ -n "$out" ]; then
+    echo "FAIL: unconfigured fritzdsl.sh must not send/print a report"
+    FAIL=1
+else
+    echo "ok:   unconfigured fritzdsl.sh stays silent (no ghost column)"
+fi
+expect "$(cat "$TMP/fritzdsl.stderr")" 'not configured' \
+    "unconfigured fritzdsl.sh hints on stderr"
+
+unset FRITZDSL_CFG
+
+# ----------------------------------------------------------------------
+echo "--- fritzwan ---"
+export FAKECURL="$TESTDIR/fritzwan/fakecurl"
+export FRITZWAN_CFG="$TESTDIR/fritzwan/fritzwan_test.cfg"
+unset FAKECURL_CLP FAKECURL_ADDON FAKECURL_FAIL FAKECURL_401 2>/dev/null || true
+rm -f "$TMP"/fritzwan.*.state
+
+# First poll: no state yet, so link info only - rates need two polls
+# shellcheck disable=SC2086
+out=$($TESTSH "$REPO/extensions/fritzwan/fritzwan.sh")
+rc=$?
+if [ "$rc" -ne 0 ]; then
+    echo "FAIL: fritzwan.sh exited with $rc"
+    printf '%s\n' "$out"
+    exit 1
+fi
+expect "$out" '^status fritzbox\.fritzwan green ' \
+    "first poll reports green to the configured REPORTHOST"
+expect "$out" '&green WAN link status: Up \(DSL\)' \
+    "link status detail with access type"
+expect "$out" 'rates appear with the next poll' \
+    "first poll announces that rates follow"
+expect "$out" '^maxbps_down : 100000000$' "downstream link capacity extracted"
+expect "$out" '^maxbps_up : 40000000$'    "upstream link capacity extracted"
+expect_not "$out" '^bps_down' "no throughput metric on the first poll"
+if [ -f "$TMP/fritzwan.fritzbox.state" ]; then
+    echo "ok:   state file written for the rate calculation"
+else
+    echo "FAIL: state file missing ($TMP/fritzwan.fritzbox.state)"
+    FAIL=1
+fi
+
+# Second poll: state from ~5 minutes ago, 750 MB down / 75 MB up in
+# 300 s = ~20/2 Mbit/s on a 100/40 Mbit link = ~20%/5% utilization
+printf '%s 250000000000 111000000000 64\n' "$(($(date +%s) - 300))" \
+    > "$TMP/fritzwan.fritzbox.state"
+# shellcheck disable=SC2086
+out=$($TESTSH "$REPO/extensions/fritzwan/fritzwan.sh")
+expect "$out" '^status fritzbox\.fritzwan green ' \
+    "throughput below the (disabled) thresholds stays green"
+expect "$out" 'WAN: Up, (19\.[0-9]|20\.0)/(1\.9|2\.0) Mbit/s' \
+    "summary line carries the down/up throughput"
+expect "$out" '^bps_down : (19[0-9]{6}|20000000)$' \
+    "downstream throughput from the 64-bit counter delta"
+expect "$out" '^bps_up : (19[0-9]{5}|2000000)$' \
+    "upstream throughput from the 64-bit counter delta"
+expect "$out" '^util_down : (19\.[0-9]|20\.0)$' \
+    "downstream utilization derived from capacity"
+expect "$out" '^util_up : (4\.9|5\.0)$' \
+    "upstream utilization derived from capacity"
+expect "$out" 'UPnP 64-bit counters' \
+    "64-bit UPnP counters preferred as the source"
+
+# Utilization thresholds: ~20% downstream trips UTIL_WARN=15
+printf '%s 250000000000 111000000000 64\n' "$(($(date +%s) - 300))" \
+    > "$TMP/fritzwan.fritzbox.state"
+# shellcheck disable=SC2086
+out=$(FRITZWAN_CFG="$TESTDIR/fritzwan/fritzwan_test_util.cfg" \
+    $TESTSH "$REPO/extensions/fritzwan/fritzwan.sh")
+expect "$out" '^status fritzbox\.fritzwan yellow ' \
+    "utilization above UTIL_WARN turns the column yellow"
+expect "$out" '&yellow downstream utilization (19\.[0-9]|20\.0)% is above 15%' \
+    "utilization note names direction, value and threshold"
+
+# Physical link down
+rm -f "$TMP"/fritzwan.*.state
+# shellcheck disable=SC2086
+out=$(FAKECURL_CLP="$TESTDIR/fritzwan/data/clp-down.xml" \
+    $TESTSH "$REPO/extensions/fritzwan/fritzwan.sh")
+expect "$out" '^status fritzbox\.fritzwan red ' "link down reports red"
+expect "$out" '&red WAN link status: Down'      "link down note present"
+
+# UPnP counters unavailable: fall back to the TR-064 32-bit counters,
+# including single-wrap correction (prev 4294000000 -> now 1000000)
+printf '%s 4294000000 400000 32\n' "$(($(date +%s) - 300))" \
+    > "$TMP/fritzwan.fritzbox.state"
+# shellcheck disable=SC2086
+out=$(FAKECURL_ADDON=404 $TESTSH "$REPO/extensions/fritzwan/fritzwan.sh")
+expect "$out" 'TR-064 32-bit counters' \
+    "falls back to TR-064 counters when UPnP is unavailable"
+expect "$out" '^bps_down : [0-9]{5}$' \
+    "32-bit counter wrap corrected (positive ~52 kbit/s rate)"
+expect "$out" '^bps_up : 2[0-9]{3}$' "upstream rate from 32-bit counters"
+
+# Login-free UPnP/IGD mode (MODE=igd, no credentials)
+rm -f "$TMP"/fritzwan.*.state
+# shellcheck disable=SC2086
+out=$(FRITZWAN_CFG="$TESTDIR/fritzwan/fritzwan_test_igd.cfg" \
+    $TESTSH "$REPO/extensions/fritzwan/fritzwan.sh")
+expect "$out" '^status fritzbox\.fritzwan green ' \
+    "MODE=igd works without credentials"
+expect "$out" '&green WAN link status: Up' "IGD link status extracted"
+expect "$out" 'UPnP 64-bit counters'       "IGD mode reads the 64-bit counters"
+
+# MODE=igd with UPnP status info disabled on the box -> clear hint
+# shellcheck disable=SC2086
+out=$(FAKECURL_CLP=404 FAKECURL_ADDON=404 \
+    FRITZWAN_CFG="$TESTDIR/fritzwan/fritzwan_test_igd.cfg" \
+    $TESTSH "$REPO/extensions/fritzwan/fritzwan.sh")
+expect "$out" '^status fritzbox\.fritzwan clear ' \
+    "disabled UPnP status info reports clear in MODE=igd"
+expect "$out" "Transmit status information over UPnP" \
+    "clear status carries the UPnP activation hint"
+
+# Box unreachable
+# shellcheck disable=SC2086
+out=$(FAKECURL_FAIL=1 $TESTSH "$REPO/extensions/fritzwan/fritzwan.sh")
+expect "$out" '^status fritzbox\.fritzwan red ' "unreachable box reports red"
+expect "$out" 'cannot reach the FRITZ!Box'      "unreachable note present"
+
+# Wrong credentials (HTTP 401)
+# shellcheck disable=SC2086
+out=$(FAKECURL_401=1 $TESTSH "$REPO/extensions/fritzwan/fritzwan.sh")
+expect "$out" '^status fritzbox\.fritzwan yellow ' \
+    "authentication failure reports yellow"
+expect "$out" 'TR-064 authentication failed' "authentication note present"
+
+# Not configured (no credentials, MODE=auto): no report, hint on stderr
+# shellcheck disable=SC2086
+out=$(FRITZWAN_CFG="$TMP/does-not-exist.cfg" \
+    $TESTSH "$REPO/extensions/fritzwan/fritzwan.sh" 2>"$TMP/fritzwan.stderr")
+rc=$?
+if [ "$rc" -ne 0 ]; then
+    echo "FAIL: unconfigured fritzwan.sh exited with $rc"
+    FAIL=1
+fi
+if [ -n "$out" ]; then
+    echo "FAIL: unconfigured fritzwan.sh must not send/print a report"
+    FAIL=1
+else
+    echo "ok:   unconfigured fritzwan.sh stays silent (no ghost column)"
+fi
+expect "$(cat "$TMP/fritzwan.stderr")" 'not configured' \
+    "unconfigured fritzwan.sh hints on stderr"
+
+unset FRITZWAN_CFG
+
+# ----------------------------------------------------------------------
 echo "--- temp ---"
 TEMPFIX="$TESTDIR/temp"
 EMPTYDIR="$TMP/empty"

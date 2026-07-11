@@ -38,6 +38,8 @@ my-xymon-extensions/
 | [temp](extensions/temp/) | `temp` | All hardware temperature sensors from the Linux hwmon sysfs (fallback: thermal zones) — e.g. CPU/SoC and switch sensors on a Turris Omnia — with per-sensor thresholds and RRD graphs |
 | [la](extensions/la/) | `la` | Load average (1/5/15 min) with thresholds per CPU core; for clientless hosts — the task ships disabled where a full Xymon client runs |
 | [memory](extensions/memory/) | `memory` | Memory utilization in percent from /proc/meminfo; for clientless hosts — the task ships disabled where a full Xymon client runs |
+| [fritzdsl](extensions/fritzdsl/) | `fritzdsl` | AVM FRITZ!Box DSL line monitoring via TR-064 (curl): line state, sync rate, noise margin, attenuation, error counters — thresholds/alerts and RRD graphs; polls the box from the Xymon server, no software on the box |
+| [fritzwan](extensions/fritzwan/) | `fritzwan` | AVM FRITZ!Box WAN throughput monitoring (curl): physical link state, average throughput, link capacity and utilization from the box's 64-bit UPnP counters (TR-064 fallback) — optional utilization thresholds and RRD graphs |
 
 ## Design principles
 

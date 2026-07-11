@@ -15,6 +15,7 @@ URL:            https://github.com/roemer2201/my-xymon-extensions
 Source0:        %{name}-%{version}.tar.gz
 BuildArch:      noarch
 Requires:       smartmontools
+Recommends:     curl
 # "xymon-client" matches the Terabithia and EPEL package names;
 # rebuild with --define 'xymonclientpkg <name>' for other builds.
 %{!?xymonclientpkg: %global xymonclientpkg xymon-client}
@@ -34,6 +35,14 @@ Included extensions:
   default: the Xymon client already covers this on full clients).
 * memory - memory utilization in percent (task disabled by default:
   the Xymon client already covers this on full clients).
+* fritzdsl - AVM FRITZ!Box DSL line monitoring via TR-064 (curl):
+  line state, sync rate, noise margin, attenuation and error counters
+  with thresholds and RRD graphing support; polls the box from the
+  Xymon server, no software on the box.
+* fritzwan - AVM FRITZ!Box WAN throughput monitoring (curl): physical
+  link state, average throughput, link capacity and utilization from
+  the box's 64-bit UPnP counters (TR-064 fallback), with optional
+  utilization thresholds and RRD graphs.
 
 %prep
 %setup -q
@@ -58,6 +67,12 @@ sh packaging/common/stage.sh "%{buildroot}" \
 %config(noreplace) %{xymonhome}/etc/tasks.d/temp.cfg
 %config(noreplace) %{xymonhome}/etc/tasks.d/la.cfg
 %config(noreplace) %{xymonhome}/etc/tasks.d/memory.cfg
+%{xymonhome}/ext/fritzdsl.sh
+%config(noreplace) %{xymonhome}/etc/fritzdsl.cfg
+%config(noreplace) %{xymonhome}/etc/tasks.d/fritzdsl.cfg
+%{xymonhome}/ext/fritzwan.sh
+%config(noreplace) %{xymonhome}/etc/fritzwan.cfg
+%config(noreplace) %{xymonhome}/etc/tasks.d/fritzwan.cfg
 %{_docdir}/%{name}/
 
 %post
@@ -69,9 +84,25 @@ my-xymon-extensions: to activate the "smart" extension:
     (add this line once if it is missing):
       directory %{xymonhome}/etc/tasks.d
  3. Restart the Xymon client service.
+The FRITZ!Box extensions "fritzdsl" and "fritzwan" ship disabled:
+ configure %{xymonhome}/etc/fritzdsl.cfg resp. fritzwan.cfg, then
+ remove the DISABLED line from the matching tasks.d snippet and
+ restart the client on the polling host (normally the Xymon server).
 EOF
 
 %changelog
+* Sat Jul 11 2026 roemer2201 <r.oliver@web.de> - 0.5.0-1
+- fritzdsl: new extension - AVM FRITZ!Box DSL line monitoring via
+  TR-064 (curl): line state, sync rate, noise margin, attenuation
+  and error counters with thresholds, CRC-rate check and split-NCV
+  RRD graphing; ships disabled until credentials are configured
+- fritzwan: new extension - AVM FRITZ!Box WAN throughput monitoring:
+  physical link state, average throughput, link capacity and
+  utilization computed from the box's 64-bit UPnP byte counters
+  (TR-064 32-bit fallback with wrap correction), optional
+  utilization thresholds, split-NCV RRD graphing; ships disabled
+  until configured
+
 * Sat Jul 11 2026 roemer2201 <r.oliver@web.de> - 0.4.0-1
 - new extensions temp, la and memory: local health metrics for
   clientless hosts (Turris Omnia / OpenWrt via the standalone runner)

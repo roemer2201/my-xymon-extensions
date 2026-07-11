@@ -1,0 +1,72 @@
+#!/bin/sh
+# Minimal curl stand-in for the fritzdsl unit tests: emulates the
+# options fritzdsl.sh uses (--config -, --output FILE, --write-out
+# '%{http_code}', --header, --data) and returns canned TR-064
+# responses depending on the SOAPACTION header.
+#
+# Failure modes for the tests, selected via environment variables:
+#   FAKECURL_FAIL=1        transport error (exit 7, nothing on stdout)
+#   FAKECURL_401=1         HTTP 401 on every request
+#   FAKECURL_GETINFO=FILE  response body for GetInfo
+#   FAKECURL_STATS=FILE    response body for GetStatisticsTotal
+#   FAKECURL_PPP=FILE|404  response body for GetStatusInfo, or 404
+set -u
+
+OUT="/dev/null"
+ACTION=""
+prev=""
+for arg; do
+    case "$prev" in
+        --output|-o)
+            OUT=$arg
+            ;;
+        --header|-H)
+            case "$arg" in
+                SOAPACTION:*)
+                    ACTION=${arg##*#}
+                    ACTION=${ACTION%\"}
+                    ;;
+            esac
+            ;;
+    esac
+    prev=$arg
+done
+
+# Consume the credentials arriving on stdin via "--config -".
+cat > /dev/null
+
+if [ "${FAKECURL_FAIL:-0}" = "1" ]; then
+    echo "curl: (7) Failed to connect to fritz.box port 49000: Connection refused" >&2
+    exit 7
+fi
+
+if [ "${FAKECURL_401:-0}" = "1" ]; then
+    printf '<html>401 Unauthorized</html>\n' > "$OUT"
+    printf '401'
+    exit 0
+fi
+
+datadir="$(dirname "$0")/data"
+
+case "$ACTION" in
+    GetInfo)
+        cat "${FAKECURL_GETINFO:-$datadir/getinfo-ok.xml}" > "$OUT"
+        ;;
+    GetStatisticsTotal)
+        cat "${FAKECURL_STATS:-$datadir/stats-ok.xml}" > "$OUT"
+        ;;
+    GetStatusInfo)
+        if [ "${FAKECURL_PPP:-}" = "404" ]; then
+            printf '404 Not Found\n' > "$OUT"
+            printf '404'
+            exit 0
+        fi
+        cat "${FAKECURL_PPP:-$datadir/ppp-ok.xml}" > "$OUT"
+        ;;
+    *)
+        printf '500'
+        exit 0
+        ;;
+esac
+printf '200'
+exit 0
