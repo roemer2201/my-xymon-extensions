@@ -35,9 +35,11 @@ inst() { # inst MODE SRC DST
 
 mkdir -p "$DESTDIR$EXTDIR" "$DESTDIR$ETCDIR/tasks.d" || exit 1
 
-inst 0755 extensions/smart/smart.sh "$DESTDIR$EXTDIR/smart.sh" || exit 1
-inst 0644 extensions/smart/smart.cfg "$DESTDIR$ETCDIR/smart.cfg$SUF" || exit 1
-inst 0644 packaging/common/tasks.d/smart.cfg "$DESTDIR$ETCDIR/tasks.d/smart.cfg$SUF" || exit 1
+for ext in smart temp la memory; do
+    inst 0755 "extensions/$ext/$ext.sh" "$DESTDIR$EXTDIR/$ext.sh" || exit 1
+    inst 0644 "extensions/$ext/$ext.cfg" "$DESTDIR$ETCDIR/$ext.cfg$SUF" || exit 1
+    inst 0644 "packaging/common/tasks.d/$ext.cfg" "$DESTDIR$ETCDIR/tasks.d/$ext.cfg$SUF" || exit 1
+done
 
 inst 0755 extensions/fritzdsl/fritzdsl.sh "$DESTDIR$EXTDIR/fritzdsl.sh" || exit 1
 inst 0644 extensions/fritzdsl/fritzdsl.cfg "$DESTDIR$ETCDIR/fritzdsl.cfg$SUF" || exit 1
@@ -51,6 +53,10 @@ if [ "$DOCDIR" != "-" ]; then
     mkdir -p "$DESTDIR$DOCDIR/smart/server" "$DESTDIR$DOCDIR/fritzdsl/server" \
         "$DESTDIR$DOCDIR/fritzwan/server" || exit 1
     inst 0644 README.md "$DESTDIR$DOCDIR/README.md" || exit 1
+    for ext in temp la memory; do
+        mkdir -p "$DESTDIR$DOCDIR/$ext" || exit 1
+        inst 0644 "extensions/$ext/README.md" "$DESTDIR$DOCDIR/$ext/README.md" || exit 1
+    done
     inst 0644 extensions/smart/README.md "$DESTDIR$DOCDIR/smart/README.md" || exit 1
     inst 0644 extensions/smart/sudoers.example "$DESTDIR$DOCDIR/smart/sudoers.example" || exit 1
     inst 0644 extensions/smart/server/README.md "$DESTDIR$DOCDIR/smart/server/README.md" || exit 1

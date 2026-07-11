@@ -432,6 +432,148 @@ expect "$(cat "$TMP/fritzwan.stderr")" 'not configured' \
 unset FRITZWAN_CFG
 
 # ----------------------------------------------------------------------
+echo "--- temp ---"
+TEMPFIX="$TESTDIR/temp"
+EMPTYDIR="$TMP/empty"
+mkdir -p "$EMPTYDIR"
+
+# shellcheck disable=SC2086
+out=$(TEMP_HWMON_DIR="$TEMPFIX/sys/class/hwmon" TEMP_THERMAL_DIR="$EMPTYDIR" \
+    $TESTSH "$REPO/extensions/temp/temp.sh")
+expect "$out" '^status testhost\.temp yellow ' \
+    "overall temp status is yellow (switch sensor at 85.4 C)"
+expect "$out" '&green armada_thermal_temp1 = 78\.1 C' \
+    "unlabelled sensor named <chip>_tempN, millidegrees converted"
+expect "$out" '&yellow mv88e6xxx_internal = 85\.4 C' \
+    "labelled sensor named <chip>_<label>, flagged yellow at TEMP_WARN"
+expect "$out" '&green mv88e6xxx_temp2 = 45\.2 C' \
+    "second sensor of the same chip reported separately"
+expect "$out" '&green mv88e6xxx_internal_2 = 44\.1 C' \
+    "duplicate chip/label pair gets a numeric suffix"
+expect "$out" '^armada_thermal_temp1 : 78\.1$' "temp NCV line (CPU sensor)"
+expect "$out" '^mv88e6xxx_internal : 85\.4$'   "temp NCV line (switch sensor)"
+expect "$out" '^mv88e6xxx_internal_2 : 44\.1$' "temp NCV line (deduplicated name)"
+
+# shellcheck disable=SC2086
+out=$(TEMP_HWMON_DIR="$TEMPFIX/sys/class/hwmon" TEMP_THERMAL_DIR="$EMPTYDIR" \
+    TEMP_CRIT=85 $TESTSH "$REPO/extensions/temp/temp.sh")
+expect "$out" '^status testhost\.temp red ' \
+    "TEMP_CRIT from the environment turns the column red"
+
+# shellcheck disable=SC2086
+out=$(TEMP_HWMON_DIR="$TEMPFIX/sys/class/hwmon" TEMP_THERMAL_DIR="$EMPTYDIR" \
+    TEMP_WARN=86 $TESTSH "$REPO/extensions/temp/temp.sh")
+expect "$out" '^status testhost\.temp green ' \
+    "raised TEMP_WARN turns the column green"
+
+# shellcheck disable=SC2086
+out=$(TEMP_HWMON_DIR="$TEMPFIX/sys/class/hwmon" TEMP_THERMAL_DIR="$EMPTYDIR" \
+    TEMP_COLUMN=cputemp $TESTSH "$REPO/extensions/temp/temp.sh")
+expect "$out" '^status testhost\.cputemp yellow ' \
+    "column name is overridable via TEMP_COLUMN"
+
+# shellcheck disable=SC2086
+out=$(TEMP_HWMON_DIR="$EMPTYDIR" TEMP_THERMAL_DIR="$TEMPFIX/thermal" \
+    $TESTSH "$REPO/extensions/temp/temp.sh")
+expect "$out" '^status testhost\.temp green ' \
+    "thermal_zone fallback used when no hwmon sensors exist"
+expect "$out" '^cpu_thermal : 55\.5$' \
+    "thermal zone named after its type, NCV line present"
+
+# shellcheck disable=SC2086
+out=$(TEMP_HWMON_DIR="$EMPTYDIR" TEMP_THERMAL_DIR="$EMPTYDIR" \
+    $TESTSH "$REPO/extensions/temp/temp.sh")
+expect "$out" '^status testhost\.temp clear ' \
+    "no sensors at all reports clear, not red"
+
+# ----------------------------------------------------------------------
+echo "--- la ---"
+LAFIX="$TESTDIR/la/loadavg"
+
+# shellcheck disable=SC2086
+out=$(LA_LOADAVG="$LAFIX" LA_NCPU=4 $TESTSH "$REPO/extensions/la/la.sh")
+expect "$out" '^status testhost\.la green ' \
+    "la status green (5-min load per core 0.30 below default 1.5)"
+expect "$out" '&green load average \(1/5/15 min\)  0\.42  1\.20  0\.30' \
+    "all three load values displayed"
+expect "$out" '4 CPU core\(s\); the 5-min load per core is 0\.30' \
+    "per-core load computed from LA_NCPU"
+expect "$out" '^la1 : 0\.42$'  "la NCV line la1"
+expect "$out" '^la5 : 1\.20$'  "la NCV line la5"
+expect "$out" '^la15 : 0\.30$' "la NCV line la15"
+
+# shellcheck disable=SC2086
+out=$(LA_LOADAVG="$LAFIX" LA_NCPU=4 LA_WARN=0.30 \
+    $TESTSH "$REPO/extensions/la/la.sh")
+expect "$out" '^status testhost\.la yellow ' \
+    "LA_WARN from the environment turns the column yellow (0.30 >= 0.30)"
+
+# shellcheck disable=SC2086
+out=$(LA_LOADAVG="$LAFIX" LA_NCPU=4 LA_CRIT=0.25 \
+    $TESTSH "$REPO/extensions/la/la.sh")
+expect "$out" '^status testhost\.la red ' \
+    "LA_CRIT from the environment turns the column red"
+
+# shellcheck disable=SC2086
+out=$(LA_LOADAVG="$LAFIX" LA_NCPU=4 LA_COLUMN=load \
+    $TESTSH "$REPO/extensions/la/la.sh")
+expect "$out" '^status testhost\.load green ' \
+    "column name is overridable via LA_COLUMN"
+
+# shellcheck disable=SC2086
+out=$(LA_LOADAVG="$TMP/no-such-loadavg" $TESTSH "$REPO/extensions/la/la.sh")
+expect "$out" '^status testhost\.la clear ' \
+    "unreadable load source reports clear, not red"
+
+# ----------------------------------------------------------------------
+echo "--- memory ---"
+MEMFIX="$TESTDIR/memory/meminfo"
+
+# shellcheck disable=SC2086
+out=$(MEM_MEMINFO="$MEMFIX" $TESTSH "$REPO/extensions/memory/memory.sh")
+expect "$out" '^status testhost\.memory green ' \
+    "memory status green (50% used below default 80)"
+expect "$out" '&green memory used 50\.0% \(1000 MB of 2000 MB, 1000 MB available\)' \
+    "used percent and MB summary computed from MemTotal/MemAvailable"
+expect "$out" '^used : 50\.0$' "memory NCV line"
+expect_not "$out" 'estimated as MemFree' \
+    "no estimation note when the kernel provides MemAvailable"
+
+# shellcheck disable=SC2086
+out=$(MEM_MEMINFO="$MEMFIX" MEM_WARN=50 \
+    $TESTSH "$REPO/extensions/memory/memory.sh")
+expect "$out" '^status testhost\.memory yellow ' \
+    "MEM_WARN from the environment turns the column yellow (50.0 >= 50)"
+
+# shellcheck disable=SC2086
+out=$(MEM_MEMINFO="$MEMFIX" MEM_CRIT=45 \
+    $TESTSH "$REPO/extensions/memory/memory.sh")
+expect "$out" '^status testhost\.memory red ' \
+    "MEM_CRIT from the environment turns the column red"
+
+# shellcheck disable=SC2086
+out=$(MEM_MEMINFO="$TESTDIR/memory/meminfo-noavail" \
+    $TESTSH "$REPO/extensions/memory/memory.sh")
+expect "$out" '^status testhost\.memory green ' \
+    "kernel without MemAvailable still reports"
+expect "$out" '^used : 65\.6$' \
+    "fallback estimate MemFree+Buffers+Cached used"
+expect "$out" 'estimated as MemFree \+ Buffers \+ Cached' \
+    "estimation note shown when MemAvailable is missing"
+
+# shellcheck disable=SC2086
+out=$(MEM_MEMINFO="$TMP/no-such-meminfo" \
+    $TESTSH "$REPO/extensions/memory/memory.sh")
+expect "$out" '^status testhost\.memory clear ' \
+    "missing /proc/meminfo reports clear, not red"
+
+# shellcheck disable=SC2086
+out=$(MEM_MEMINFO="$MEMFIX" MEM_COLUMN=mem \
+    $TESTSH "$REPO/extensions/memory/memory.sh")
+expect "$out" '^status testhost\.mem green ' \
+    "column name is overridable via MEM_COLUMN"
+
+# ----------------------------------------------------------------------
 echo "--- standalone: xymon-send.sh ---"
 
 # Fake "nc" that records its arguments and stdin instead of connecting.
@@ -475,14 +617,29 @@ expect "$(cat "$NC_CAPTURE")" '^ARGS: 192\.0\.2\.2 3984$' \
     "space-separated server list reaches every server"
 
 # ----------------------------------------------------------------------
-echo "--- standalone: xymon-run.sh + smart ---"
+echo "--- standalone: xymon-run.sh + extensions ---"
 
 # Simulated install tree, as the opkg package would lay it out.
 STAGE="$TMP/xymon-standalone"
 mkdir -p "$STAGE/ext" "$STAGE/etc"
 cp "$REPO/standalone/xymon-run.sh" "$REPO/standalone/xymon-send.sh" "$STAGE/"
 cp "$REPO/extensions/smart/smart.sh" "$STAGE/ext/smart.sh"
+cp "$REPO/extensions/temp/temp.sh" "$STAGE/ext/temp.sh"
+cp "$REPO/extensions/la/la.sh" "$STAGE/ext/la.sh"
+cp "$REPO/extensions/memory/memory.sh" "$STAGE/ext/memory.sh"
 cp "$TESTDIR/smart/smart_test.cfg" "$STAGE/etc/smart.cfg"
+# The extensions must pick these up via $XYMONHOME/etc/<name>.cfg
+cat > "$STAGE/etc/temp.cfg" <<EOF
+TEMP_HWMON_DIR="$TEMPFIX/sys/class/hwmon"
+TEMP_THERMAL_DIR="$EMPTYDIR"
+EOF
+cat > "$STAGE/etc/la.cfg" <<EOF
+LA_LOADAVG="$LAFIX"
+LA_NCPU=4
+EOF
+cat > "$STAGE/etc/memory.cfg" <<EOF
+MEM_MEMINFO="$MEMFIX"
+EOF
 # XYMONTMP/XYMONCLIENTLOGS deliberately do not exist yet: the runner
 # must create them (on OpenWrt /tmp is a RAM disk, configured
 # subdirectories are gone after every reboot).
@@ -518,6 +675,18 @@ expect "$captured" '^data turris,example,org\.smart$' \
     "data message for the RRD graphs is sent too"
 expect "$captured" '^tsda_pending : 8$' \
     "NCV payload arrives through the standalone transport"
+expect "$captured" '^status turris,example,org\.temp yellow ' \
+    "temp extension runs under the standalone runner"
+expect "$captured" '^mv88e6xxx_internal : 85\.4$' \
+    "temp NCV payload arrives, config read from \$XYMONHOME/etc"
+expect "$captured" '^status turris,example,org\.la green ' \
+    "la extension runs under the standalone runner"
+expect "$captured" '^la5 : 1\.20$' \
+    "la NCV payload arrives, config read from \$XYMONHOME/etc"
+expect "$captured" '^status turris,example,org\.memory green ' \
+    "memory extension runs under the standalone runner"
+expect "$captured" '^used : 50\.0$' \
+    "memory NCV payload arrives, config read from \$XYMONHOME/etc"
 if [ -f "$TMP/work/logs/smart.log" ]; then
     echo "ok:   extension run log written to auto-created \$XYMONCLIENTLOGS"
 else
