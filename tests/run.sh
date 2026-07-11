@@ -531,8 +531,8 @@ MEMFIX="$TESTDIR/memory/meminfo"
 
 # shellcheck disable=SC2086
 out=$(MEM_MEMINFO="$MEMFIX" $TESTSH "$REPO/extensions/memory/memory.sh")
-expect "$out" '^status testhost\.memory green ' \
-    "memory status green (50% used below default 80)"
+expect "$out" '^status testhost\.mem green ' \
+    "memory status green (50% used below default 80), default column \"mem\""
 expect "$out" '&green memory used 50\.0% \(1000 MB of 2000 MB, 1000 MB available\)' \
     "used percent and MB summary computed from MemTotal/MemAvailable"
 expect "$out" '^used : 50\.0$' "memory NCV line"
@@ -542,19 +542,19 @@ expect_not "$out" 'estimated as MemFree' \
 # shellcheck disable=SC2086
 out=$(MEM_MEMINFO="$MEMFIX" MEM_WARN=50 \
     $TESTSH "$REPO/extensions/memory/memory.sh")
-expect "$out" '^status testhost\.memory yellow ' \
+expect "$out" '^status testhost\.mem yellow ' \
     "MEM_WARN from the environment turns the column yellow (50.0 >= 50)"
 
 # shellcheck disable=SC2086
 out=$(MEM_MEMINFO="$MEMFIX" MEM_CRIT=45 \
     $TESTSH "$REPO/extensions/memory/memory.sh")
-expect "$out" '^status testhost\.memory red ' \
+expect "$out" '^status testhost\.mem red ' \
     "MEM_CRIT from the environment turns the column red"
 
 # shellcheck disable=SC2086
 out=$(MEM_MEMINFO="$TESTDIR/memory/meminfo-noavail" \
     $TESTSH "$REPO/extensions/memory/memory.sh")
-expect "$out" '^status testhost\.memory green ' \
+expect "$out" '^status testhost\.mem green ' \
     "kernel without MemAvailable still reports"
 expect "$out" '^used : 65\.6$' \
     "fallback estimate MemFree+Buffers+Cached used"
@@ -564,14 +564,14 @@ expect "$out" 'estimated as MemFree \+ Buffers \+ Cached' \
 # shellcheck disable=SC2086
 out=$(MEM_MEMINFO="$TMP/no-such-meminfo" \
     $TESTSH "$REPO/extensions/memory/memory.sh")
-expect "$out" '^status testhost\.memory clear ' \
+expect "$out" '^status testhost\.mem clear ' \
     "missing /proc/meminfo reports clear, not red"
 
 # shellcheck disable=SC2086
-out=$(MEM_MEMINFO="$MEMFIX" MEM_COLUMN=mem \
+out=$(MEM_MEMINFO="$MEMFIX" MEM_COLUMN=memory \
     $TESTSH "$REPO/extensions/memory/memory.sh")
-expect "$out" '^status testhost\.mem green ' \
-    "column name is overridable via MEM_COLUMN"
+expect "$out" '^status testhost\.memory green ' \
+    "column name is overridable via MEM_COLUMN (e.g. back to the stock name)"
 
 # ----------------------------------------------------------------------
 echo "--- standalone: xymon-send.sh ---"
@@ -683,8 +683,8 @@ expect "$captured" '^status turris,example,org\.la green ' \
     "la extension runs under the standalone runner"
 expect "$captured" '^la5 : 1\.20$' \
     "la NCV payload arrives, config read from \$XYMONHOME/etc"
-expect "$captured" '^status turris,example,org\.memory green ' \
-    "memory extension runs under the standalone runner"
+expect "$captured" '^status turris,example,org\.mem green ' \
+    "memory extension runs under the standalone runner, defaulted to column \"mem\""
 expect "$captured" '^used : 50\.0$' \
     "memory NCV payload arrives, config read from \$XYMONHOME/etc"
 if [ -f "$TMP/work/logs/smart.log" ]; then
@@ -735,14 +735,14 @@ expect "$captured" '^status turris,example,org\.temp ' \
     "TESTS: listed extension temp runs"
 expect "$captured" '^status turris,example,org\.la ' \
     "TESTS: listed extension la runs"
-expect_not "$captured" '^status turris,example,org\.(smart|memory) ' \
+expect_not "$captured" '^status turris,example,org\.(smart|mem) ' \
     "TESTS: unlisted extensions do not run"
 
 # Extensions named explicitly run even when not in TESTS
 : > "$NC_CAPTURE"
 # shellcheck disable=SC2086
 PATH="$SBIN:$PATH" $TESTSH "$STAGE/xymon-run.sh" memory
-expect "$(cat "$NC_CAPTURE")" '^status turris,example,org\.memory ' \
+expect "$(cat "$NC_CAPTURE")" '^status turris,example,org\.mem ' \
     "explicit extension runs regardless of TESTS"
 
 # A TESTS entry without an installed script -> error

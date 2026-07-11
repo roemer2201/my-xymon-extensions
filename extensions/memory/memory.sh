@@ -4,14 +4,16 @@
 #
 # Reads MemTotal and MemAvailable from /proc/meminfo, computes the
 # used share in percent ((MemTotal - MemAvailable) / MemTotal * 100)
-# and reports one "memory" status column. The status text carries a
-# "used : <percent>" line (hidden in an HTML comment) for NCV
-# graphing - see README.md for the server-side setup.
+# and reports one status column, "mem" by default. The status text
+# carries a "used : <percent>" line (hidden in an HTML comment) for
+# NCV graphing - see README.md for the server-side setup.
 #
 # Written for clientless hosts driven by the standalone runner
 # (OpenWrt/TurrisOS): a full Xymon client already delivers a "memory"
-# column of its own, so the shipped tasks.d snippet is disabled by
-# default - running both would fight over the same column.
+# column of its own, so the default column name here is "mem" - this
+# avoids a collision on any server that also has full clients, and
+# the shipped tasks.d snippet is disabled by default anyway, since
+# running both would be redundant.
 #
 # Needs a Linux /proc/meminfo; other platforms report "clear".
 #
@@ -33,7 +35,7 @@ MACHINE="${MACHINE:-$(uname -n | tr '.' ',')}"
 # ----------------------------------------------------------------------
 # Defaults -- every value can be set in the environment or in memory.cfg
 # ----------------------------------------------------------------------
-MEM_COLUMN="${MEM_COLUMN:-memory}"  # Xymon column name
+MEM_COLUMN="${MEM_COLUMN:-mem}"      # Xymon column name
 MEM_WARN="${MEM_WARN:-80}"          # yellow at/above, percent used
 MEM_CRIT="${MEM_CRIT:-90}"          # red at/above, percent used
 MEM_MEMINFO="${MEM_MEMINFO:-/proc/meminfo}"

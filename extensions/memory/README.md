@@ -3,17 +3,19 @@
 Xymon client extension that reports the used share of physical memory
 in one status column, plus an NCV line for RRD graphing.
 
-- **Column:** `memory` (override with `MEM_COLUMN`)
+- **Column:** `mem` (override with `MEM_COLUMN`)
 - **Platforms:** Linux (`/proc/meminfo`) including OpenWrt/TurrisOS
   via the standalone runner. Platforms without `/proc/meminfo`
   (FreeBSD) report `clear`.
 - **Requires:** nothing — BusyBox userland is enough.
 - **Note:** a full Xymon client already delivers a `memory` column of
-  its own; running this extension there would fight over the same
-  column, so the shipped `tasks.d` snippet is **disabled by default**.
-  This extension is meant for clientless hosts (routers, appliances)
-  driven by the standalone runner, which runs every installed
-  extension regardless of `tasks.d`.
+  its own; the default column name here is `mem`, not `memory`,
+  precisely to avoid fighting over that column when this extension
+  and a full client report to the same server. The shipped `tasks.d`
+  snippet is **disabled by default** anyway, since a full-client host
+  doesn't need this extension. This extension is meant for clientless
+  hosts (routers, appliances) driven by the standalone runner, which
+  runs every installed extension regardless of `tasks.d`.
 
 ## Metric
 
@@ -55,19 +57,24 @@ used : 42.5
 **Caveat:** the stock `TEST2RRD` in `xymonserver.cfg` already contains
 a `memory` entry that maps the column to the built-in parser for
 full-client reports — that parser cannot read this extension's output.
-Two ways out:
+Because this extension's default column is `mem`, not `memory`, the
+common case needs no edit to that existing entry — just append a
+fresh one:
 
-1. Edit the existing `TEST2RRD` value and change the `memory` entry to
-   `memory=ncv` (do **not** just append — the first match wins), or
-2. rename the column on the clientless hosts (`MEM_COLUMN="mem"` in
-   `memory.cfg`) and append a fresh entry: `TEST2RRD+=",mem=ncv"`.
+1. Default (column `mem`): append a fresh `TEST2RRD` entry (see
+   below) — nothing to change in the existing `memory` entry.
+2. If you set `MEM_COLUMN="memory"` on a host that never runs a full
+   client, edit the existing `TEST2RRD` value instead and change the
+   `memory` entry to `memory=ncv` (do **not** just append — the first
+   match wins), keeping the stock column name.
 
-Then (assuming the default column name and option 1):
+Then (assuming the default column name `mem`, option 1):
 
 ```
-NCV_memory="used:GAUGE"
+TEST2RRD+=",mem=ncv"
+NCV_mem="used:GAUGE"
 GRAPHS+=",memused"
-GRAPHS_memory="memused"
+GRAPHS_mem="memused"
 ```
 
 and add a graph definition to `graphs.cfg`:
@@ -76,15 +83,16 @@ and add a graph definition to `graphs.cfg`:
 [memused]
     TITLE Memory used
     YAXIS Percent
-    DEF:used=memory.rrd:used:AVERAGE
+    DEF:used=mem.rrd:used:AVERAGE
     LINE2:used#0000FF:memory used
     GPRINT:used:LAST: %5.1lf%% (cur)
     GPRINT:used:MAX: %5.1lf%% (max)\n
 ```
 
-Restart the Xymon server side (`xymond_rrd`) and check that
-`memory.rrd` appears under `$XYMONVAR/rrd/<host>/` after the next
-report.
+Restart the Xymon server side (`xymond_rrd`) and check that `mem.rrd`
+appears under `$XYMONVAR/rrd/<host>/` after the next report. (With
+option 2, use `memory`/`memory.rrd`/`GRAPHS_memory` throughout
+instead.)
 
 ## OpenWrt / TurrisOS
 
@@ -96,3 +104,5 @@ Runs through the standalone runner (see
 ```
 
 Dry run on the router: `/usr/lib/xymon-standalone/xymon-run.sh -n memory`
+(the extension file is still named `memory.sh`; only the reported
+column defaults to `mem`)

@@ -60,7 +60,11 @@ scp standalone/standalone.cfg root@router:/etc/xymon-standalone/
    host's entry in the server's `hosts.cfg`). The `TESTS` line selects
    which extensions `xymon-run.sh all` runs; it defaults to the local
    health tests (`la memory smart temp`). Commented out or empty, all
-   installed extensions run.
+   installed extensions run. The `memory` extension reports under the
+   column name `mem` by default (see
+   [extensions/memory/README.md](../extensions/memory/README.md)), so
+   it never collides with the `memory` column a full Xymon client
+   reports on the server.
 2. Add the host to `hosts.cfg` on the Xymon server.
 3. Test interactively on the router:
 
