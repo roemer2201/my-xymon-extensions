@@ -3,17 +3,19 @@
 Xymon client extension that reports the used share of physical memory
 in one status column, plus an NCV line for RRD graphing.
 
-- **Column:** `memory` (override with `MEM_COLUMN`)
+- **Column:** `mem` (override with `MEM_COLUMN`)
 - **Platforms:** Linux (`/proc/meminfo`) including OpenWrt/TurrisOS
   via the standalone runner. Platforms without `/proc/meminfo`
   (FreeBSD) report `clear`.
 - **Requires:** nothing — BusyBox userland is enough.
 - **Note:** a full Xymon client already delivers a `memory` column of
-  its own; running this extension there would fight over the same
-  column, so the shipped `tasks.d` snippet is **disabled by default**.
-  This extension is meant for clientless hosts (routers, appliances)
-  driven by the standalone runner, which runs every installed
-  extension regardless of `tasks.d`.
+  its own; the default column name here is `mem`, not `memory`,
+  precisely to avoid fighting over that column when this extension
+  and a full client report to the same server. The shipped `tasks.d`
+  snippet is **disabled by default** anyway, since a full-client host
+  doesn't need this extension. This extension is meant for clientless
+  hosts (routers, appliances) driven by the standalone runner, which
+  runs every installed extension regardless of `tasks.d`.
 
 ## Metric
 
@@ -55,19 +57,18 @@ used : 42.5
 **Caveat:** the stock `TEST2RRD` in `xymonserver.cfg` already contains
 a `memory` entry that maps the column to the built-in parser for
 full-client reports — that parser cannot read this extension's output.
-Two ways out:
+Because this extension's default column is `mem`, not `memory`, the
+common case needs no edit to that existing entry — just append a
+fresh one:
 
-1. Rename the column on the clientless hosts and append a fresh
-   `TEST2RRD` entry (see below) — this is what the standalone runner
-   does automatically (`MEM_COLUMN` defaults to `mem` when run via
-   `xymon-run.sh`, see [standalone/README.md](../../standalone/README.md)),
-   or
-2. if this extension runs on a host that never has a full client
-   installed, edit the existing `TEST2RRD` value instead and change
-   the `memory` entry to `memory=ncv` (do **not** just append — the
-   first match wins), keeping the stock column name.
+1. Default (column `mem`): append a fresh `TEST2RRD` entry (see
+   below) — nothing to change in the existing `memory` entry.
+2. If you set `MEM_COLUMN="memory"` on a host that never runs a full
+   client, edit the existing `TEST2RRD` value instead and change the
+   `memory` entry to `memory=ncv` (do **not** just append — the first
+   match wins), keeping the stock column name.
 
-Then (assuming the standalone default column name `mem`, option 1):
+Then (assuming the default column name `mem`, option 1):
 
 ```
 TEST2RRD+=",mem=ncv"
@@ -103,3 +104,5 @@ Runs through the standalone runner (see
 ```
 
 Dry run on the router: `/usr/lib/xymon-standalone/xymon-run.sh -n memory`
+(the extension file is still named `memory.sh`; only the reported
+column defaults to `mem`)

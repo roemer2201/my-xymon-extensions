@@ -71,14 +71,6 @@ if [ -z "$MACHINEDOTS" ]; then
 fi
 MACHINE=$(printf '%s' "$MACHINEDOTS" | tr '.' ',')
 
-# A full Xymon client (if one is ever installed alongside) already
-# reports its own "memory" column; default clientless hosts to a
-# different column name so the two never collide on the server side
-# (see extensions/memory/README.md). Override in standalone.cfg or
-# memory.cfg if this host has no such conflict.
-MEM_COLUMN="${MEM_COLUMN:-mem}"
-export MEM_COLUMN
-
 LOGDIR="${XYMONCLIENTLOGS:-$XYMONTMP}"
 
 # The configured directories may not exist yet: on OpenWrt /tmp is a
