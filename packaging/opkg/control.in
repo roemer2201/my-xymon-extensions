@@ -12,4 +12,7 @@ Description: Portable Xymon client extensions with standalone runner
  (xymon-send.sh) for hosts without a Xymon client, such as
  OpenWrt/TurrisOS routers.
  Included extensions: smart - S.M.A.R.T. disk health monitoring for
- SATA/ATA and NVMe disks, plus eMMC wear/pre-EOL health via mmc-utils.
+ SATA/ATA and NVMe disks, plus eMMC wear/pre-EOL health via mmc-utils;
+ temp - all hwmon/thermal temperature sensors (CPU/SoC and switch on
+ the Turris Omnia); la - load average with per-core thresholds;
+ memory - memory utilization in percent.

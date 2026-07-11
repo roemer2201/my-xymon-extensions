@@ -13,6 +13,10 @@ Included extensions:
   basic SAS disks, with vendor-normalized metrics, thresholds and
   per-disk RRD graphing support. (The eMMC health support of this
   extension is Linux-only and inactive on FreeBSD.)
+* la - load average with per-CPU-core thresholds (task disabled by
+  default: the Xymon client already covers this on full clients).
+* temp and memory - Linux-only (hwmon sysfs, /proc/meminfo); they
+  report a clear status on FreeBSD.
 
 Requires net-mgmt/xymon-client and sysutils/smartmontools (>= 7.0).
 Activation steps (sudoers rule, tasks.d include, server-side graphs)

@@ -35,6 +35,9 @@ my-xymon-extensions/
 | Name | Column | Description |
 |------|--------|-------------|
 | [smart](extensions/smart/) | `smart` | SMART disk health for SATA/ATA, NVMe and (basic) SAS disks plus eMMC wear/pre-EOL health (Linux, via mmc-utils): vendor-normalized metrics, thresholds/alerts and per-disk RRD graphs |
+| [temp](extensions/temp/) | `temp` | All hardware temperature sensors from the Linux hwmon sysfs (fallback: thermal zones) — e.g. CPU/SoC and switch sensors on a Turris Omnia — with per-sensor thresholds and RRD graphs |
+| [la](extensions/la/) | `la` | Load average (1/5/15 min) with thresholds per CPU core; for clientless hosts — the task ships disabled where a full Xymon client runs |
+| [memory](extensions/memory/) | `memory` | Memory utilization in percent from /proc/meminfo; for clientless hosts — the task ships disabled where a full Xymon client runs |
 
 ## Design principles
 

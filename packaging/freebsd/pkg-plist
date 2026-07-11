@@ -1,7 +1,19 @@
 www/xymon/client/ext/smart.sh
+www/xymon/client/ext/temp.sh
+www/xymon/client/ext/la.sh
+www/xymon/client/ext/memory.sh
 @sample www/xymon/client/etc/smart.cfg.sample
+@sample www/xymon/client/etc/temp.cfg.sample
+@sample www/xymon/client/etc/la.cfg.sample
+@sample www/xymon/client/etc/memory.cfg.sample
 @sample www/xymon/client/etc/tasks.d/smart.cfg.sample
+@sample www/xymon/client/etc/tasks.d/temp.cfg.sample
+@sample www/xymon/client/etc/tasks.d/la.cfg.sample
+@sample www/xymon/client/etc/tasks.d/memory.cfg.sample
 share/doc/my-xymon-extensions/README.md
+share/doc/my-xymon-extensions/temp/README.md
+share/doc/my-xymon-extensions/la/README.md
+share/doc/my-xymon-extensions/memory/README.md
 share/doc/my-xymon-extensions/smart/README.md
 share/doc/my-xymon-extensions/smart/sudoers.example
 share/doc/my-xymon-extensions/smart/server/README.md

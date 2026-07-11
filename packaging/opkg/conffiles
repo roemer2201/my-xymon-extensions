@@ -1,2 +1,5 @@
 /etc/xymon-standalone.cfg
 /usr/lib/xymon-standalone/etc/smart.cfg
+/usr/lib/xymon-standalone/etc/temp.cfg
+/usr/lib/xymon-standalone/etc/la.cfg
+/usr/lib/xymon-standalone/etc/memory.cfg

@@ -6,6 +6,6 @@ my-xymon-extensions: to activate the standalone Xymon reporting:
       */10 * * * * /usr/lib/xymon-standalone/xymon-run.sh all
     and restart cron: /etc/init.d/cron restart
  3. Add this host to hosts.cfg on the Xymon server.
- Dry run for testing: /usr/lib/xymon-standalone/xymon-run.sh -n smart
+ Dry run for testing: /usr/lib/xymon-standalone/xymon-run.sh -n all
 EOF
 exit 0

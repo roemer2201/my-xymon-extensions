@@ -16,3 +16,9 @@ Description: Portable Xymon client extensions
     basic SAS disks, plus eMMC wear/pre-EOL health (via mmc-utils),
     with vendor-normalized metrics, thresholds and per-disk RRD
     graphing support.
+  * temp - all hardware temperature sensors from the Linux
+    hwmon/thermal sysfs, per-sensor thresholds and RRD graphing.
+  * la - load average with per-CPU-core thresholds (task disabled by
+    default: the Xymon client already covers this on full clients).
+  * memory - memory utilization in percent (task disabled by default:
+    the Xymon client already covers this on full clients).
