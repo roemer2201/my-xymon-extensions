@@ -1,0 +1,18 @@
+<?xml version="1.0"?>
+<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
+<s:Body>
+<u:GetInfoResponse xmlns:u="urn:dslforum-org:service:WANDSLInterfaceConfig:1">
+<NewEnable>1</NewEnable>
+<NewStatus>Down</NewStatus>
+<NewDataPath>None</NewDataPath>
+<NewUpstreamCurrRate>0</NewUpstreamCurrRate>
+<NewDownstreamCurrRate>0</NewDownstreamCurrRate>
+<NewUpstreamMaxRate>0</NewUpstreamMaxRate>
+<NewDownstreamMaxRate>0</NewDownstreamMaxRate>
+<NewUpstreamNoiseMargin>0</NewUpstreamNoiseMargin>
+<NewDownstreamNoiseMargin>0</NewDownstreamNoiseMargin>
+<NewUpstreamAttenuation>0</NewUpstreamAttenuation>
+<NewDownstreamAttenuation>0</NewDownstreamAttenuation>
+</u:GetInfoResponse>
+</s:Body>
+</s:Envelope>

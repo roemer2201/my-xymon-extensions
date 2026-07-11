@@ -4,7 +4,7 @@ Section: net
 Priority: optional
 Architecture: all
 Depends: xymon-client, smartmontools
-Recommends: sudo
+Recommends: sudo, curl
 Suggests: mmc-utils
 Maintainer: roemer2201 <r.oliver@web.de>
 Homepage: https://github.com/roemer2201/my-xymon-extensions
@@ -16,3 +16,7 @@ Description: Portable Xymon client extensions
     basic SAS disks, plus eMMC wear/pre-EOL health (via mmc-utils),
     with vendor-normalized metrics, thresholds and per-disk RRD
     graphing support.
+  * fritzdsl - AVM FRITZ!Box DSL line monitoring via TR-064 (curl):
+    line state, sync rate, noise margin, attenuation and error
+    counters with thresholds and RRD graphing support; polls the box
+    from the Xymon server, no software on the box.

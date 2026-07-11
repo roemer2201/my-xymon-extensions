@@ -1,2 +1,3 @@
 /etc/xymon-standalone.cfg
 /usr/lib/xymon-standalone/etc/smart.cfg
+/usr/lib/xymon-standalone/etc/fritzdsl.cfg

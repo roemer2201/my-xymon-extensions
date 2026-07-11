@@ -15,6 +15,7 @@ URL:            https://github.com/roemer2201/my-xymon-extensions
 Source0:        %{name}-%{version}.tar.gz
 BuildArch:      noarch
 Requires:       smartmontools
+Recommends:     curl
 # "xymon-client" matches the Terabithia and EPEL package names;
 # rebuild with --define 'xymonclientpkg <name>' for other builds.
 %{!?xymonclientpkg: %global xymonclientpkg xymon-client}
@@ -28,6 +29,10 @@ Included extensions:
   basic SAS disks, plus eMMC wear/pre-EOL health (via mmc-utils),
   with vendor-normalized metrics, thresholds and per-disk RRD
   graphing support.
+* fritzdsl - AVM FRITZ!Box DSL line monitoring via TR-064 (curl):
+  line state, sync rate, noise margin, attenuation and error counters
+  with thresholds and RRD graphing support; polls the box from the
+  Xymon server, no software on the box.
 
 %prep
 %setup -q
@@ -43,6 +48,9 @@ sh packaging/common/stage.sh "%{buildroot}" \
 %config(noreplace) %{xymonhome}/etc/smart.cfg
 %dir %{xymonhome}/etc/tasks.d
 %config(noreplace) %{xymonhome}/etc/tasks.d/smart.cfg
+%{xymonhome}/ext/fritzdsl.sh
+%config(noreplace) %{xymonhome}/etc/fritzdsl.cfg
+%config(noreplace) %{xymonhome}/etc/tasks.d/fritzdsl.cfg
 %{_docdir}/%{name}/
 
 %post
@@ -54,9 +62,20 @@ my-xymon-extensions: to activate the "smart" extension:
     (add this line once if it is missing):
       directory %{xymonhome}/etc/tasks.d
  3. Restart the Xymon client service.
+The "fritzdsl" extension (FRITZ!Box DSL monitoring) ships disabled:
+ set FRITZ_USER/FRITZ_PASSWORD in %{xymonhome}/etc/fritzdsl.cfg, then
+ remove the DISABLED line from %{xymonhome}/etc/tasks.d/fritzdsl.cfg
+ and restart the client on the polling host (normally the Xymon
+ server).
 EOF
 
 %changelog
+* Sat Jul 11 2026 roemer2201 <r.oliver@web.de> - 0.4.0-1
+- fritzdsl: new extension - AVM FRITZ!Box DSL line monitoring via
+  TR-064 (curl): line state, sync rate, noise margin, attenuation
+  and error counters with thresholds, CRC-rate check and split-NCV
+  RRD graphing; ships disabled until credentials are configured
+
 * Fri Jul 10 2026 roemer2201 <r.oliver@web.de> - 0.3.0-1
 - smart: eMMC health monitoring (Linux) via mmc-utils - EXT_CSD life
   time estimation mapped to the wear metric, PRE_EOL_INFO as health

@@ -1,2 +1,4 @@
 /etc/xymon/smart.cfg
 /etc/xymon/tasks.d/smart.cfg
+/etc/xymon/fritzdsl.cfg
+/etc/xymon/tasks.d/fritzdsl.cfg

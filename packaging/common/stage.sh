@@ -39,13 +39,20 @@ inst 0755 extensions/smart/smart.sh "$DESTDIR$EXTDIR/smart.sh" || exit 1
 inst 0644 extensions/smart/smart.cfg "$DESTDIR$ETCDIR/smart.cfg$SUF" || exit 1
 inst 0644 packaging/common/tasks.d/smart.cfg "$DESTDIR$ETCDIR/tasks.d/smart.cfg$SUF" || exit 1
 
+inst 0755 extensions/fritzdsl/fritzdsl.sh "$DESTDIR$EXTDIR/fritzdsl.sh" || exit 1
+inst 0644 extensions/fritzdsl/fritzdsl.cfg "$DESTDIR$ETCDIR/fritzdsl.cfg$SUF" || exit 1
+inst 0644 packaging/common/tasks.d/fritzdsl.cfg "$DESTDIR$ETCDIR/tasks.d/fritzdsl.cfg$SUF" || exit 1
+
 if [ "$DOCDIR" != "-" ]; then
-    mkdir -p "$DESTDIR$DOCDIR/smart/server" || exit 1
+    mkdir -p "$DESTDIR$DOCDIR/smart/server" "$DESTDIR$DOCDIR/fritzdsl/server" || exit 1
     inst 0644 README.md "$DESTDIR$DOCDIR/README.md" || exit 1
     inst 0644 extensions/smart/README.md "$DESTDIR$DOCDIR/smart/README.md" || exit 1
     inst 0644 extensions/smart/sudoers.example "$DESTDIR$DOCDIR/smart/sudoers.example" || exit 1
     inst 0644 extensions/smart/server/README.md "$DESTDIR$DOCDIR/smart/server/README.md" || exit 1
     inst 0644 extensions/smart/server/graphs-smart.cfg "$DESTDIR$DOCDIR/smart/server/graphs-smart.cfg" || exit 1
+    inst 0644 extensions/fritzdsl/README.md "$DESTDIR$DOCDIR/fritzdsl/README.md" || exit 1
+    inst 0644 extensions/fritzdsl/server/README.md "$DESTDIR$DOCDIR/fritzdsl/server/README.md" || exit 1
+    inst 0644 extensions/fritzdsl/server/graphs-fritzdsl.cfg "$DESTDIR$DOCDIR/fritzdsl/server/graphs-fritzdsl.cfg" || exit 1
 fi
 
 exit 0

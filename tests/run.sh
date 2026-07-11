@@ -165,6 +165,136 @@ expect "$out" '^tmmc0_wear : 10$' \
     "eMMC-only mode still delivers the wear metric"
 
 # ----------------------------------------------------------------------
+echo "--- fritzdsl ---"
+export FAKECURL="$TESTDIR/fritzdsl/fakecurl"
+export FRITZDSL_CFG="$TESTDIR/fritzdsl/fritzdsl_test.cfg"
+unset FAKECURL_GETINFO FAKECURL_STATS FAKECURL_PPP FAKECURL_FAIL FAKECURL_401 2>/dev/null || true
+rm -f "$TMP"/fritzdsl.*.state
+
+# Healthy line
+# shellcheck disable=SC2086
+out=$($TESTSH "$REPO/extensions/fritzdsl/fritzdsl.sh")
+rc=$?
+if [ "$rc" -ne 0 ]; then
+    echo "FAIL: fritzdsl.sh exited with $rc"
+    printf '%s\n' "$out"
+    exit 1
+fi
+expect "$out" '^status fritzbox\.fritzdsl green ' \
+    "healthy line reports green to the configured REPORTHOST"
+expect "$out" 'DSL line: Up at 116797/46719 kbit/s' \
+    "summary line carries state and sync rate"
+expect "$out" '&green DSL line status: Up \(path: Interleaved\)' \
+    "line status detail with data path"
+expect "$out" '^data fritzbox\.fritzdsl$'   "data message for the RRDs is sent"
+expect "$out" '^rate_down : 116797$'        "downstream sync rate extracted"
+expect "$out" '^rate_up : 46719$'           "upstream sync rate extracted"
+expect "$out" '^maxrate_down : 130960$'     "attainable downstream rate extracted"
+expect "$out" '^margin_down : 6\.5$' \
+    "downstream noise margin converted from tenths of a dB"
+expect "$out" '^margin_up : 8\.0$'          "upstream noise margin converted"
+expect "$out" '^atten_down : 14\.2$'        "downstream attenuation converted"
+expect "$out" '^crc : 56$'                  "CRC error counter extracted"
+expect "$out" '^fec : 1234$'                "FEC error counter extracted"
+expect "$out" '^hec : 12$'                  "HEC error counter extracted"
+expect "$out" '^es : 42$'                   "errored seconds extracted"
+expect "$out" '^ses : 1$'                   "severely errored seconds extracted"
+expect "$out" '^retrain : 2$'               "link retrain counter extracted"
+expect "$out" '^uptime : 372705$'           "PPP uptime extracted"
+if [ -f "$TMP/fritzdsl.fritzbox.state" ]; then
+    echo "ok:   state file written for the CRC rate check"
+else
+    echo "FAIL: state file missing ($TMP/fritzdsl.fritzbox.state)"
+    FAIL=1
+fi
+
+# Rising CRC error rate + resync detection: fake a state file from
+# 5 minutes ago with counter 0 and a larger uptime. 56 CRC errors in
+# ~300 s = ~11.2/min, above the test threshold of 10/min; the uptime
+# going backwards must yield the resync note.
+printf '%s 0 999999\n' "$(($(date +%s) - 300))" > "$TMP/fritzdsl.fritzbox.state"
+# shellcheck disable=SC2086
+out=$($TESTSH "$REPO/extensions/fritzdsl/fritzdsl.sh")
+expect "$out" '^status fritzbox\.fritzdsl yellow ' \
+    "rising CRC error rate turns the column yellow"
+expect "$out" '&yellow CRC errors: 11\.[0-9]/min since the last poll' \
+    "CRC rate note shows the per-minute rate"
+expect "$out" 'connection was re-established since the last poll' \
+    "uptime going backwards yields the resync note"
+
+# Noise margin thresholds: downstream 4.5 dB (below warn 6),
+# upstream 2.8 dB (below crit 3)
+rm -f "$TMP"/fritzdsl.*.state
+# shellcheck disable=SC2086
+out=$(FAKECURL_GETINFO="$TESTDIR/fritzdsl/data/getinfo-lowmargin.xml" \
+    $TESTSH "$REPO/extensions/fritzdsl/fritzdsl.sh")
+expect "$out" '^status fritzbox\.fritzdsl red ' \
+    "noise margin below the critical threshold turns the column red"
+expect "$out" '&red upstream noise margin 2\.8 dB is below 3 dB' \
+    "critical upstream margin flagged"
+expect "$out" '&yellow downstream noise margin 4\.5 dB is below 6 dB' \
+    "low downstream margin flagged"
+
+# DSL line down
+rm -f "$TMP"/fritzdsl.*.state
+# shellcheck disable=SC2086
+out=$(FAKECURL_GETINFO="$TESTDIR/fritzdsl/data/getinfo-down.xml" \
+    $TESTSH "$REPO/extensions/fritzdsl/fritzdsl.sh")
+expect "$out" '^status fritzbox\.fritzdsl red ' "line down reports red"
+expect "$out" '&red DSL line status: Down'      "line down note present"
+expect_not "$out" 'noise margin 0\.0 dB is below' \
+    "margin thresholds are not applied while the line is down"
+
+# No PPP/IP WAN service (HTTP 404 on GetStatusInfo): no uptime metric,
+# but the column stays green
+rm -f "$TMP"/fritzdsl.*.state
+# shellcheck disable=SC2086
+out=$(FAKECURL_PPP=404 $TESTSH "$REPO/extensions/fritzdsl/fritzdsl.sh")
+expect "$out" '^status fritzbox\.fritzdsl green ' \
+    "missing WAN status service does not degrade the column"
+expect_not "$out" '^uptime :' "no uptime metric without a WAN status service"
+
+# Box unreachable
+# shellcheck disable=SC2086
+out=$(FAKECURL_FAIL=1 $TESTSH "$REPO/extensions/fritzdsl/fritzdsl.sh")
+expect "$out" '^status fritzbox\.fritzdsl red ' "unreachable box reports red"
+expect "$out" 'cannot reach the FRITZ!Box'      "unreachable note present"
+
+# Wrong credentials (HTTP 401)
+# shellcheck disable=SC2086
+out=$(FAKECURL_401=1 $TESTSH "$REPO/extensions/fritzdsl/fritzdsl.sh")
+expect "$out" '^status fritzbox\.fritzdsl yellow ' \
+    "authentication failure reports yellow"
+expect "$out" 'TR-064 authentication failed' "authentication note present"
+
+# curl not installed -> clear
+# shellcheck disable=SC2086
+out=$(FRITZDSL_CFG="$TESTDIR/fritzdsl/fritzdsl_test_nocurl.cfg" \
+    $TESTSH "$REPO/extensions/fritzdsl/fritzdsl.sh")
+expect "$out" '^status fritzbox\.fritzdsl clear ' "missing curl reports clear"
+expect "$out" 'curl not found'                    "missing curl hint present"
+
+# Not configured (no credentials): no report at all, hint on stderr
+# shellcheck disable=SC2086
+out=$(FRITZDSL_CFG="$TMP/does-not-exist.cfg" \
+    $TESTSH "$REPO/extensions/fritzdsl/fritzdsl.sh" 2>"$TMP/fritzdsl.stderr")
+rc=$?
+if [ "$rc" -ne 0 ]; then
+    echo "FAIL: unconfigured fritzdsl.sh exited with $rc"
+    FAIL=1
+fi
+if [ -n "$out" ]; then
+    echo "FAIL: unconfigured fritzdsl.sh must not send/print a report"
+    FAIL=1
+else
+    echo "ok:   unconfigured fritzdsl.sh stays silent (no ghost column)"
+fi
+expect "$(cat "$TMP/fritzdsl.stderr")" 'not configured' \
+    "unconfigured fritzdsl.sh hints on stderr"
+
+unset FRITZDSL_CFG
+
+# ----------------------------------------------------------------------
 echo "--- standalone: xymon-send.sh ---"
 
 # Fake "nc" that records its arguments and stdin instead of connecting.
