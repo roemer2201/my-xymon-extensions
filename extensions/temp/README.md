@@ -68,27 +68,34 @@ include) append:
 ```
 TEST2RRD+=",temp=ncv"
 SPLITNCV_temp="*:GAUGE"
-GRAPHS+=",tempext"
-GRAPHS_temp="tempext"
+GRAPHS+=",temp"
+GRAPHS_temp="temp"
 ```
 
 Note the leading comma — `+=` concatenates verbatim. If your stock
 `TEST2RRD` already contains a `temp` entry (some setups map it to the
-`temperature` module), replace that entry instead of appending.
+`temperature` module), replace that entry instead of appending. `temp`
+does not collide with Xymon's own stock `[temperature]` graph (a
+different name), so the plain name is fine here — no need for a
+separate `tempext`/`temperature` alias.
 
-Then add a graph definition to `graphs.cfg` (the name `tempext`
-avoids colliding with the stock `[temperature]` graph):
+Then add a graph definition to `graphs.cfg`. Split-NCV always stores
+the value in a dataset called `lambda`, regardless of test name — if
+you already have a `[temp]` section from an older/unrelated setup,
+just fix its `DEF` line to read from `lambda` instead of adding a new
+section:
 
 ```
-[tempext]
-    FNPATTERN temp,(.+).rrd
+[temp]
+    FNPATTERN temp,(.*).rrd
     TITLE Temperature sensors
     YAXIS Celsius
-    DEF:t@RRDIDX@=@RRDFN@:lambda:AVERAGE
-    LINE2:t@RRDIDX@#@COLOR@:@RRDPARAM@
-    GPRINT:t@RRDIDX@:LAST: %5.1lf (cur)
-    GPRINT:t@RRDIDX@:MAX: %5.1lf (max)
-    GPRINT:t@RRDIDX@:MIN: %5.1lf (min)\n
+    DEF:temp@RRDIDX@=@RRDFN@:lambda:AVERAGE
+    LINE2:temp@RRDIDX@#@COLOR@:@RRDPARAM@
+    GPRINT:temp@RRDIDX@:LAST: \: %4.1lf (cur)
+    GPRINT:temp@RRDIDX@:MAX: \: %4.1lf (max)
+    GPRINT:temp@RRDIDX@:MIN: \: %4.1lf (min)
+    GPRINT:temp@RRDIDX@:AVERAGE: \: %4.1lf (avg)\n
 ```
 
 Restart the Xymon server side (`xymond_rrd`) and check that files
