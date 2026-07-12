@@ -1,0 +1,46 @@
+#!/bin/sh
+# Minimal curl stand-in for the ntfy-alert unit tests: records the
+# command line, the stdin config (--config -) and the request body
+# (--data-binary @FILE) into $FAKECURL_CAPTURE, then prints a canned
+# HTTP status code the way "--write-out '%{http_code}'" would.
+#
+# Failure modes for the tests, selected via environment variables:
+#   FAKECURL_FAIL=1        transport error (exit 7, nothing on stdout)
+#   FAKECURL_HTTPCODE=NNN  HTTP status to report (default 200)
+set -u
+
+CAP="${FAKECURL_CAPTURE:?}"
+
+OUT="/dev/null"
+BODYFILE=""
+prev=""
+for arg; do
+    case "$prev" in
+        --output|-o) OUT=$arg ;;
+        --data-binary) BODYFILE=${arg#@} ;;
+    esac
+    prev=$arg
+done
+
+{
+    echo "ARGS: $*"
+    echo "--- stdin ---"
+    cat
+    if [ -n "$BODYFILE" ] && [ -r "$BODYFILE" ]; then
+        echo "--- body ---"
+        cat "$BODYFILE"
+    fi
+} >> "$CAP"
+
+if [ "${FAKECURL_FAIL:-0}" = "1" ]; then
+    echo "curl: (7) Failed to connect to ntfy.example.org port 443: Connection refused" >&2
+    exit 7
+fi
+
+CODE="${FAKECURL_HTTPCODE:-200}"
+case "$CODE" in
+    2??) printf '{"id":"faketest"}\n' > "$OUT" ;;
+    *)   printf '{"code":%s000,"error":"fake error"}\n' "$CODE" > "$OUT" ;;
+esac
+printf '%s' "$CODE"
+exit 0

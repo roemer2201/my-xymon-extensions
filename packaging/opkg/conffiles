@@ -5,3 +5,4 @@
 /usr/lib/xymon-standalone/etc/memory.cfg
 /usr/lib/xymon-standalone/etc/fritzdsl.cfg
 /usr/lib/xymon-standalone/etc/fritzwan.cfg
+/usr/lib/xymon-standalone/etc/ntfy-alert.cfg

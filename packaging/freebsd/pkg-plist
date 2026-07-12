@@ -4,6 +4,7 @@ www/xymon/client/ext/la.sh
 www/xymon/client/ext/memory.sh
 www/xymon/client/ext/fritzdsl.sh
 www/xymon/client/ext/fritzwan.sh
+www/xymon/client/ext/ntfy-alert.sh
 @sample www/xymon/client/etc/smart.cfg.sample
 @sample www/xymon/client/etc/temp.cfg.sample
 @sample www/xymon/client/etc/la.cfg.sample
@@ -16,6 +17,7 @@ www/xymon/client/ext/fritzwan.sh
 @sample www/xymon/client/etc/tasks.d/fritzdsl.cfg.sample
 @sample www/xymon/client/etc/fritzwan.cfg.sample
 @sample www/xymon/client/etc/tasks.d/fritzwan.cfg.sample
+@sample www/xymon/client/etc/ntfy-alert.cfg.sample
 share/doc/my-xymon-extensions/README.md
 share/doc/my-xymon-extensions/temp/README.md
 share/doc/my-xymon-extensions/la/README.md
@@ -30,3 +32,4 @@ share/doc/my-xymon-extensions/fritzdsl/server/graphs-fritzdsl.cfg
 share/doc/my-xymon-extensions/fritzwan/README.md
 share/doc/my-xymon-extensions/fritzwan/server/README.md
 share/doc/my-xymon-extensions/fritzwan/server/graphs-fritzwan.cfg
+share/doc/my-xymon-extensions/ntfy-alert/README.md

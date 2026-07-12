@@ -18,4 +18,6 @@ Description: Portable Xymon client extensions with standalone runner
  memory - memory utilization in percent; fritzdsl - AVM FRITZ!Box DSL
  line monitoring via TR-064; fritzwan - AVM FRITZ!Box WAN throughput
  monitoring (both need the curl package and stay silent until
- configured).
+ configured); ntfy-alert - alert script that forwards Xymon alerts as
+ ntfy push notifications (needs curl; only useful where xymond_alert
+ runs, i.e. on a Xymon server).

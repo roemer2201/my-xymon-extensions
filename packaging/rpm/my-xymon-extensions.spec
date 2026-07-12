@@ -43,6 +43,10 @@ Included extensions:
   link state, average throughput, link capacity and utilization from
   the box's 64-bit UPnP counters (TR-064 fallback), with optional
   utilization thresholds and RRD graphs.
+* ntfy-alert - alert script for the Xymon server: forwards Xymon
+  alerts as ntfy push notifications (curl, token auth), with
+  per-color priorities, recovery notices and an optional tap-to-open
+  link to the Xymon web UI; hooked into alerts.cfg via a SCRIPT rule.
 
 %prep
 %setup -q
@@ -73,6 +77,8 @@ sh packaging/common/stage.sh "%{buildroot}" \
 %{xymonhome}/ext/fritzwan.sh
 %config(noreplace) %{xymonhome}/etc/fritzwan.cfg
 %config(noreplace) %{xymonhome}/etc/tasks.d/fritzwan.cfg
+%{xymonhome}/ext/ntfy-alert.sh
+%config(noreplace) %{xymonhome}/etc/ntfy-alert.cfg
 %{_docdir}/%{name}/
 
 %post
@@ -88,9 +94,21 @@ The FRITZ!Box extensions "fritzdsl" and "fritzwan" ship disabled:
  configure %{xymonhome}/etc/fritzdsl.cfg resp. fritzwan.cfg, then
  remove the DISABLED line from the matching tasks.d snippet and
  restart the client on the polling host (normally the Xymon server).
+The "ntfy-alert" alert script ships unconfigured: on the Xymon server
+ set the ntfy URL and token in %{xymonhome}/etc/ntfy-alert.cfg
+ (chmod 600) and add a SCRIPT rule to alerts.cfg - see
+ %{_docdir}/%{name}/ntfy-alert/README.md
 EOF
 
 %changelog
+* Sun Jul 12 2026 roemer2201 <r.oliver@web.de> - 0.6.0-1
+- ntfy-alert: new alert script - forwards Xymon alerts as ntfy push
+  notifications (curl; the token travels via stdin, never on the
+  command line): per-color ntfy priorities and emoji tags, recovery
+  notices with outage duration, optional tap-to-open link to the
+  Xymon status page; hooked into the server's alerts.cfg via a
+  SCRIPT rule, logs an error when unconfigured
+
 * Sat Jul 11 2026 roemer2201 <r.oliver@web.de> - 0.5.0-1
 - fritzdsl: new extension - AVM FRITZ!Box DSL line monitoring via
   TR-064 (curl): line state, sync rate, noise margin, attenuation

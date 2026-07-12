@@ -27,6 +27,10 @@ Included extensions:
   box's 64-bit UPnP counters (TR-064 fallback). Polls the box from
   the Xymon server; requires ftp/curl and ships disabled until
   configured.
+* ntfy-alert - alert script for the Xymon server: forwards Xymon
+  alerts as ntfy push notifications, with per-color priorities and
+  recovery notices. Hooked into alerts.cfg via a SCRIPT rule;
+  requires ftp/curl and logs an error until configured.
 
 Requires net-mgmt/xymon-client and sysutils/smartmontools (>= 7.0).
 Activation steps (sudoers rule, tasks.d include, server-side graphs)

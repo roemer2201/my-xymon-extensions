@@ -49,11 +49,16 @@ inst 0755 extensions/fritzwan/fritzwan.sh "$DESTDIR$EXTDIR/fritzwan.sh" || exit 
 inst 0644 extensions/fritzwan/fritzwan.cfg "$DESTDIR$ETCDIR/fritzwan.cfg$SUF" || exit 1
 inst 0644 packaging/common/tasks.d/fritzwan.cfg "$DESTDIR$ETCDIR/tasks.d/fritzwan.cfg$SUF" || exit 1
 
+# ntfy-alert is an alert script run by xymond_alert (alerts.cfg SCRIPT
+# rule) on the Xymon server, not a client test - no tasks.d snippet.
+inst 0755 extensions/ntfy-alert/ntfy-alert.sh "$DESTDIR$EXTDIR/ntfy-alert.sh" || exit 1
+inst 0644 extensions/ntfy-alert/ntfy-alert.cfg "$DESTDIR$ETCDIR/ntfy-alert.cfg$SUF" || exit 1
+
 if [ "$DOCDIR" != "-" ]; then
     mkdir -p "$DESTDIR$DOCDIR/smart/server" "$DESTDIR$DOCDIR/fritzdsl/server" \
         "$DESTDIR$DOCDIR/fritzwan/server" || exit 1
     inst 0644 README.md "$DESTDIR$DOCDIR/README.md" || exit 1
-    for ext in temp la memory; do
+    for ext in temp la memory ntfy-alert; do
         mkdir -p "$DESTDIR$DOCDIR/$ext" || exit 1
         inst 0644 "extensions/$ext/README.md" "$DESTDIR$DOCDIR/$ext/README.md" || exit 1
     done

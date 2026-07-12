@@ -30,3 +30,8 @@ Description: Portable Xymon client extensions
     physical link state, average throughput, link capacity and
     utilization from the box's 64-bit UPnP counters (TR-064
     fallback), with optional utilization thresholds and RRD graphs.
+  * ntfy-alert - alert script for the Xymon server: forwards Xymon
+    alerts as ntfy push notifications (curl, token auth), with
+    per-color priorities, recovery notices and an optional
+    tap-to-open link to the Xymon web UI; hooked into alerts.cfg
+    via a SCRIPT rule.

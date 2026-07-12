@@ -10,3 +10,4 @@
 /etc/xymon/tasks.d/fritzdsl.cfg
 /etc/xymon/fritzwan.cfg
 /etc/xymon/tasks.d/fritzwan.cfg
+/etc/xymon/ntfy-alert.cfg

@@ -574,6 +574,164 @@ expect "$out" '^status testhost\.mem green ' \
     "column name is overridable via MEM_COLUMN"
 
 # ----------------------------------------------------------------------
+echo "--- ntfy-alert ---"
+NTFYSH="$REPO/extensions/ntfy-alert/ntfy-alert.sh"
+export FAKECURL_CAPTURE="$TMP/ntfy-capture"
+# Point NTFY_CFG at a non-existent file so a config on the build host
+# cannot interfere; all settings come from the environment instead.
+export NTFY_CFG="$TMP/no-such-ntfy.cfg"
+export CURL="$TESTDIR/ntfy-alert/fakecurl"
+export NTFY_URL="https://ntfy.example.org/"
+export NTFY_TOKEN="tk_test123"
+unset RCPT FAKECURL_HTTPCODE FAKECURL_FAIL 2>/dev/null || true
+
+# Red alert
+: > "$FAKECURL_CAPTURE"
+# shellcheck disable=SC2086
+out=$(BBHOSTNAME="web1.example.org" BBSVCNAME="disk" BBCOLORLEVEL="red" \
+    BBALPHAMSG="red Sat Jul 12 10:00:00 2026 disk on web1 is 95% full" \
+    ACKCODE="12345678" \
+    $TESTSH "$NTFYSH" xymon 2>"$TMP/ntfy.stderr")
+rc=$?
+if [ "$rc" -eq 0 ]; then
+    echo "ok:   ntfy-alert.sh exits 0 on a delivered red alert"
+else
+    echo "FAIL: ntfy-alert.sh exited with $rc"
+    cat "$TMP/ntfy.stderr"
+    FAIL=1
+fi
+captured=$(cat "$FAKECURL_CAPTURE")
+expect "$captured" 'ARGS: .* https://ntfy\.example\.org/xymon$' \
+    "topic appended to NTFY_URL (trailing slash normalized)"
+expect "$captured" 'X-Title: web1\.example\.org : disk is RED' \
+    "title carries host, service and upper-cased color"
+expect "$captured" 'X-Priority: high'   "red maps to priority high"
+expect "$captured" 'X-Tags: red_circle' "red maps to the red_circle tag"
+expect "$captured" 'header = "Authorization: Bearer tk_test123"' \
+    "token delivered via curl --config on stdin"
+expect_not "$captured" '^ARGS: .*tk_test123' \
+    "token does not appear on the curl command line"
+expect "$captured" 'disk on web1 is 95% full' \
+    "body carries the alert text (BBALPHAMSG)"
+expect "$captured" 'Acknowledge code: 12345678' \
+    "body carries the acknowledge code"
+expect_not "$captured" 'X-Click' "no click URL unless configured"
+
+# Yellow alert with a configured click URL
+: > "$FAKECURL_CAPTURE"
+# shellcheck disable=SC2086
+out=$(BBHOSTNAME="web1.example.org" BBSVCNAME="disk" BBCOLORLEVEL="yellow" \
+    BBALPHAMSG="yellow disk warning" \
+    NTFY_CLICKURL="https://xymon.example.org/xymon-cgi/svcstatus.sh" \
+    $TESTSH "$NTFYSH" xymon 2>/dev/null)
+captured=$(cat "$FAKECURL_CAPTURE")
+expect "$captured" 'X-Priority: default'   "yellow maps to priority default"
+expect "$captured" 'X-Tags: yellow_circle' "yellow maps to the yellow_circle tag"
+expect "$captured" 'header = "X-Click: https://xymon\.example\.org/xymon-cgi/svcstatus\.sh\?HOST=web1\.example\.org&SERVICE=disk"' \
+    "click URL built from NTFY_CLICKURL, host and service"
+
+# Recovery
+: > "$FAKECURL_CAPTURE"
+# shellcheck disable=SC2086
+out=$(BBHOSTNAME="web1.example.org" BBSVCNAME="disk" BBCOLORLEVEL="green" \
+    BBALPHAMSG="green disk ok" RECOVERED=1 DOWNSECSMSG="Event duration : 754 seconds" \
+    $TESTSH "$NTFYSH" xymon 2>/dev/null)
+captured=$(cat "$FAKECURL_CAPTURE")
+expect "$captured" 'X-Title: web1\.example\.org : disk recovered' \
+    "recovery notice announced in the title"
+expect "$captured" 'X-Priority: low'         "recovery maps to priority low"
+expect "$captured" 'X-Tags: white_check_mark' "recovery maps to the check mark tag"
+expect "$captured" 'Event duration : 754 seconds' \
+    "body carries the outage duration"
+
+# Full URL as the recipient overrides NTFY_URL
+: > "$FAKECURL_CAPTURE"
+# shellcheck disable=SC2086
+out=$(NTFY_URL="" BBHOSTNAME=h BBSVCNAME=s BBCOLORLEVEL=red BBALPHAMSG=m \
+    $TESTSH "$NTFYSH" "https://other.example.net/critical" 2>/dev/null)
+expect "$(cat "$FAKECURL_CAPTURE")" \
+    'ARGS: .* https://other\.example\.net/critical$' \
+    "a full URL as the recipient overrides NTFY_URL"
+
+# Body truncation at NTFY_MAXCHARS
+: > "$FAKECURL_CAPTURE"
+# shellcheck disable=SC2086
+out=$(NTFY_MAXCHARS=20 BBHOSTNAME=h BBSVCNAME=s BBCOLORLEVEL=red \
+    BBALPHAMSG="0123456789 0123456789 0123456789 0123456789" \
+    $TESTSH "$NTFYSH" xymon 2>/dev/null)
+expect "$(cat "$FAKECURL_CAPTURE")" '\[\.\.\. truncated \.\.\.\]' \
+    "over-long body truncated at NTFY_MAXCHARS"
+
+# Missing token: error on stderr, non-zero exit, no request sent
+: > "$FAKECURL_CAPTURE"
+# shellcheck disable=SC2086
+if NTFY_TOKEN="" BBHOSTNAME=h BBSVCNAME=s BBCOLORLEVEL=red BBALPHAMSG=m \
+    $TESTSH "$NTFYSH" xymon 2>"$TMP/ntfy.stderr"; then
+    echo "FAIL: missing token must exit non-zero"
+    FAIL=1
+else
+    echo "ok:   missing token exits non-zero"
+fi
+expect "$(cat "$TMP/ntfy.stderr")" 'no ntfy token' \
+    "missing token logs an error to stderr"
+if [ -s "$FAKECURL_CAPTURE" ]; then
+    echo "FAIL: missing token must not send a request"
+    FAIL=1
+else
+    echo "ok:   missing token sends nothing"
+fi
+
+# Missing topic (no recipient)
+# shellcheck disable=SC2086
+if BBHOSTNAME=h BBSVCNAME=s BBCOLORLEVEL=red BBALPHAMSG=m \
+    $TESTSH "$NTFYSH" 2>"$TMP/ntfy.stderr"; then
+    echo "FAIL: missing topic must exit non-zero"
+    FAIL=1
+else
+    echo "ok:   missing topic exits non-zero"
+fi
+expect "$(cat "$TMP/ntfy.stderr")" 'no ntfy topic' \
+    "missing topic logs an error to stderr"
+
+# Missing NTFY_URL with a bare topic
+# shellcheck disable=SC2086
+if NTFY_URL="" BBHOSTNAME=h BBSVCNAME=s BBCOLORLEVEL=red BBALPHAMSG=m \
+    $TESTSH "$NTFYSH" xymon 2>"$TMP/ntfy.stderr"; then
+    echo "FAIL: missing NTFY_URL must exit non-zero"
+    FAIL=1
+else
+    echo "ok:   missing NTFY_URL exits non-zero"
+fi
+expect "$(cat "$TMP/ntfy.stderr")" 'NTFY_URL is not set' \
+    "missing NTFY_URL logs an error to stderr"
+
+# Rejected token (HTTP 403)
+# shellcheck disable=SC2086
+if FAKECURL_HTTPCODE=403 BBHOSTNAME=h BBSVCNAME=s BBCOLORLEVEL=red \
+    BBALPHAMSG=m $TESTSH "$NTFYSH" xymon 2>"$TMP/ntfy.stderr"; then
+    echo "FAIL: HTTP 403 must exit non-zero"
+    FAIL=1
+else
+    echo "ok:   HTTP 403 exits non-zero"
+fi
+expect "$(cat "$TMP/ntfy.stderr")" 'rejected the token \(HTTP 403\)' \
+    "rejected token logs an error to stderr"
+
+# ntfy server unreachable
+# shellcheck disable=SC2086
+if FAKECURL_FAIL=1 BBHOSTNAME=h BBSVCNAME=s BBCOLORLEVEL=red \
+    BBALPHAMSG=m $TESTSH "$NTFYSH" xymon 2>"$TMP/ntfy.stderr"; then
+    echo "FAIL: unreachable server must exit non-zero"
+    FAIL=1
+else
+    echo "ok:   unreachable server exits non-zero"
+fi
+expect "$(cat "$TMP/ntfy.stderr")" 'cannot reach the ntfy server' \
+    "unreachable server logs an error to stderr"
+
+unset NTFY_CFG CURL NTFY_URL NTFY_TOKEN FAKECURL_CAPTURE
+
+# ----------------------------------------------------------------------
 echo "--- standalone: xymon-send.sh ---"
 
 # Fake "nc" that records its arguments and stdin instead of connecting.

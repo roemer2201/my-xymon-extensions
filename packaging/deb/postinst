@@ -18,6 +18,10 @@ The FRITZ!Box extensions "fritzdsl" and "fritzwan" ship disabled:
  configure /etc/xymon/fritzdsl.cfg resp. fritzwan.cfg, then remove
  the DISABLED line from the matching /etc/xymon/tasks.d/ snippet and
  restart the client on the polling host (normally the Xymon server).
+The "ntfy-alert" alert script ships unconfigured: on the Xymon server
+ set the ntfy URL and token in /etc/xymon/ntfy-alert.cfg (chmod 600)
+ and add a SCRIPT rule to alerts.cfg - see
+ /usr/share/doc/my-xymon-extensions/ntfy-alert/README.md
 EOF
         ;;
 esac
