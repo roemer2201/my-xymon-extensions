@@ -9,7 +9,7 @@ all: test
 test: shellcheck unittest
 
 shellcheck:
-	shellcheck --shell=sh extensions/*/*.sh standalone/*.sh tests/run.sh tests/smart/fakesmartctl tests/smart/fakemmc tests/fritzdsl/fakecurl tests/fritzwan/fakecurl packaging/*/*.sh
+	shellcheck --shell=sh extensions/*/*.sh standalone/*.sh tests/run.sh tests/smart/fakesmartctl tests/smart/fakemmc tests/fritzdsl/fakecurl tests/fritzwan/fakecurl tests/wifi/fakeiw tests/wifi/fakeubus tests/wifi/fakeiwinfo packaging/*/*.sh
 
 unittest:
 	sh tests/run.sh

@@ -1,0 +1,41 @@
+#!/bin/sh
+# Fake "iw" for the wifi.sh unit tests: answers from canned files in
+# tests/wifi/data/ instead of talking to nl80211.
+#
+#   iw dev                        -> $FAKEIW_DEV     (default data/iw_dev.txt)
+#   iw dev <if> survey dump       -> $FAKEIW_SURVEY  (default data/survey.<if>.txt)
+#   iw dev <if> station dump      -> $FAKEIW_STATION (default data/station.<if>.txt)
+#
+# A missing per-interface file yields empty output (like a radio with
+# no survey/station data). FAKEIW_FAIL=1 makes every call fail.
+set -u
+
+DATADIR=$(dirname "$0")/data
+
+if [ "${FAKEIW_FAIL:-0}" = "1" ]; then
+    exit 1
+fi
+
+if [ "${1:-}" = "dev" ] && [ $# -eq 1 ]; then
+    cat "${FAKEIW_DEV:-$DATADIR/iw_dev.txt}"
+    exit 0
+fi
+
+if [ "${1:-}" = "dev" ] && [ "${3:-}" = "survey" ] && [ "${4:-}" = "dump" ]; then
+    f="${FAKEIW_SURVEY:-$DATADIR/survey.$2.txt}"
+    if [ -r "$f" ]; then
+        cat "$f"
+    fi
+    exit 0
+fi
+
+if [ "${1:-}" = "dev" ] && [ "${3:-}" = "station" ] && [ "${4:-}" = "dump" ]; then
+    f="${FAKEIW_STATION:-$DATADIR/station.$2.txt}"
+    if [ -r "$f" ]; then
+        cat "$f"
+    fi
+    exit 0
+fi
+
+echo "fakeiw: unexpected invocation: $*" >&2
+exit 1

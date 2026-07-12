@@ -1,0 +1,46 @@
+phy#1
+        Interface phy1-ap1
+                ifindex 10
+                wdev 0x100000003
+                addr 16:36:0e:4b:e6:f8
+                ssid Steingasse-IoT-5G
+                type AP
+                channel 36 (5180 MHz), width: 80 MHz, center1: 5210 MHz
+                txpower 23.00 dBm
+                multicast TXQ:
+                        qsz-byt qsz-pkt flows   drops   marks   overlmt hashcol tx-bytes        tx-packets
+                        0       0       0       0       0       0       0       0               0
+        Interface phy1-ap0
+                ifindex 7
+                wdev 0x100000002
+                addr 14:36:0e:4b:e6:f8
+                ssid Steingasse-5G
+                type AP
+                channel 36 (5180 MHz), width: 80 MHz, center1: 5210 MHz
+                txpower 23.00 dBm
+                multicast TXQ:
+                        qsz-byt qsz-pkt flows   drops   marks   overlmt hashcol tx-bytes        tx-packets
+                        0       0       11954623        25      0       13883   5798    1512725065              12219200
+phy#0
+        Interface phy0-ap1
+                ifindex 9
+                wdev 0x3
+                addr 16:36:0e:4b:e6:f7
+                ssid Steingasse-IoT
+                type AP
+                channel 1 (2412 MHz), width: 20 MHz, center1: 2412 MHz
+                txpower 20.00 dBm
+                multicast TXQ:
+                        qsz-byt qsz-pkt flows   drops   marks   overlmt hashcol tx-bytes        tx-packets
+                        0       0       54      0       0       0       59      3540            59
+        Interface phy0-ap0
+                ifindex 8
+                wdev 0x2
+                addr 14:36:0e:4b:e6:f7
+                ssid Steingasse
+                type AP
+                channel 1 (2412 MHz), width: 20 MHz, center1: 2412 MHz
+                txpower 20.00 dBm
+                multicast TXQ:
+                        qsz-byt qsz-pkt flows   drops   marks   overlmt hashcol tx-bytes        tx-packets
+                        0       0       12680735        10      0       35284   48914   1623838027              13090533

@@ -1,0 +1,23 @@
+50:03:CF:1E:31:A4  -49 dBm / -100 dBm (SNR 51)  22320 ms ago
+        RX: 433.3 MBit/s, VHT-MCS 9, 80MHz, VHT-NSS 1    233699 Pkts.
+        TX: 390.0 MBit/s, VHT-MCS 9, 80MHz, VHT-NSS 1     13140 Pkts.
+        expected throughput: unknown
+
+56:90:6C:17:92:C5  -82 dBm / -100 dBm (SNR 18)  41644670 ms ago
+        RX: 390.0 MBit/s, VHT-MCS 4, 80MHz, VHT-NSS 2    747952 Pkts.
+        TX: 526.6 MBit/s, VHT-MCS 6, 80MHz, VHT-NSS 2   8848140 Pkts.
+        expected throughput: unknown
+
+4E:CC:3E:00:5D:EC  -39 dBm / -100 dBm (SNR 61)  7340 ms ago
+        RX: 866.7 MBit/s, VHT-MCS 9, 80MHz, VHT-NSS 2    651848 Pkts.
+        TX: 866.7 MBit/s, VHT-MCS 9, 80MHz, VHT-NSS 2    641220 Pkts.
+        expected throughput: unknown
+
+0A:DA:3F:AE:17:75  -41 dBm / -100 dBm (SNR 59)  5440 ms ago
+        RX: 866.7 MBit/s, VHT-MCS 9, 80MHz, VHT-NSS 2    323143 Pkts.
+        TX: 650.0 MBit/s, VHT-MCS 7, 80MHz, VHT-NSS 2    306718 Pkts.
+        expected throughput: unknown
+
+36:26:D3:EC:EE:D8  -42 dBm / -100 dBm (SNR 58)  4060 ms ago
+        RX: 780.0 MBit/s, VHT-MCS 8, 80MHz, VHT-NSS 2     75699 Pkts.
+        TX: 866.7 MBit/s, VHT-MCS 9, 80MHz, VHT-NSS 2    392296 Pkts
