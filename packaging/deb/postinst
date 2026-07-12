@@ -12,8 +12,8 @@ my-xymon-extensions: to activate the "smart" extension:
       directory /etc/xymon/tasks.d
  3. Restart the client: service xymon-client restart
  The "temp" extension is active via tasks.d as well; "la" and "memory"
- ship disabled (see /etc/xymon/tasks.d) because the Xymon client
- already reports those columns on full clients.
+ ship disabled (see /etc/xymon/tasks.d) because a full Xymon client
+ already reports this information itself.
 The FRITZ!Box extensions "fritzdsl" and "fritzwan" ship disabled:
  configure /etc/xymon/fritzdsl.cfg resp. fritzwan.cfg, then remove
  the DISABLED line from the matching /etc/xymon/tasks.d/ snippet and
