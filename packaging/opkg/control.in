@@ -15,7 +15,8 @@ Description: Portable Xymon client extensions with standalone runner
  SATA/ATA and NVMe disks, plus eMMC wear/pre-EOL health via mmc-utils;
  temp - all hwmon/thermal temperature sensors (CPU/SoC and switch on
  the Turris Omnia); la - load average with per-core thresholds;
- memory - memory utilization in percent; fritzdsl - AVM FRITZ!Box DSL
- line monitoring via TR-064; fritzwan - AVM FRITZ!Box WAN throughput
- monitoring (both need the curl package and stay silent until
- configured).
+ memory - memory utilization in percent; opkg - pending package
+ updates (refreshes the package lists itself, security-relevant
+ updates turn red); fritzdsl - AVM FRITZ!Box DSL line monitoring via
+ TR-064; fritzwan - AVM FRITZ!Box WAN throughput monitoring (both
+ need the curl package and stay silent until configured).

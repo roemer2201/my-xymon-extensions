@@ -3,5 +3,6 @@
 /etc/xymon-standalone/temp.cfg
 /etc/xymon-standalone/la.cfg
 /etc/xymon-standalone/memory.cfg
+/etc/xymon-standalone/opkg.cfg
 /etc/xymon-standalone/fritzdsl.cfg
 /etc/xymon-standalone/fritzwan.cfg

@@ -35,6 +35,9 @@ Included extensions:
   default: the Xymon client already covers this on full clients).
 * memory - memory utilization in percent (task disabled by default:
   the Xymon client already covers this on full clients).
+* opkg - pending package updates on opkg-based systems
+  (OpenWrt/TurrisOS; task disabled by default: hosts with a full
+  Xymon client have no opkg).
 * fritzdsl - AVM FRITZ!Box DSL line monitoring via TR-064 (curl):
   line state, sync rate, noise margin, attenuation and error counters
   with thresholds and RRD graphing support; polls the box from the
@@ -59,15 +62,18 @@ sh packaging/common/stage.sh "%{buildroot}" \
 %{xymonhome}/ext/temp.sh
 %{xymonhome}/ext/la.sh
 %{xymonhome}/ext/memory.sh
+%{xymonhome}/ext/opkg.sh
 %config(noreplace) %{xymonhome}/etc/smart.cfg
 %config(noreplace) %{xymonhome}/etc/temp.cfg
 %config(noreplace) %{xymonhome}/etc/la.cfg
 %config(noreplace) %{xymonhome}/etc/memory.cfg
+%config(noreplace) %{xymonhome}/etc/opkg.cfg
 %dir %{xymonhome}/etc/tasks.d
 %config(noreplace) %{xymonhome}/etc/tasks.d/smart.cfg
 %config(noreplace) %{xymonhome}/etc/tasks.d/temp.cfg
 %config(noreplace) %{xymonhome}/etc/tasks.d/la.cfg
 %config(noreplace) %{xymonhome}/etc/tasks.d/memory.cfg
+%config(noreplace) %{xymonhome}/etc/tasks.d/opkg.cfg
 %{xymonhome}/ext/fritzdsl.sh
 %config(noreplace) %{xymonhome}/etc/fritzdsl.cfg
 %config(noreplace) %{xymonhome}/etc/tasks.d/fritzdsl.cfg
@@ -92,6 +98,15 @@ The FRITZ!Box extensions "fritzdsl" and "fritzwan" ship disabled:
 EOF
 
 %changelog
+* Sun Jul 12 2026 roemer2201 <r.oliver@web.de> - 0.8.0-1
+- opkg: new extension - pending package update monitoring for
+  opkg-based systems (OpenWrt/TurrisOS): refreshes the package lists
+  itself when they are missing or stale (they live in RAM on
+  OpenWrt), yellow on available updates, red when an update matches
+  a configurable list of security-relevant package patterns, clear
+  where opkg does not exist; NCV lines for RRD graphing; the task
+  snippet ships disabled on full clients
+
 * Sat Jul 11 2026 roemer2201 <r.oliver@web.de> - 0.5.0-1
 - fritzdsl: new extension - AVM FRITZ!Box DSL line monitoring via
   TR-064 (curl): line state, sync rate, noise margin, attenuation
