@@ -48,7 +48,7 @@ Include the graph definitions shipped in this directory:
 include /etc/xymon/graphs.d/smart.cfg
 ```
 
-or append the contents of `smart.cfg` to your `graphs.cfg`.
+or append the contents of `graphs.d/smart.cfg` to your `graphs.cfg`.
 
 ## 3. Restart / verify
 

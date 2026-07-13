@@ -81,7 +81,7 @@ wins. Defaults work out of the box on OpenWrt/TurrisOS.
 ## Graphing (Xymon server setup)
 
 See [`server/README.md`](server/README.md) — split-NCV setup plus the
-graph definitions in [`server/wifi.cfg`](server/wifi.cfg).
+graph definitions in [`server/graphs.d/wifi.cfg`](server/graphs.d/wifi.cfg).
 
 ## Packaging notes
 

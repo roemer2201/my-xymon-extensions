@@ -47,7 +47,7 @@ Include the graph definitions shipped in this directory:
 include /etc/xymon/graphs.d/fritzdsl.cfg
 ```
 
-or append the contents of `fritzdsl.cfg` to your `graphs.cfg`.
+or append the contents of `graphs.d/fritzdsl.cfg` to your `graphs.cfg`.
 
 ## 3. Restart / verify
 

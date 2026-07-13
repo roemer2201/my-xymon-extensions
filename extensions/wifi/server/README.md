@@ -34,7 +34,7 @@ Include the graph definitions shipped in this directory:
 include /etc/xymon/graphs.d/wifi.cfg
 ```
 
-or append the contents of `wifi.cfg` to your `graphs.cfg`.
+or append the contents of `graphs.d/wifi.cfg` to your `graphs.cfg`.
 
 ## 3. Restart / verify
 
@@ -47,7 +47,7 @@ ls $XYMONVAR/rrd/<ap-host>/wifi,*
 ```
 
 The number of RRD files varies with the host's radios and SSIDs —
-that is expected; the FNPATTERNs in `wifi.cfg` pick up
+that is expected; the FNPATTERNs in `graphs.d/wifi.cfg` pick up
 whatever exists.
 
 ## Alerting
