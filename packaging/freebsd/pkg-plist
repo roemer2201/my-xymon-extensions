@@ -39,4 +39,4 @@ share/doc/my-xymon-extensions/fritzwan/server/README.md
 share/doc/my-xymon-extensions/fritzwan/server/graphs-fritzwan.cfg
 share/doc/my-xymon-extensions/wifi/README.md
 share/doc/my-xymon-extensions/wifi/server/README.md
-share/doc/my-xymon-extensions/wifi/server/graphs-wifi.cfg
+share/doc/my-xymon-extensions/wifi/server/graphs.d/wifi.cfg

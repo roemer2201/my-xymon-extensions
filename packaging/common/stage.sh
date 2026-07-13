@@ -62,7 +62,7 @@ task fritzwan || exit 1
 
 if [ "$DOCDIR" != "-" ]; then
     mkdir -p "$DESTDIR$DOCDIR/smart/server" "$DESTDIR$DOCDIR/fritzdsl/server" \
-        "$DESTDIR$DOCDIR/fritzwan/server" "$DESTDIR$DOCDIR/wifi/server" || exit 1
+        "$DESTDIR$DOCDIR/fritzwan/server" "$DESTDIR$DOCDIR/wifi/server/graphs.d" || exit 1
     inst 0644 README.md "$DESTDIR$DOCDIR/README.md" || exit 1
     for ext in temp la memory opkg; do
         mkdir -p "$DESTDIR$DOCDIR/$ext" || exit 1
@@ -80,7 +80,7 @@ if [ "$DOCDIR" != "-" ]; then
     inst 0644 extensions/fritzwan/server/graphs-fritzwan.cfg "$DESTDIR$DOCDIR/fritzwan/server/graphs-fritzwan.cfg" || exit 1
     inst 0644 extensions/wifi/README.md "$DESTDIR$DOCDIR/wifi/README.md" || exit 1
     inst 0644 extensions/wifi/server/README.md "$DESTDIR$DOCDIR/wifi/server/README.md" || exit 1
-    inst 0644 extensions/wifi/server/graphs-wifi.cfg "$DESTDIR$DOCDIR/wifi/server/graphs-wifi.cfg" || exit 1
+    inst 0644 extensions/wifi/server/graphs.d/wifi.cfg "$DESTDIR$DOCDIR/wifi/server/graphs.d/wifi.cfg" || exit 1
 fi
 
 exit 0
