@@ -5,6 +5,7 @@ www/xymon/client/ext/memory.sh
 www/xymon/client/ext/opkg.sh
 www/xymon/client/ext/fritzdsl.sh
 www/xymon/client/ext/fritzwan.sh
+www/xymon/client/ext/wifi.sh
 @sample www/xymon/client/etc/smart.cfg.sample
 @sample www/xymon/client/etc/temp.cfg.sample
 @sample www/xymon/client/etc/la.cfg.sample
@@ -19,6 +20,8 @@ www/xymon/client/ext/fritzwan.sh
 @sample www/xymon/client/etc/tasks.d/fritzdsl.cfg.sample
 @sample www/xymon/client/etc/fritzwan.cfg.sample
 @sample www/xymon/client/etc/tasks.d/fritzwan.cfg.sample
+@sample www/xymon/client/etc/wifi.cfg.sample
+@sample www/xymon/client/etc/tasks.d/wifi.cfg.sample
 share/doc/my-xymon-extensions/README.md
 share/doc/my-xymon-extensions/temp/README.md
 share/doc/my-xymon-extensions/la/README.md
@@ -34,3 +37,6 @@ share/doc/my-xymon-extensions/fritzdsl/server/graphs-fritzdsl.cfg
 share/doc/my-xymon-extensions/fritzwan/README.md
 share/doc/my-xymon-extensions/fritzwan/server/README.md
 share/doc/my-xymon-extensions/fritzwan/server/graphs-fritzwan.cfg
+share/doc/my-xymon-extensions/wifi/README.md
+share/doc/my-xymon-extensions/wifi/server/README.md
+share/doc/my-xymon-extensions/wifi/server/graphs-wifi.cfg

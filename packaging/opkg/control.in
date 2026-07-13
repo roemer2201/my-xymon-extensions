@@ -17,6 +17,9 @@ Description: Portable Xymon client extensions with standalone runner
  the Turris Omnia); la - load average with per-core thresholds;
  memory - memory utilization in percent; opkg - pending package
  updates (refreshes the package lists itself, security-relevant
- updates turn red); fritzdsl - AVM FRITZ!Box DSL line monitoring via
+ updates turn red); wifi - Wi-Fi access point metadata via
+ iw/ubus/iwinfo (client counts, channel utilization, airtime,
+ throughput, TX retries, noise floor; reports clear on routers
+ without AP radios); fritzdsl - AVM FRITZ!Box DSL line monitoring via
  TR-064; fritzwan - AVM FRITZ!Box WAN throughput monitoring (both
  need the curl package and stay silent until configured).

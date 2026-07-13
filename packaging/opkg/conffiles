@@ -6,3 +6,4 @@
 /etc/xymon-standalone/opkg.cfg
 /etc/xymon-standalone/fritzdsl.cfg
 /etc/xymon-standalone/fritzwan.cfg
+/etc/xymon-standalone/wifi.cfg

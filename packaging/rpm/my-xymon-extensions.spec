@@ -46,6 +46,10 @@ Included extensions:
   link state, average throughput, link capacity and utilization from
   the box's 64-bit UPnP counters (TR-064 fallback), with optional
   utilization thresholds and RRD graphs.
+* wifi - Wi-Fi access point metadata via iw/nl80211 (task disabled by
+  default: full clients are rarely APs): client counts, channel
+  utilization, airtime, throughput, TX retries and noise floor with
+  RRD graphing; informational only.
 
 %prep
 %setup -q
@@ -80,6 +84,9 @@ sh packaging/common/stage.sh "%{buildroot}" \
 %{xymonhome}/ext/fritzwan.sh
 %config(noreplace) %{xymonhome}/etc/fritzwan.cfg
 %config(noreplace) %{xymonhome}/etc/tasks.d/fritzwan.cfg
+%{xymonhome}/ext/wifi.sh
+%config(noreplace) %{xymonhome}/etc/wifi.cfg
+%config(noreplace) %{xymonhome}/etc/tasks.d/wifi.cfg
 %{_docdir}/%{name}/
 
 %post
@@ -95,10 +102,13 @@ The FRITZ!Box extensions "fritzdsl" and "fritzwan" ship disabled:
  configure %{xymonhome}/etc/fritzdsl.cfg resp. fritzwan.cfg, then
  remove the DISABLED line from the matching tasks.d snippet and
  restart the client on the polling host (normally the Xymon server).
+The "wifi" extension ships disabled too: enable it (remove the
+ DISABLED line from the tasks.d snippet) only on a Linux access
+ point with iw installed.
 EOF
 
 %changelog
-* Sun Jul 12 2026 roemer2201 <r.oliver@web.de> - 0.8.0-1
+* Mon Jul 13 2026 roemer2201 <r.oliver@web.de> - 0.9.0-1
 - opkg: new extension - pending package update monitoring for
   opkg-based systems (OpenWrt/TurrisOS): refreshes the package lists
   itself when they are missing or stale (they live in RAM on
@@ -106,6 +116,14 @@ EOF
   a configurable list of security-relevant package patterns, clear
   where opkg does not exist; NCV lines for RRD graphing; the task
   snippet ships disabled on full clients
+
+* Sun Jul 12 2026 roemer2201 <r.oliver@web.de> - 0.8.0-1
+- wifi: new extension - Wi-Fi access point metadata via iw/nl80211
+  and (on OpenWrt) ubus/hostapd and iwinfo: client counts per SSID
+  interface, channel utilization and noise floor per radio, interface
+  throughput, client airtime and TX retry/failure rates computed from
+  a state file between polls; informational only (green/clear),
+  split-NCV RRD graphing; task snippet ships disabled on full clients
 
 * Sat Jul 11 2026 roemer2201 <r.oliver@web.de> - 0.5.0-1
 - fritzdsl: new extension - AVM FRITZ!Box DSL line monitoring via

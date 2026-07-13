@@ -1,0 +1,36 @@
+#!/bin/sh
+# Fake "ubus" for the wifi.sh unit tests.
+#
+#   ubus call hostapd.<if> get_clients -> data/hostapd.<if>.json
+#
+# A missing per-interface file fails like ubus does for an object that
+# does not exist (this is what triggers the iwinfo fallback).
+# FAKEUBUS_JSON overrides the answer for every interface;
+# FAKEUBUS_FAIL=1 makes every call fail (no ubus at all).
+set -u
+
+DATADIR=$(dirname "$0")/data
+
+if [ "${FAKEUBUS_FAIL:-0}" = "1" ]; then
+    exit 1
+fi
+
+if [ "${1:-}" = "call" ] && [ "${3:-}" = "get_clients" ]; then
+    case "${2:-}" in
+        hostapd.*) ;;
+        *) echo "fakeubus: unexpected object: ${2:-}" >&2; exit 1 ;;
+    esac
+    if [ -n "${FAKEUBUS_JSON:-}" ]; then
+        cat "$FAKEUBUS_JSON"
+        exit 0
+    fi
+    f="$DATADIR/hostapd.${2#hostapd.}.json"
+    if [ -r "$f" ]; then
+        cat "$f"
+        exit 0
+    fi
+    exit 1
+fi
+
+echo "fakeubus: unexpected invocation: $*" >&2
+exit 1

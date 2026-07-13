@@ -40,6 +40,7 @@ my-xymon-extensions/
 | [memory](extensions/memory/) | `mem` | Memory utilization in percent from /proc/meminfo; for clientless hosts — the task ships disabled where a full Xymon client runs |
 | [fritzdsl](extensions/fritzdsl/) | `fritzdsl` | AVM FRITZ!Box DSL line monitoring via TR-064 (curl): line state, sync rate, noise margin, attenuation, error counters — thresholds/alerts and RRD graphs; polls the box from the Xymon server, no software on the box |
 | [fritzwan](extensions/fritzwan/) | `fritzwan` | AVM FRITZ!Box WAN throughput monitoring (curl): physical link state, average throughput, link capacity and utilization from the box's 64-bit UPnP counters (TR-064 fallback) — optional utilization thresholds and RRD graphs |
+| [wifi](extensions/wifi/) | `wifi` | Wi-Fi access point metadata via iw/nl80211 plus ubus/hostapd and iwinfo on OpenWrt: client counts per SSID interface, channel utilization and noise per radio, throughput, client airtime and TX retry rates — informational only (green/clear), RRD graphs; for OpenWrt/TurrisOS APs via the standalone runner |
 
 ## Design principles
 
