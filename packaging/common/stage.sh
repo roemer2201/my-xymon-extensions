@@ -61,8 +61,10 @@ inst 0644 extensions/fritzwan/fritzwan.cfg "$DESTDIR$ETCDIR/fritzwan.cfg$SUF" ||
 task fritzwan || exit 1
 
 if [ "$DOCDIR" != "-" ]; then
-    mkdir -p "$DESTDIR$DOCDIR/smart/server" "$DESTDIR$DOCDIR/fritzdsl/server" \
-        "$DESTDIR$DOCDIR/fritzwan/server" "$DESTDIR$DOCDIR/wifi/server" || exit 1
+    mkdir -p "$DESTDIR$DOCDIR/smart/server/graphs.d" \
+        "$DESTDIR$DOCDIR/fritzdsl/server/graphs.d" \
+        "$DESTDIR$DOCDIR/fritzwan/server/graphs.d" \
+        "$DESTDIR$DOCDIR/wifi/server/graphs.d" || exit 1
     inst 0644 README.md "$DESTDIR$DOCDIR/README.md" || exit 1
     for ext in temp la memory; do
         mkdir -p "$DESTDIR$DOCDIR/$ext" || exit 1
@@ -71,16 +73,16 @@ if [ "$DOCDIR" != "-" ]; then
     inst 0644 extensions/smart/README.md "$DESTDIR$DOCDIR/smart/README.md" || exit 1
     inst 0644 extensions/smart/sudoers.example "$DESTDIR$DOCDIR/smart/sudoers.example" || exit 1
     inst 0644 extensions/smart/server/README.md "$DESTDIR$DOCDIR/smart/server/README.md" || exit 1
-    inst 0644 extensions/smart/server/graphs-smart.cfg "$DESTDIR$DOCDIR/smart/server/graphs-smart.cfg" || exit 1
+    inst 0644 extensions/smart/server/graphs.d/smart.cfg "$DESTDIR$DOCDIR/smart/server/graphs.d/smart.cfg" || exit 1
     inst 0644 extensions/fritzdsl/README.md "$DESTDIR$DOCDIR/fritzdsl/README.md" || exit 1
     inst 0644 extensions/fritzdsl/server/README.md "$DESTDIR$DOCDIR/fritzdsl/server/README.md" || exit 1
-    inst 0644 extensions/fritzdsl/server/graphs-fritzdsl.cfg "$DESTDIR$DOCDIR/fritzdsl/server/graphs-fritzdsl.cfg" || exit 1
+    inst 0644 extensions/fritzdsl/server/graphs.d/fritzdsl.cfg "$DESTDIR$DOCDIR/fritzdsl/server/graphs.d/fritzdsl.cfg" || exit 1
     inst 0644 extensions/fritzwan/README.md "$DESTDIR$DOCDIR/fritzwan/README.md" || exit 1
     inst 0644 extensions/fritzwan/server/README.md "$DESTDIR$DOCDIR/fritzwan/server/README.md" || exit 1
-    inst 0644 extensions/fritzwan/server/graphs-fritzwan.cfg "$DESTDIR$DOCDIR/fritzwan/server/graphs-fritzwan.cfg" || exit 1
+    inst 0644 extensions/fritzwan/server/graphs.d/fritzwan.cfg "$DESTDIR$DOCDIR/fritzwan/server/graphs.d/fritzwan.cfg" || exit 1
     inst 0644 extensions/wifi/README.md "$DESTDIR$DOCDIR/wifi/README.md" || exit 1
     inst 0644 extensions/wifi/server/README.md "$DESTDIR$DOCDIR/wifi/server/README.md" || exit 1
-    inst 0644 extensions/wifi/server/graphs-wifi.cfg "$DESTDIR$DOCDIR/wifi/server/graphs-wifi.cfg" || exit 1
+    inst 0644 extensions/wifi/server/graphs.d/wifi.cfg "$DESTDIR$DOCDIR/wifi/server/graphs.d/wifi.cfg" || exit 1
 fi
 
 exit 0
