@@ -30,13 +30,13 @@ share/doc/my-xymon-extensions/opkg/README.md
 share/doc/my-xymon-extensions/smart/README.md
 share/doc/my-xymon-extensions/smart/sudoers.example
 share/doc/my-xymon-extensions/smart/server/README.md
-share/doc/my-xymon-extensions/smart/server/graphs-smart.cfg
+share/doc/my-xymon-extensions/smart/server/graphs.d/smart.cfg
 share/doc/my-xymon-extensions/fritzdsl/README.md
 share/doc/my-xymon-extensions/fritzdsl/server/README.md
-share/doc/my-xymon-extensions/fritzdsl/server/graphs-fritzdsl.cfg
+share/doc/my-xymon-extensions/fritzdsl/server/graphs.d/fritzdsl.cfg
 share/doc/my-xymon-extensions/fritzwan/README.md
 share/doc/my-xymon-extensions/fritzwan/server/README.md
-share/doc/my-xymon-extensions/fritzwan/server/graphs-fritzwan.cfg
+share/doc/my-xymon-extensions/fritzwan/server/graphs.d/fritzwan.cfg
 share/doc/my-xymon-extensions/wifi/README.md
 share/doc/my-xymon-extensions/wifi/server/README.md
 share/doc/my-xymon-extensions/wifi/server/graphs.d/wifi.cfg

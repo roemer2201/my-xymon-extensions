@@ -31,10 +31,10 @@ GRAPHS_fritzwan="fritzwanbps,fritzwanutil"
 Include the graph definitions shipped in this directory:
 
 ```
-include /etc/xymon/graphs.d/graphs-fritzwan.cfg
+include /etc/xymon/graphs.d/fritzwan.cfg
 ```
 
-or append the contents of `graphs-fritzwan.cfg` to your `graphs.cfg`.
+or append the contents of `graphs.d/fritzwan.cfg` to your `graphs.cfg`.
 
 ## 3. Restart / verify
 
