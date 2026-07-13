@@ -574,6 +574,177 @@ expect "$out" '^status testhost\.memory green ' \
     "column name is overridable via MEM_COLUMN (e.g. back to the stock name)"
 
 # ----------------------------------------------------------------------
+echo "--- opkg ---"
+export FAKEOPKG="$TESTDIR/opkg/fakeopkg"
+export FAKEOPKG_LISTSDIR="$TMP/opkg-lists"
+export FAKEOPKG_LOG="$TMP/opkg-calls"
+export OPKG_CFG="$TESTDIR/opkg/opkg_test.cfg"
+unset FAKEOPKG_UPDATE_RC FAKEOPKG_LIST_RC FAKEOPKG_UPGRADABLE 2>/dev/null || true
+
+# Missing lists + OPKG_UPDATE=auto (default): the extension must run
+# "opkg update" itself (the fake creates the lists), then report green
+rm -rf "$FAKEOPKG_LISTSDIR"
+: > "$FAKEOPKG_LOG"
+# shellcheck disable=SC2086
+out=$($TESTSH "$REPO/extensions/opkg/opkg.sh")
+rc=$?
+if [ "$rc" -ne 0 ]; then
+    echo "FAIL: opkg.sh exited with $rc"
+    printf '%s\n' "$out"
+    exit 1
+fi
+expect "$out" '^status testhost\.opkg green ' \
+    "no upgradable packages reports green"
+expect "$(cat "$FAKEOPKG_LOG")" '^update$' \
+    "missing package lists trigger opkg update"
+expect "$out" 'refreshed by this run' \
+    "status notes that this run refreshed the lists"
+expect "$out" '&green all packages are up to date' \
+    "up-to-date detail line present"
+expect "$out" '^updates : 0$'  "opkg NCV line updates"
+expect "$out" '^critical : 0$' "opkg NCV line critical"
+
+# Fresh lists (just created by the fake): no update call
+: > "$FAKEOPKG_LOG"
+# shellcheck disable=SC2086
+out=$($TESTSH "$REPO/extensions/opkg/opkg.sh")
+expect_not "$(cat "$FAKEOPKG_LOG")" '^update$' \
+    "fresh lists do not trigger opkg update"
+expect "$out" '^status testhost\.opkg green ' \
+    "fresh lists still report green"
+
+# Stale lists (mtime far in the past): update runs again
+touch -t 202001010000 "$FAKEOPKG_LISTSDIR/base"
+: > "$FAKEOPKG_LOG"
+# shellcheck disable=SC2086
+out=$($TESTSH "$REPO/extensions/opkg/opkg.sh")
+expect "$(cat "$FAKEOPKG_LOG")" '^update$' \
+    "stale lists trigger opkg update"
+expect "$out" '^status testhost\.opkg green ' \
+    "refreshed stale lists report green"
+
+# Upgradable packages, none critical -> yellow
+# shellcheck disable=SC2086
+out=$(FAKEOPKG_UPGRADABLE="$TESTDIR/opkg/data/upgradable-plain.txt" \
+    $TESTSH "$REPO/extensions/opkg/opkg.sh")
+expect "$out" '^status testhost\.opkg yellow ' \
+    "upgradable packages report yellow"
+expect "$out" '&yellow luci-base git-24\.086\.45142-09d5a38 -> git-24\.114\.85298-1c4b2a9' \
+    "per-package line carries old and new version"
+expect "$out" '2 package\(s\) can be upgraded, 0 security-relevant' \
+    "summary counts the upgradable packages"
+expect "$out" '^updates : 2$'  "updates NCV counts the packages"
+expect "$out" '^critical : 0$' "critical NCV stays 0 without a match"
+
+# Upgradable packages matching OPKG_CRITICAL -> red
+# shellcheck disable=SC2086
+out=$(FAKEOPKG_UPGRADABLE="$TESTDIR/opkg/data/upgradable-critical.txt" \
+    $TESTSH "$REPO/extensions/opkg/opkg.sh")
+expect "$out" '^status testhost\.opkg red ' \
+    "security-relevant upgradable package reports red"
+expect "$out" '&red dropbear 2022\.82-2 -> 2022\.82-6 \(matches critical pattern "dropbear\*"\)' \
+    "critical package line names the matching pattern"
+expect "$out" '&red libopenssl3 .*matches critical pattern' \
+    "wildcard pattern \\*openssl\\* matches libopenssl3"
+expect "$out" '&yellow luci-base ' \
+    "non-critical packages stay yellow in a red report"
+expect "$out" '^updates : 4$'  "updates NCV counts all packages"
+expect "$out" '^critical : 2$' "critical NCV counts the matches"
+
+# OPKG_CRITICAL is overridable through the environment
+# shellcheck disable=SC2086
+out=$(FAKEOPKG_UPGRADABLE="$TESTDIR/opkg/data/upgradable-plain.txt" \
+    OPKG_CRITICAL="luci-*" $TESTSH "$REPO/extensions/opkg/opkg.sh")
+expect "$out" '^status testhost\.opkg red ' \
+    "OPKG_CRITICAL from the environment turns the column red"
+
+# "opkg update" fails but old (stale) lists exist: warn, but still
+# evaluate the old lists
+touch -t 202001010000 "$FAKEOPKG_LISTSDIR/base"
+# shellcheck disable=SC2086
+out=$(FAKEOPKG_UPDATE_RC=1 \
+    FAKEOPKG_UPGRADABLE="$TESTDIR/opkg/data/upgradable-plain.txt" \
+    $TESTSH "$REPO/extensions/opkg/opkg.sh")
+expect "$out" '^status testhost\.opkg yellow ' \
+    "failed opkg update reports yellow"
+expect "$out" '&yellow opkg update failed' \
+    "failed update note present"
+expect "$out" '&yellow luci-base ' \
+    "old lists are still evaluated after a failed update"
+
+# "opkg update" fails and there are no lists at all: status unknown
+rm -rf "$FAKEOPKG_LISTSDIR"
+# shellcheck disable=SC2086
+out=$(FAKEOPKG_UPDATE_RC=1 $TESTSH "$REPO/extensions/opkg/opkg.sh")
+expect "$out" '^status testhost\.opkg yellow ' \
+    "no lists and failed update reports yellow"
+expect "$out" 'update status unknown' \
+    "unknown-status note present"
+expect_not "$out" '^updates :' \
+    "no NCV lines when the update status is unknown"
+
+# OPKG_UPDATE=never + missing lists: yellow, and no update call
+rm -rf "$FAKEOPKG_LISTSDIR"
+: > "$FAKEOPKG_LOG"
+# shellcheck disable=SC2086
+out=$(OPKG_UPDATE=never $TESTSH "$REPO/extensions/opkg/opkg.sh")
+expect "$out" '^status testhost\.opkg yellow ' \
+    "OPKG_UPDATE=never with missing lists reports yellow"
+expect "$out" 'update status unknown' \
+    "missing lists yield the unknown-status note"
+expect_not "$(cat "$FAKEOPKG_LOG")" '^update$' \
+    "OPKG_UPDATE=never never calls opkg update"
+
+# OPKG_UPDATE=never + stale lists: warn about the age, evaluate anyway
+mkdir -p "$FAKEOPKG_LISTSDIR"
+touch -t 202001010000 "$FAKEOPKG_LISTSDIR/base"
+# shellcheck disable=SC2086
+out=$(OPKG_UPDATE=never \
+    FAKEOPKG_UPGRADABLE="$TESTDIR/opkg/data/upgradable-plain.txt" \
+    $TESTSH "$REPO/extensions/opkg/opkg.sh")
+expect "$out" '^status testhost\.opkg yellow ' \
+    "OPKG_UPDATE=never with stale lists reports yellow"
+expect "$out" '&yellow package lists are older than 24 hour\(s\)' \
+    "staleness note present with OPKG_UPDATE=never"
+expect "$out" '&yellow luci-base ' \
+    "stale lists are still evaluated with OPKG_UPDATE=never"
+
+# OPKG_MAXAGE=0 disables the age check: stale lists count as fresh
+: > "$FAKEOPKG_LOG"
+# shellcheck disable=SC2086
+out=$(OPKG_MAXAGE=0 $TESTSH "$REPO/extensions/opkg/opkg.sh")
+expect "$out" '^status testhost\.opkg green ' \
+    "OPKG_MAXAGE=0 reports green from old lists"
+expect "$out" 'age check disabled' \
+    "OPKG_MAXAGE=0 notes the disabled age check"
+expect_not "$(cat "$FAKEOPKG_LOG")" '^update$' \
+    "OPKG_MAXAGE=0 does not trigger opkg update"
+
+# Column name override
+# shellcheck disable=SC2086
+out=$(OPKG_COLUMN=pkg $TESTSH "$REPO/extensions/opkg/opkg.sh")
+expect "$out" '^status testhost\.pkg ' \
+    "column name is overridable via OPKG_COLUMN"
+
+# "opkg list-upgradable" fails -> yellow
+# shellcheck disable=SC2086
+out=$(FAKEOPKG_LIST_RC=1 $TESTSH "$REPO/extensions/opkg/opkg.sh")
+expect "$out" '^status testhost\.opkg yellow ' \
+    "failed list-upgradable reports yellow"
+expect "$out" 'list-upgradable" failed' \
+    "failed list-upgradable note present"
+
+# No opkg binary at all -> clear
+# shellcheck disable=SC2086
+out=$(OPKG_CFG="$TESTDIR/opkg/opkg_test_noopkg.cfg" \
+    $TESTSH "$REPO/extensions/opkg/opkg.sh")
+expect "$out" '^status testhost\.opkg clear ' \
+    "missing opkg reports clear, not red"
+expect "$out" 'opkg not found' "missing opkg hint present"
+
+unset OPKG_CFG FAKEOPKG_LOG
+
+# ----------------------------------------------------------------------
 echo "--- wifi ---"
 export FAKEIW="$TESTDIR/wifi/fakeiw"
 export FAKEUBUS="$TESTDIR/wifi/fakeubus"
@@ -798,6 +969,7 @@ cp "$REPO/extensions/smart/smart.sh" "$STAGE/ext/smart.sh"
 cp "$REPO/extensions/temp/temp.sh" "$STAGE/ext/temp.sh"
 cp "$REPO/extensions/la/la.sh" "$STAGE/ext/la.sh"
 cp "$REPO/extensions/memory/memory.sh" "$STAGE/ext/memory.sh"
+cp "$REPO/extensions/opkg/opkg.sh" "$STAGE/ext/opkg.sh"
 cp "$TESTDIR/smart/smart_test.cfg" "$STAGE/etc/smart.cfg"
 # The extensions must pick these up via $XYMONHOME/etc/<name>.cfg
 cat > "$STAGE/etc/temp.cfg" <<EOF
@@ -810,6 +982,13 @@ LA_NCPU=4
 EOF
 cat > "$STAGE/etc/memory.cfg" <<EOF
 MEM_MEMINFO="$MEMFIX"
+EOF
+# Fresh lists so opkg.sh neither calls "opkg update" nor warns
+mkdir -p "$FAKEOPKG_LISTSDIR"
+touch "$FAKEOPKG_LISTSDIR/base"
+cat > "$STAGE/etc/opkg.cfg" <<EOF
+OPKG_BIN="$FAKEOPKG"
+OPKG_LISTSDIR="$FAKEOPKG_LISTSDIR"
 EOF
 # XYMONTMP/XYMONCLIENTLOGS deliberately do not exist yet: the runner
 # must create them (on OpenWrt /tmp is a RAM disk, configured
@@ -858,6 +1037,10 @@ expect "$captured" '^status turris,example,org\.mem green ' \
     "memory extension runs under the standalone runner, defaulted to column \"mem\""
 expect "$captured" '^used : 50\.0$' \
     "memory NCV payload arrives, config read from \$XYMONHOME/etc"
+expect "$captured" '^status turris,example,org\.opkg green ' \
+    "opkg extension runs under the standalone runner"
+expect "$captured" '^updates : 0$' \
+    "opkg NCV payload arrives, config read from \$XYMONHOME/etc"
 if [ -f "$TMP/work/logs/smart.log" ]; then
     echo "ok:   extension run log written to auto-created \$XYMONCLIENTLOGS"
 else
@@ -906,7 +1089,7 @@ expect "$captured" '^status turris,example,org\.temp ' \
     "TESTS: listed extension temp runs"
 expect "$captured" '^status turris,example,org\.la ' \
     "TESTS: listed extension la runs"
-expect_not "$captured" '^status turris,example,org\.(smart|mem) ' \
+expect_not "$captured" '^status turris,example,org\.(smart|mem|opkg) ' \
     "TESTS: unlisted extensions do not run"
 
 # Extensions named explicitly run even when not in TESTS

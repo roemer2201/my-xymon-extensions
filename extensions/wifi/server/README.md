@@ -28,7 +28,8 @@ GRAPHS_wifi="wificlients,wifiutil,wifikbps,wifiair,wifierr,wifinoise,wifichan"
 
 ## 2. graphs.cfg
 
-Include the graph definitions shipped in this directory:
+Include the graph definitions shipped in this directory
+(`graphs.d/wifi.cfg`):
 
 ```
 include /etc/xymon/graphs.d/wifi.cfg

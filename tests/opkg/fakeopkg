@@ -1,0 +1,51 @@
+#!/bin/sh
+# fakeopkg - opkg stand-in for the unit tests (tests/run.sh).
+#
+# Controlled through the environment:
+#   FAKEOPKG_LOG         append each subcommand to this file (lets the
+#                        tests assert whether "update" was called)
+#   FAKEOPKG_LISTSDIR    lists directory; a successful "update"
+#                        creates it and touches a "base" list file
+#   FAKEOPKG_UPDATE_RC   exit code of "update" (default 0); non-zero
+#                        prints realistic download-failure noise
+#   FAKEOPKG_UPGRADABLE  file printed by "list-upgradable" (unset or
+#                        empty: no upgradable packages)
+#   FAKEOPKG_LIST_RC     exit code of "list-upgradable" (default 0)
+set -u
+
+if [ -n "${FAKEOPKG_LOG:-}" ]; then
+    printf '%s\n' "${1:-}" >> "$FAKEOPKG_LOG"
+fi
+
+case "${1:-}" in
+    update)
+        rc="${FAKEOPKG_UPDATE_RC:-0}"
+        echo "Downloading https://feeds.example.org/base/Packages.gz"
+        if [ "$rc" -eq 0 ]; then
+            mkdir -p "${FAKEOPKG_LISTSDIR:?FAKEOPKG_LISTSDIR must be exported by the test runner}"
+            touch "$FAKEOPKG_LISTSDIR/base"
+            echo "Updated list of available packages in $FAKEOPKG_LISTSDIR/base"
+        else
+            echo "*** Failed to download the package list from https://feeds.example.org/base/Packages.gz" >&2
+            echo "Collected errors:" >&2
+            echo " * opkg_download: Failed to download https://feeds.example.org/base/Packages.gz, wget returned 4." >&2
+        fi
+        exit "$rc"
+        ;;
+    list-upgradable)
+        rc="${FAKEOPKG_LIST_RC:-0}"
+        if [ "$rc" -ne 0 ]; then
+            echo "Collected errors:" >&2
+            echo " * opkg_conf_load: Could not lock /var/lock/opkg.lock: Resource temporarily unavailable." >&2
+            exit "$rc"
+        fi
+        if [ -n "${FAKEOPKG_UPGRADABLE:-}" ]; then
+            cat "$FAKEOPKG_UPGRADABLE"
+        fi
+        exit 0
+        ;;
+    *)
+        echo "fakeopkg: unexpected invocation: $*" >&2
+        exit 99
+        ;;
+esac

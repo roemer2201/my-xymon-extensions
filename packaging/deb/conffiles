@@ -2,10 +2,12 @@
 /etc/xymon/temp.cfg
 /etc/xymon/la.cfg
 /etc/xymon/memory.cfg
+/etc/xymon/opkg.cfg
 /etc/xymon/tasks.d/smart.cfg
 /etc/xymon/tasks.d/temp.cfg
 /etc/xymon/tasks.d/la.cfg
 /etc/xymon/tasks.d/memory.cfg
+/etc/xymon/tasks.d/opkg.cfg
 /etc/xymon/fritzdsl.cfg
 /etc/xymon/tasks.d/fritzdsl.cfg
 /etc/xymon/fritzwan.cfg
