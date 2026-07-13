@@ -1,0 +1,22 @@
+#!/bin/sh
+# Fake "iwinfo" for the wifi.sh unit tests.
+#
+#   iwinfo <if> assoclist -> data/assoclist.<if>.txt
+#
+# A missing per-interface file answers like an AP without clients.
+set -u
+
+DATADIR=$(dirname "$0")/data
+
+if [ "${2:-}" = "assoclist" ]; then
+    f="$DATADIR/assoclist.$1.txt"
+    if [ -r "$f" ]; then
+        cat "$f"
+    else
+        echo "No station connected"
+    fi
+    exit 0
+fi
+
+echo "fakeiwinfo: unexpected invocation: $*" >&2
+exit 1

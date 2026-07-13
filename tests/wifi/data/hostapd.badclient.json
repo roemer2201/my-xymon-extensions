@@ -1,0 +1,50 @@
+{
+        "freq": 2412,
+        "clients": {
+                "e8:fd:f8:bf:e5:4e": {
+                        "auth": true,
+                        "assoc": false,
+                        "authorized": false,
+                        "preauth": false,
+                        "wds": false,
+                        "wmm": true,
+                        "ht": false,
+                        "vht": false,
+                        "he": false,
+                        "wps": false,
+                        "mfp": false,
+                        "mbo": false,
+                        "rrm": [
+                                0,
+                                0,
+                                0,
+                                0,
+                                0
+                        ],
+                        "extended_capabilities": [
+
+                        ],
+                        "aid": 1,
+                        "bytes": {
+                                "rx": 581,
+                                "tx": 1017
+                        },
+                        "airtime": {
+                                "rx": 0,
+                                "tx": 0
+                        },
+                        "packets": {
+                                "rx": 14,
+                                "tx": 8
+                        },
+                        "rate": {
+                                "rx": 0,
+                                "tx": 100000
+                        },
+                        "signal": -79,
+                        "capabilities": {
+
+                        }
+                }
+        }
+}

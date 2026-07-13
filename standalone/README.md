@@ -102,6 +102,11 @@ Run logs go to `$XYMONTMP` (default `/tmp`, a RAM disk on OpenWrt) as
   extensions in this repository cover the most important local health
   metrics for such hosts (temperatures, load average, memory
   utilization); disk usage, network etc. remain unreported.
+- The `wifi` extension is in the default `TESTS` list: on access
+  points it reports client counts, channel utilization, airtime and
+  more (see `extensions/wifi/README.md`). On routers without AP
+  radios it reports a `clear` column — remove it from `TESTS` there
+  if you don't want that.
 - The FRITZ!Box pollers `fritzdsl`/`fritzwan` are installed but not in
   the default `TESTS` list: they are remote pollers that query a
   FRITZ!Box over the network, a job that normally belongs on the

@@ -27,6 +27,8 @@ Included extensions:
   box's 64-bit UPnP counters (TR-064 fallback). Polls the box from
   the Xymon server; requires ftp/curl and ships disabled until
   configured.
+* wifi - Wi-Fi access point metadata. Linux-only (iw/nl80211);
+  reports a clear status on FreeBSD and ships disabled.
 
 Requires net-mgmt/xymon-client and sysutils/smartmontools (>= 7.0).
 Activation steps (sudoers rule, tasks.d include, server-side graphs)

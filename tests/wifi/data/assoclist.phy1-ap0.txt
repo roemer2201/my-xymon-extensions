@@ -1,0 +1,14 @@
+1A:E6:15:54:CC:F5  -85 dBm / -95 dBm (SNR 10)  41233280 ms ago
+        RX: 54.0 MBit/s                                  339 Pkts.
+        TX: 48.0 MBit/s                                   25 Pkts.
+        expected throughput: 7.2 MBit/s
+
+B8:74:24:0A:8C:73  -80 dBm / -95 dBm (SNR 15)  25247290 ms ago
+        RX: 6.0 MBit/s                                   286 Pkts.
+        TX: 6.0 MBit/s                                   194 Pkts.
+        expected throughput: unknown
+
+E2:EC:D0:77:AF:6F  -58 dBm / -95 dBm (SNR 37)  0 ms ago
+        RX: 54.0 MBit/s                               134985 Pkts.
+        TX: 54.0 MBit/s                               343195 Pkts.
+        expected throughput: 30.9 MBit/s

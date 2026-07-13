@@ -1,0 +1,128 @@
+Station 50:03:cf:1e:31:a4 (on phy0-ap0)
+        inactive time:  21180 ms
+        rx bytes:       22127990
+        rx packets:     234061
+        tx bytes:       6433646
+        tx packets:     13170
+        tx retries:     641
+        tx failed:      0
+        rx drop misc:   3
+        signal:         -48 [-56, -56, -50] dBm
+        signal avg:     -51 [-59, -56, -54] dBm
+        tx bitrate:     433.3 MBit/s VHT-MCS 9 80MHz short GI VHT-NSS 1
+        tx duration:    424541 us
+        rx bitrate:     433.3 MBit/s VHT-MCS 9 80MHz short GI VHT-NSS 1
+        rx duration:    15870148 us
+        last ack signal:-95 dBm
+        avg ack signal: -95 dBm
+        airtime weight: 256
+        authorized:     yes
+        authenticated:  yes
+        associated:     yes
+        preamble:       long
+        WMM/WME:        yes
+        MFP:            no
+        TDLS peer:      no
+        DTIM period:    3
+        beacon interval:100
+        short slot time:yes
+        connected time: 1020471 seconds
+        associated at [boottime]:       45.801s
+        associated at:  1782869469306 ms
+        current time:   1783889940455 ms
+Station 4e:cc:3e:00:5d:ec (on phy0-ap0)
+        inactive time:  400 ms
+        rx bytes:       737469717
+        rx packets:     859891
+        tx bytes:       542344195
+        tx packets:     780550
+        tx retries:     8635
+        tx failed:      1
+        rx drop misc:   6
+        signal:         -40 [-41, -48, -49] dBm
+        signal avg:     -43 [-45, -51, -52] dBm
+        tx bitrate:     866.7 MBit/s VHT-MCS 9 80MHz short GI VHT-NSS 2
+        tx duration:    20059742 us
+        rx bitrate:     866.7 MBit/s VHT-MCS 9 80MHz short GI VHT-NSS 2
+        rx duration:    39177272 us
+        last ack signal:-95 dBm
+        avg ack signal: -95 dBm
+        airtime weight: 256
+        authorized:     yes
+        authenticated:  yes
+        associated:     yes
+        preamble:       long
+        WMM/WME:        yes
+        MFP:            no
+        TDLS peer:      no
+        DTIM period:    3
+        beacon interval:100
+        short slot time:yes
+        connected time: 276306 seconds
+        associated at [boottime]:       744210.733s
+        associated at:  1783613634239 ms
+        current time:   1783889940456 ms
+Station 0a:da:3f:ae:17:75 (on phy0-ap0)
+        inactive time:  2650 ms
+        rx bytes:       77642554
+        rx packets:     327296
+        tx bytes:       282595862
+        tx packets:     310537
+        tx retries:     12374
+        tx failed:      194
+        rx drop misc:   28
+        signal:         -41 [-46, -45, -48] dBm
+        signal avg:     -42 [-47, -45, -49] dBm
+        tx bitrate:     780.0 MBit/s VHT-MCS 8 80MHz short GI VHT-NSS 2
+        tx duration:    8730358 us
+        rx bitrate:     866.7 MBit/s VHT-MCS 9 80MHz short GI VHT-NSS 2
+        rx duration:    19106428 us
+        last ack signal:-95 dBm
+        avg ack signal: -95 dBm
+        airtime weight: 256
+        authorized:     yes
+        authenticated:  yes
+        associated:     yes
+        preamble:       long
+        WMM/WME:        yes
+        MFP:            no
+        TDLS peer:      no
+        DTIM period:    3
+        beacon interval:100
+        short slot time:yes
+        connected time: 276300 seconds
+        associated at [boottime]:       744216.512s
+        associated at:  1783613640018 ms
+        current time:   1783889940456 ms
+Station 36:26:d3:ec:ee:d8 (on phy0-ap0)
+        inactive time:  810 ms
+        rx bytes:       21353317
+        rx packets:     81590
+        tx bytes:       492548277
+        tx packets:     396765
+        tx retries:     2714
+        tx failed:      0
+        rx drop misc:   22
+        signal:         -39 [-41, -55, -45] dBm
+        signal avg:     -43 [-45, -57, -48] dBm
+        tx bitrate:     866.7 MBit/s VHT-MCS 9 80MHz short GI VHT-NSS 2
+        tx duration:    13282017 us
+        rx bitrate:     866.7 MBit/s VHT-MCS 9 80MHz short GI VHT-NSS 2
+        rx duration:    5525348 us
+        last ack signal:-95 dBm
+        avg ack signal: -95 dBm
+        airtime weight: 256
+        authorized:     yes
+        authenticated:  yes
+        associated:     yes
+        preamble:       short
+        WMM/WME:        yes
+        MFP:            no
+        TDLS peer:      no
+        DTIM period:    3
+        beacon interval:100
+        short slot time:yes
+        connected time: 11355 seconds
+        associated at [boottime]:       1009161.564s
+        associated at:  1783878585069 ms
+        current time:   1783889940456 ms

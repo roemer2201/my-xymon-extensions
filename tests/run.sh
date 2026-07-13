@@ -574,6 +574,177 @@ expect "$out" '^status testhost\.memory green ' \
     "column name is overridable via MEM_COLUMN (e.g. back to the stock name)"
 
 # ----------------------------------------------------------------------
+echo "--- wifi ---"
+export FAKEIW="$TESTDIR/wifi/fakeiw"
+export FAKEUBUS="$TESTDIR/wifi/fakeubus"
+export FAKEIWINFO="$TESTDIR/wifi/fakeiwinfo"
+export FAKESYSNET="$TESTDIR/wifi/sysnet"
+export WIFI_CFG="$TESTDIR/wifi/wifi_test.cfg"
+unset FAKEIW_DEV FAKEIW_SURVEY FAKEIW_STATION FAKEIW_FAIL \
+    FAKEUBUS_JSON FAKEUBUS_FAIL 2>/dev/null || true
+rm -f "$TMP"/wifi.*.state
+
+# First poll: gauges only - the rates need two polls
+# shellcheck disable=SC2086
+out=$($TESTSH "$REPO/extensions/wifi/wifi.sh")
+rc=$?
+if [ "$rc" -ne 0 ]; then
+    echo "FAIL: wifi.sh exited with $rc"
+    printf '%s\n' "$out"
+    exit 1
+fi
+expect "$out" '^status testhost\.wifi green ' \
+    "first poll reports green (info-only extension)"
+expect "$out" 'wifi: 8 client\(s\) on 4 AP interface\(s\)' \
+    "summary line carries the client and interface count"
+expect "$out" '^data testhost\.wifi$' "data message for the RRDs is sent"
+expect "$out" '^clients_phy0_ap0 : 5$' \
+    "client count from hostapd get_clients (authorized only)"
+expect "$out" 'clients=5 \[hostapd\]' \
+    "status names hostapd as the client source (key=value style)"
+expect "$out" '^clients_phy1_ap0 : 3$' \
+    "iwinfo assoclist fallback when hostapd has no such interface"
+expect "$out" '^clients_phy1_ap1 : 0$' \
+    "\"No station connected\" counts as zero clients"
+expect "$out" '^clients_total : 8$' "total client count summed"
+expect "$out" '^channel_phy0 : 36$' "channel per radio extracted from iw dev"
+expect "$out" '^channel_phy1 : 6$'  "second radio channel extracted"
+expect "$out" '^noise_phy0 : -99$' \
+    "noise floor from the in-use survey block"
+expect_not "$out" '^(rxkbps|txkbps|airrx|airtx|retries|failed|busy|rxpct|txpct)_' \
+    "no rate metrics on the first poll"
+expect_not "$out" 'phy0-ap0 :' \
+    "NCV names are sanitized (no raw interface names with dashes)"
+if grep -q '^IF phy0-ap0 ' "$TMP/wifi.testhost.state" 2>/dev/null \
+    && grep -q '^PHY phy0 ' "$TMP/wifi.testhost.state" 2>/dev/null; then
+    echo "ok:   state file primed with IF and PHY counter lines"
+else
+    echo "FAIL: state file missing or incomplete ($TMP/wifi.testhost.state)"
+    FAIL=1
+fi
+
+# Second poll: state from ~5 minutes ago with counters chosen for
+# round deltas - 30 MB rx / 3 MB tx in 300 s, 30 s airtime rx /
+# 15 s tx, 3 retries / 30 failures, and a survey delta of
+# 300000/60000/3000/30000 ms (active/busy/rx/tx).
+T0=$(($(date +%s) - 300))
+{
+    printf 'PHY phy0 %s 976570758 15899425 545578 12063957\n' "$T0"
+    printf 'IF phy0-ap0 %s 2370000000 11997000000 87570512 416557494 24361 165\n' "$T0"
+} > "$TMP/wifi.testhost.state"
+# shellcheck disable=SC2086
+out=$($TESTSH "$REPO/extensions/wifi/wifi.sh")
+expect "$out" '^rxkbps_phy0_ap0 : 800\.0$' \
+    "rx throughput from the sysfs byte counter delta"
+expect "$out" '^txkbps_phy0_ap0 : 80\.0$' \
+    "tx throughput from the sysfs byte counter delta"
+expect "$out" '^airrx_phy0_ap0 : 10\.0$' \
+    "rx airtime percent from the summed hostapd airtime delta"
+expect "$out" '^airtx_phy0_ap0 : 5\.0$' \
+    "tx airtime percent from the summed hostapd airtime delta"
+expect "$out" '^retries_phy0_ap0 : 0\.01$' \
+    "tx retry rate from the station dump delta"
+expect "$out" '^failed_phy0_ap0 : 0\.10$' \
+    "tx failure rate from the station dump delta"
+expect "$out" '^busy_phy0 : 20\.0$' \
+    "channel busy percent from the survey delta"
+expect "$out" '^rxpct_phy0 : 1\.0$'  "channel receive percent"
+expect "$out" '^txpct_phy0 : 10\.0$' "channel transmit percent"
+expect "$out" 'rx=800\.0 tx=80\.0 kbit/s' \
+    "status shows the throughput (key=value style)"
+
+# Counter reset (reboot): every previous counter is larger than the
+# current one - the rates must be skipped, never reported negative
+{
+    printf 'PHY phy0 %s 976870759 99999999999 999999999 999999999\n' "$T0"
+    printf 'IF phy0-ap0 %s 9999999999999 99999999999999 999999999 999999999 9999999 99999\n' "$T0"
+} > "$TMP/wifi.testhost.state"
+# shellcheck disable=SC2086
+out=$($TESTSH "$REPO/extensions/wifi/wifi.sh")
+expect "$out" '^status testhost\.wifi green ' \
+    "counter reset does not degrade the column"
+expect_not "$out" '^(rxkbps|txkbps|airrx|airtx|retries|failed)_phy0_ap0' \
+    "no interface rates after a counter reset"
+expect_not "$out" '^(busy|rxpct|txpct)_phy0' \
+    "no channel utilization after a survey counter reset"
+expect_not "$out" '^(rxkbps|txkbps|airrx|airtx|retries|failed|busy|rxpct|txpct|clients|channel)[a-z0-9_]* : -' \
+    "no negative values in any rate or count metric"
+expect "$out" '^clients_total : 8$' \
+    "gauge metrics survive a counter reset"
+
+# Garbage survey counters (seen on a Zyxel NWA50AX Pro: busy time far
+# beyond the active time) and a client with auth=true but
+# authorized=false - it must not be counted
+rm -f "$TMP"/wifi.*.state
+# shellcheck disable=SC2086
+out=$(FAKEIW_DEV="$TESTDIR/wifi/data/iw_dev.nwa.txt" \
+    FAKEIW_SURVEY="$TESTDIR/wifi/data/survey.garbage.txt" \
+    FAKEUBUS_JSON="$TESTDIR/wifi/data/hostapd.badclient.json" \
+    $TESTSH "$REPO/extensions/wifi/wifi.sh")
+expect "$out" '^status testhost\.wifi green ' \
+    "implausible survey counters do not degrade the column"
+expect "$out" 'survey counters implausible' \
+    "implausible survey counters are called out in the status"
+expect_not "$out" '^(busy|rxpct|txpct)_' \
+    "no channel utilization from implausible counters"
+expect "$out" '^noise_phy0 : -91$' \
+    "noise floor is still reported (that value is sane)"
+expect "$out" '^channel_phy0 : 1$' "NWA 2.4 GHz radio channel extracted"
+expect "$out" '^clients_phy0_ap0 : 0$' \
+    "auth=true but authorized=false client is not counted"
+expect "$out" '^clients_total : 0$' "total is zero on the idle NWA"
+
+# ubus/hostapd unavailable: client counts fall back to iwinfo,
+# airtime is unavailable, sysfs throughput keeps working
+T0=$(($(date +%s) - 300))
+{
+    printf 'PHY phy0 %s 976570758 15899425 545578 12063957\n' "$T0"
+    printf 'IF phy0-ap0 %s 2370000000 11997000000 87570512 416557494 24361 165\n' "$T0"
+} > "$TMP/wifi.testhost.state"
+# shellcheck disable=SC2086
+out=$(FAKEUBUS_FAIL=1 $TESTSH "$REPO/extensions/wifi/wifi.sh")
+expect "$out" '^clients_phy0_ap0 : 5$' \
+    "client count via the iwinfo fallback"
+expect "$out" 'clients=5 \[iwinfo\]' \
+    "status names iwinfo as the client source"
+expect_not "$out" '^air(rx|tx)_' \
+    "no airtime metrics without hostapd"
+expect "$out" '^rxkbps_phy0_ap0 : 800\.0$' \
+    "sysfs throughput unaffected by the missing ubus"
+
+# Interface whitelist
+rm -f "$TMP"/wifi.*.state
+# shellcheck disable=SC2086
+out=$(WIFI_INTERFACES="phy0-ap0" $TESTSH "$REPO/extensions/wifi/wifi.sh")
+expect "$out" '^clients_total : 5$' \
+    "WIFI_INTERFACES limits the monitored interfaces"
+expect_not "$out" 'clients_phy1' \
+    "unlisted interfaces are skipped entirely"
+
+# No iw installed -> clear
+# shellcheck disable=SC2086
+out=$(WIFI_CFG="$TESTDIR/wifi/wifi_test_noiw.cfg" \
+    $TESTSH "$REPO/extensions/wifi/wifi.sh")
+expect "$out" '^status testhost\.wifi clear ' "missing iw reports clear"
+expect "$out" 'iw not found'                  "missing iw hint present"
+
+# No AP-mode interfaces -> clear
+# shellcheck disable=SC2086
+out=$(FAKEIW_DEV=/dev/null $TESTSH "$REPO/extensions/wifi/wifi.sh")
+expect "$out" '^status testhost\.wifi clear ' \
+    "no AP interfaces reports clear, not red"
+expect "$out" 'no AP-mode wireless interfaces' "no-AP hint present"
+
+# Column name override
+rm -f "$TMP"/wifi.*.state
+# shellcheck disable=SC2086
+out=$(WIFI_COLUMN=wlan $TESTSH "$REPO/extensions/wifi/wifi.sh")
+expect "$out" '^status testhost\.wlan green ' \
+    "column name is overridable via WIFI_COLUMN"
+
+unset WIFI_CFG
+
+# ----------------------------------------------------------------------
 echo "--- standalone: xymon-send.sh ---"
 
 # Fake "nc" that records its arguments and stdin instead of connecting.

@@ -1,0 +1,394 @@
+{
+        "freq": 5180,
+        "clients": {
+                "0a:da:3f:ae:17:75": {
+                        "auth": true,
+                        "assoc": true,
+                        "authorized": true,
+                        "preauth": false,
+                        "wds": false,
+                        "wmm": true,
+                        "ht": true,
+                        "vht": true,
+                        "he": false,
+                        "wps": false,
+                        "mfp": false,
+                        "mbo": false,
+                        "rrm": [
+                                0,
+                                0,
+                                0,
+                                0,
+                                0
+                        ],
+                        "extended_capabilities": [
+                                4,
+                                0,
+                                0,
+                                0,
+                                0,
+                                0,
+                                0,
+                                64
+                        ],
+                        "aid": 6,
+                        "signature": "wifi4|probe:0,1,45,127,107,191,221(0017f2,10),221(0050f2,8),221(001018,2),htcap:006f,htagg:17,htmcs:0000ffff,vhtcap:0f815832,vhtrxmcs:0000fffa,vhttxmcs:0000fffa,extcap:0400088400000040|assoc:0,1,33,36,48,45,127,191,221(0017f2,10),221(001018,2),221(0050f2,2),htcap:006f,htagg:17,htmcs:0000ffff,vhtcap:0f815832,vhtrxmcs:0000fffa,vhttxmcs:0000fffa,txpow:1302,extcap:0400000000000040",
+                        "bytes": {
+                                "rx": 76407852,
+                                "tx": 279761061
+                        },
+                        "airtime": {
+                                "rx": 18900780,
+                                "tx": 8634773
+                        },
+                        "packets": {
+                                "rx": 323611,
+                                "tx": 306876
+                        },
+                        "rate": {
+                                "rx": 86670000,
+                                "tx": 65000000
+                        },
+                        "signal": -40,
+                        "capabilities": {
+                                "vht": {
+                                        "su_beamformee": true,
+                                        "mu_beamformee": false,
+                                        "mcs_map": {
+                                                "rx": {
+                                                        "1ss": 9,
+                                                        "2ss": 9,
+                                                        "3ss": -1,
+                                                        "4ss": -1,
+                                                        "5ss": -1,
+                                                        "6ss": -1,
+                                                        "7ss": -1,
+                                                        "8ss": -1
+                                                },
+                                                "tx": {
+                                                        "1ss": 9,
+                                                        "2ss": 9,
+                                                        "3ss": -1,
+                                                        "4ss": -1,
+                                                        "5ss": -1,
+                                                        "6ss": -1,
+                                                        "7ss": -1,
+                                                        "8ss": -1
+                                                }
+                                        }
+                                }
+                        }
+                },
+                "4e:cc:3e:00:5d:ec": {
+                        "auth": true,
+                        "assoc": true,
+                        "authorized": true,
+                        "preauth": false,
+                        "wds": false,
+                        "wmm": true,
+                        "ht": true,
+                        "vht": true,
+                        "he": false,
+                        "wps": false,
+                        "mfp": false,
+                        "mbo": false,
+                        "rrm": [
+                                0,
+                                0,
+                                0,
+                                0,
+                                0
+                        ],
+                        "extended_capabilities": [
+                                0,
+                                0,
+                                0,
+                                0,
+                                0,
+                                0,
+                                0,
+                                64
+                        ],
+                        "aid": 4,
+                        "signature": "wifi4|probe:0,1,45,127,191,255,221(0017f2,10),221(00904c,4),221(0050f2,8),221(001018,2),htcap:006f,htagg:1b,htmcs:000000ff,vhtcap:0f807032,vhtrxmcs:0000fffe,vhttxmcs:0000fffe,extcap:0000080400000040|assoc:0,1,33,36,48,45,127,191,221(0017f2,10),221(00904c,4),221(001018,2),221(0050f2,2),htcap:006f,htagg:1b,htmcs:0000ffff,vhtcap:0f817032,vhtrxmcs:0000fffa,vhttxmcs:0000fffa,txpow:15f9,extcap:0000000000000040",
+                        "bytes": {
+                                "rx": 434490429,
+                                "tx": 522374012
+                        },
+                        "airtime": {
+                                "rx": 32927244,
+                                "tx": 17593202
+                        },
+                        "packets": {
+                                "rx": 652295,
+                                "tx": 641371
+                        },
+                        "rate": {
+                                "rx": 86670000,
+                                "tx": 86670000
+                        },
+                        "signal": -38,
+                        "capabilities": {
+                                "vht": {
+                                        "su_beamformee": true,
+                                        "mu_beamformee": false,
+                                        "mcs_map": {
+                                                "rx": {
+                                                        "1ss": 9,
+                                                        "2ss": 9,
+                                                        "3ss": -1,
+                                                        "4ss": -1,
+                                                        "5ss": -1,
+                                                        "6ss": -1,
+                                                        "7ss": -1,
+                                                        "8ss": -1
+                                                },
+                                                "tx": {
+                                                        "1ss": 9,
+                                                        "2ss": 9,
+                                                        "3ss": -1,
+                                                        "4ss": -1,
+                                                        "5ss": -1,
+                                                        "6ss": -1,
+                                                        "7ss": -1,
+                                                        "8ss": -1
+                                                }
+                                        }
+                                }
+                        }
+                },
+                "36:26:d3:ec:ee:d8": {
+                        "auth": true,
+                        "assoc": true,
+                        "authorized": true,
+                        "preauth": false,
+                        "wds": false,
+                        "wmm": true,
+                        "ht": true,
+                        "vht": true,
+                        "he": false,
+                        "wps": false,
+                        "mfp": false,
+                        "mbo": false,
+                        "rrm": [
+                                0,
+                                0,
+                                0,
+                                0,
+                                0
+                        ],
+                        "extended_capabilities": [
+                                0,
+                                0,
+                                0,
+                                0,
+                                0,
+                                64,
+                                0,
+                                64
+                        ],
+                        "aid": 1,
+                        "signature": "wifi4|probe:0,1,45,127,htcap:886f,htagg:17,htmcs:0000ffff,extcap:000048040040004000001000000000|assoc:0,1,33,36,48,59,45,127,191,221(0017f2,10),221(0050f2,2),htcap:886f,htagg:17,htmcs:0000ffff,vhtcap:13b1f076,vhtrxmcs:0000fffa,vhttxmcs:2000fffa,txpow:1900,extcap:0000000000400040",
+                        "bytes": {
+                                "rx": 20004535,
+                                "tx": 489392040
+                        },
+                        "airtime": {
+                                "rx": 5170704,
+                                "tx": 13178710
+                        },
+                        "packets": {
+                                "rx": 76270,
+                                "tx": 392477
+                        },
+                        "rate": {
+                                "rx": 86670000,
+                                "tx": 86670000
+                        },
+                        "signal": -42,
+                        "capabilities": {
+                                "vht": {
+                                        "su_beamformee": true,
+                                        "mu_beamformee": true,
+                                        "mcs_map": {
+                                                "rx": {
+                                                        "1ss": 9,
+                                                        "2ss": 9,
+                                                        "3ss": -1,
+                                                        "4ss": -1,
+                                                        "5ss": -1,
+                                                        "6ss": -1,
+                                                        "7ss": -1,
+                                                        "8ss": -1
+                                                },
+                                                "tx": {
+                                                        "1ss": 9,
+                                                        "2ss": 9,
+                                                        "3ss": -1,
+                                                        "4ss": -1,
+                                                        "5ss": -1,
+                                                        "6ss": -1,
+                                                        "7ss": -1,
+                                                        "8ss": -1
+                                                }
+                                        }
+                                }
+                        }
+                },
+                "56:90:6c:17:92:c5": {
+                        "auth": true,
+                        "assoc": true,
+                        "authorized": true,
+                        "preauth": false,
+                        "wds": false,
+                        "wmm": true,
+                        "ht": true,
+                        "vht": true,
+                        "he": false,
+                        "wps": false,
+                        "mfp": false,
+                        "mbo": false,
+                        "rrm": [
+                                0,
+                                0,
+                                0,
+                                0,
+                                0
+                        ],
+                        "extended_capabilities": [
+                                0,
+                                0,
+                                0,
+                                0,
+                                0,
+                                0,
+                                0,
+                                64
+                        ],
+                        "aid": 3,
+                        "signature": "wifi4|probe:0,1,45,127,107,191,255,221(0017f2,10),221(00904c,4),221(0050f2,8),221(001018,2),htcap:006f,htagg:1b,htmcs:0000ffff,vhtcap:0f817032,vhtrxmcs:0000fffa,vhttxmcs:0000fffa,extcap:0000080400000040000020|assoc:0,1,33,36,48,45,127,191,221(0017f2,10),221(00904c,4),221(001018,2),221(0050f2,2),htcap:006f,htagg:1b,htmcs:0000ffff,vhtcap:0f817032,vhtrxmcs:0000fffa,vhttxmcs:0000fffa,txpow:15f9,extcap:0000000000000040",
+                        "bytes": {
+                                "rx": 289422124,
+                                "tx": 11415190110
+                        },
+                        "airtime": {
+                                "rx": 44721600,
+                                "tx": 391726885
+                        },
+                        "packets": {
+                                "rx": 747952,
+                                "tx": 8848140
+                        },
+                        "rate": {
+                                "rx": 39000000,
+                                "tx": 52660000
+                        },
+                        "signal": -82,
+                        "capabilities": {
+                                "vht": {
+                                        "su_beamformee": true,
+                                        "mu_beamformee": false,
+                                        "mcs_map": {
+                                                "rx": {
+                                                        "1ss": 9,
+                                                        "2ss": 9,
+                                                        "3ss": -1,
+                                                        "4ss": -1,
+                                                        "5ss": -1,
+                                                        "6ss": -1,
+                                                        "7ss": -1,
+                                                        "8ss": -1
+                                                },
+                                                "tx": {
+                                                        "1ss": 9,
+                                                        "2ss": 9,
+                                                        "3ss": -1,
+                                                        "4ss": -1,
+                                                        "5ss": -1,
+                                                        "6ss": -1,
+                                                        "7ss": -1,
+                                                        "8ss": -1
+                                                }
+                                        }
+                                }
+                        }
+                },
+                "50:03:cf:1e:31:a4": {
+                        "auth": true,
+                        "assoc": true,
+                        "authorized": true,
+                        "preauth": false,
+                        "wds": false,
+                        "wmm": true,
+                        "ht": true,
+                        "vht": true,
+                        "he": false,
+                        "wps": false,
+                        "mfp": false,
+                        "mbo": false,
+                        "rrm": [
+                                0,
+                                0,
+                                0,
+                                0,
+                                0
+                        ],
+                        "extended_capabilities": [
+                                0,
+                                0,
+                                0,
+                                0,
+                                0,
+                                0,
+                                0,
+                                64
+                        ],
+                        "aid": 2,
+                        "bytes": {
+                                "rx": 22075468,
+                                "tx": 6427970
+                        },
+                        "airtime": {
+                                "rx": 15850184,
+                                "tx": 423924
+                        },
+                        "packets": {
+                                "rx": 233783,
+                                "tx": 13140
+                        },
+                        "rate": {
+                                "rx": 43330000,
+                                "tx": 39000000
+                        },
+                        "signal": -49,
+                        "capabilities": {
+                                "vht": {
+                                        "su_beamformee": false,
+                                        "mu_beamformee": false,
+                                        "mcs_map": {
+                                                "rx": {
+                                                        "1ss": 9,
+                                                        "2ss": -1,
+                                                        "3ss": -1,
+                                                        "4ss": -1,
+                                                        "5ss": -1,
+                                                        "6ss": -1,
+                                                        "7ss": -1,
+                                                        "8ss": -1
+                                                },
+                                                "tx": {
+                                                        "1ss": 9,
+                                                        "2ss": -1,
+                                                        "3ss": -1,
+                                                        "4ss": -1,
+                                                        "5ss": -1,
+                                                        "6ss": -1,
+                                                        "7ss": -1,
+                                                        "8ss": -1
+                                                }
+                                        }
+                                }
+                        }
+                }
+        }
+}

@@ -1,0 +1,46 @@
+phy#1
+        Interface phy1-ap1
+                ifindex 20
+                wdev 0x100000002
+                addr 06:f0:21:45:b9:da
+                ssid Steingasse-IoT
+                type AP
+                channel 6 (2437 MHz), width: 20 MHz, center1: 2437 MHz
+                txpower 16.00 dBm
+                multicast TXQ:
+                        qsz-byt qsz-pkt flows   drops   marks   overlmt hashcol tx-bytes        tx-packets
+                        0       0       0       0       0       0       0       0               0
+        Interface phy1-ap0
+                ifindex 19
+                wdev 0x100000001
+                addr 04:f0:21:45:b9:da
+                ssid Steingasse
+                type AP
+                channel 6 (2437 MHz), width: 20 MHz, center1: 2437 MHz
+                txpower 16.00 dBm
+                multicast TXQ:
+                        qsz-byt qsz-pkt flows   drops   marks   overlmt hashcol tx-bytes        tx-packets
+                        0       0       1117772 3       0       0       31      294588532               1141970
+phy#0
+        Interface phy0-ap1
+                ifindex 22
+                wdev 0x2
+                addr 06:f0:21:42:1c:b2
+                ssid Steingasse-IoT-5G
+                type AP
+                channel 36 (5180 MHz), width: 80 MHz, center1: 5210 MHz
+                txpower 23.00 dBm
+                multicast TXQ:
+                        qsz-byt qsz-pkt flows   drops   marks   overlmt hashcol tx-bytes        tx-packets
+                        0       0       14036   0       0       0       0       2450840         14036
+        Interface phy0-ap0
+                ifindex 21
+                wdev 0x1
+                addr 04:f0:21:42:1c:b2
+                ssid Steingasse-5G
+                type AP
+                channel 36 (5180 MHz), width: 80 MHz, center1: 5210 MHz
+                txpower 23.00 dBm
+                multicast TXQ:
+                        qsz-byt qsz-pkt flows   drops   marks   overlmt hashcol tx-bytes        tx-packets
+                        0       0       9239690 0       0       0       0       2325953514              9239717
