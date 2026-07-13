@@ -44,10 +44,10 @@ pick the ones you care about.)
 Include the graph definitions shipped in this directory:
 
 ```
-include /etc/xymon/graphs.d/graphs-fritzdsl.cfg
+include /etc/xymon/graphs.d/fritzdsl.cfg
 ```
 
-or append the contents of `graphs-fritzdsl.cfg` to your `graphs.cfg`.
+or append the contents of `fritzdsl.cfg` to your `graphs.cfg`.
 
 ## 3. Restart / verify
 

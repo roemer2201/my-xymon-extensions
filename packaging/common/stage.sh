@@ -71,16 +71,16 @@ if [ "$DOCDIR" != "-" ]; then
     inst 0644 extensions/smart/README.md "$DESTDIR$DOCDIR/smart/README.md" || exit 1
     inst 0644 extensions/smart/sudoers.example "$DESTDIR$DOCDIR/smart/sudoers.example" || exit 1
     inst 0644 extensions/smart/server/README.md "$DESTDIR$DOCDIR/smart/server/README.md" || exit 1
-    inst 0644 extensions/smart/server/graphs-smart.cfg "$DESTDIR$DOCDIR/smart/server/graphs-smart.cfg" || exit 1
+    inst 0644 extensions/smart/server/smart.cfg "$DESTDIR$DOCDIR/smart/server/smart.cfg" || exit 1
     inst 0644 extensions/fritzdsl/README.md "$DESTDIR$DOCDIR/fritzdsl/README.md" || exit 1
     inst 0644 extensions/fritzdsl/server/README.md "$DESTDIR$DOCDIR/fritzdsl/server/README.md" || exit 1
-    inst 0644 extensions/fritzdsl/server/graphs-fritzdsl.cfg "$DESTDIR$DOCDIR/fritzdsl/server/graphs-fritzdsl.cfg" || exit 1
+    inst 0644 extensions/fritzdsl/server/fritzdsl.cfg "$DESTDIR$DOCDIR/fritzdsl/server/fritzdsl.cfg" || exit 1
     inst 0644 extensions/fritzwan/README.md "$DESTDIR$DOCDIR/fritzwan/README.md" || exit 1
     inst 0644 extensions/fritzwan/server/README.md "$DESTDIR$DOCDIR/fritzwan/server/README.md" || exit 1
-    inst 0644 extensions/fritzwan/server/graphs-fritzwan.cfg "$DESTDIR$DOCDIR/fritzwan/server/graphs-fritzwan.cfg" || exit 1
+    inst 0644 extensions/fritzwan/server/fritzwan.cfg "$DESTDIR$DOCDIR/fritzwan/server/fritzwan.cfg" || exit 1
     inst 0644 extensions/wifi/README.md "$DESTDIR$DOCDIR/wifi/README.md" || exit 1
     inst 0644 extensions/wifi/server/README.md "$DESTDIR$DOCDIR/wifi/server/README.md" || exit 1
-    inst 0644 extensions/wifi/server/graphs-wifi.cfg "$DESTDIR$DOCDIR/wifi/server/graphs-wifi.cfg" || exit 1
+    inst 0644 extensions/wifi/server/wifi.cfg "$DESTDIR$DOCDIR/wifi/server/wifi.cfg" || exit 1
 fi
 
 exit 0
