@@ -115,7 +115,7 @@ The "wifi" extension ships disabled too: enable it (remove the
 EOF
 
 %changelog
-* Tue Jul 14 2026 roemer2201 <r.oliver@web.de> - 0.10.0-1
+* Tue Jul 14 2026 roemer2201 <r.oliver@web.de> - 0.9.2-1
 - disk: new extension - filesystem usage from "df -P -k" for
   clientless hosts (standalone runner), reporting into the standard
   "disk" column: global and per-mount thresholds, configurable
