@@ -2,6 +2,7 @@ www/xymon/client/ext/smart.sh
 www/xymon/client/ext/temp.sh
 www/xymon/client/ext/la.sh
 www/xymon/client/ext/memory.sh
+www/xymon/client/ext/disk.sh
 www/xymon/client/ext/opkg.sh
 www/xymon/client/ext/fritzdsl.sh
 www/xymon/client/ext/fritzwan.sh
@@ -10,11 +11,13 @@ www/xymon/client/ext/wifi.sh
 @sample www/xymon/client/etc/temp.cfg.sample
 @sample www/xymon/client/etc/la.cfg.sample
 @sample www/xymon/client/etc/memory.cfg.sample
+@sample www/xymon/client/etc/disk.cfg.sample
 @sample www/xymon/client/etc/opkg.cfg.sample
 @sample www/xymon/client/etc/tasks.d/smart.cfg.sample
 @sample www/xymon/client/etc/tasks.d/temp.cfg.sample
 @sample www/xymon/client/etc/tasks.d/la.cfg.sample
 @sample www/xymon/client/etc/tasks.d/memory.cfg.sample
+@sample www/xymon/client/etc/tasks.d/disk.cfg.sample
 @sample www/xymon/client/etc/tasks.d/opkg.cfg.sample
 @sample www/xymon/client/etc/fritzdsl.cfg.sample
 @sample www/xymon/client/etc/tasks.d/fritzdsl.cfg.sample
@@ -26,6 +29,7 @@ share/doc/my-xymon-extensions/README.md
 share/doc/my-xymon-extensions/temp/README.md
 share/doc/my-xymon-extensions/la/README.md
 share/doc/my-xymon-extensions/memory/README.md
+share/doc/my-xymon-extensions/disk/README.md
 share/doc/my-xymon-extensions/opkg/README.md
 share/doc/my-xymon-extensions/smart/README.md
 share/doc/my-xymon-extensions/smart/sudoers.example

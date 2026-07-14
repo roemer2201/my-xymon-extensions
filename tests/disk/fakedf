@@ -1,0 +1,11 @@
+#!/bin/sh
+# fakedf - canned "df" replacement for the unit tests.
+#
+# Ignores its arguments (disk.sh calls it as "df -P -k"), prints the
+# file named in $FAKEDF_OUTPUT (if set and non-empty) and exits with
+# $FAKEDF_RC (default 0).
+set -u
+if [ -n "${FAKEDF_OUTPUT:-}" ]; then
+    cat "$FAKEDF_OUTPUT"
+fi
+exit "${FAKEDF_RC:-0}"

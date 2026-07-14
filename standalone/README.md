@@ -59,7 +59,7 @@ scp standalone/standalone.cfg root@router:/etc/xymon-standalone/
    `XYMSRV` (the Xymon server) and check `MACHINEDOTS` (must match the
    host's entry in the server's `hosts.cfg`). The `TESTS` line selects
    which extensions `xymon-run.sh all` runs; it defaults to the local
-   health tests (`la memory smart temp`). Commented out or empty, all
+   health tests (`disk la memory smart temp`). Commented out or empty, all
    installed extensions run. The `memory` extension reports under the
    column name `mem` by default (see
    [extensions/memory/README.md](../extensions/memory/README.md)), so
@@ -98,10 +98,11 @@ Run logs go to `$XYMONTMP` (default `/tmp`, a RAM disk on OpenWrt) as
 - BusyBox `nc` is part of the default OpenWrt/TurrisOS busybox build;
   if yours lacks it, install `netcat` or `socat`.
 - Only the extension columns are reported — this runner does not
-  replace a full Xymon client. The `temp`, `la` and `memory`
+  replace a full Xymon client. The `temp`, `la`, `memory` and `disk`
   extensions in this repository cover the most important local health
   metrics for such hosts (temperatures, load average, memory
-  utilization); disk usage, network etc. remain unreported.
+  utilization, filesystem usage); network traffic etc. remain
+  unreported.
 - The `wifi` extension is in the default `TESTS` list: on access
   points it reports client counts, channel utilization, airtime and
   more (see `extensions/wifi/README.md`). On routers without AP
