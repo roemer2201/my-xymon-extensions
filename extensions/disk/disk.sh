@@ -68,6 +68,24 @@ kb2h() {
     }'
 }
 
+# join_c <space-separated list> -> the words joined with commas.
+# Used for the footer notes: the server-side disk RRD parser
+# (do_disk.c) treats every line that contains a "/", does not start
+# with "&" and has six or more whitespace-separated fields as a df
+# line and turns its 6th field into a filesystem RRD. Comma-joining
+# a pattern list keeps it a single field, so such notes can never
+# reach six fields.
+join_c() {
+    j_out=""
+    set -f
+    # shellcheck disable=SC2086  # word splitting is intended
+    for j_w in $1; do
+        j_out="${j_out}${j_out:+,}${j_w}"
+    done
+    set +f
+    printf '%s' "$j_out"
+}
+
 # send_report <color> <body-file>
 send_report() {
     if [ -n "${XYMON:-}" ] && [ -n "${XYMSRV:-}" ]; then
@@ -190,17 +208,19 @@ fi
     printf '%-20s %11s %9s %9s %5s %s\n' \
         Filesystem 1024-blocks Used Available 'Use%' 'Mounted on'
     cat "$WORKDIR/table"
+    # Footer notes. Careful with the wording: keep any line that
+    # contains a "/" below six fields (see join_c) so the server's
+    # disk RRD parser ignores it, and avoid ": <number>" so the NCV
+    # parser cannot pick up a bogus dataset either.
     printf '\nThresholds (percent used): yellow >= %s, red >= %s\n' \
         "$DISK_WARN" "$DISK_CRIT"
     if [ -n "$DISK_THRESHOLDS" ]; then
-        printf 'Per-mount thresholds (pattern:warn:crit): %s\n' \
-            "$DISK_THRESHOLDS"
+        printf 'Per-mount thresholds apply (DISK_THRESHOLDS=%s)\n' \
+            "$(join_c "$DISK_THRESHOLDS")"
     fi
     if [ "$HIDDEN" -gt 0 ]; then
-        # No "text: <number>" wording here - the server's NCV parser
-        # would pick it up as a bogus dataset.
-        printf '%s filesystem(s) hidden by DISK_EXCLUDE (%s)\n' \
-            "$HIDDEN" "$DISK_EXCLUDE"
+        printf '%s filesystem(s) hidden (DISK_EXCLUDE=%s)\n' \
+            "$HIDDEN" "$(join_c "$DISK_EXCLUDE")"
     fi
 } > "$WORKDIR/final"
 

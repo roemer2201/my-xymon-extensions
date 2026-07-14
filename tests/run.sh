@@ -604,10 +604,26 @@ expect_not "$out" '% /dev$' \
     "default DISK_EXCLUDE hides /dev from the table"
 expect_not "$out" '&(green|yellow|red) /dev ' \
     "default DISK_EXCLUDE hides /dev from the details"
-expect "$out" '^1 filesystem\(s\) hidden by DISK_EXCLUDE \(/dev /rom\)$' \
+expect "$out" '^1 filesystem\(s\) hidden \(DISK_EXCLUDE=/dev,/rom\)$' \
     "exclusion note counts the hidden filesystems"
 expect_not "$out" ': [0-9.]+ *$' \
     "no \"text : number\" lines that would trigger the server's NCV parser"
+
+# Emulate the server's disk RRD parser (do_disk.c): every line after
+# the first that contains a "/", does not start with "&" and has at
+# least six fields becomes a filesystem RRD named after field 6 - so
+# only real mount points may ever sit in that position.
+check_do_disk() { # check_do_disk <output> <description>
+    c_bogus=$(printf '%s\n' "$1" | awk \
+        'NR > 1 && index($0, "/") && $1 !~ /^&/ && NF >= 6 && $6 !~ /^\// { print $6 }')
+    if [ -n "$c_bogus" ]; then
+        echo "FAIL: $2 (do_disk would create bogus RRDs: $c_bogus)"
+        FAIL=1
+    else
+        echo "ok:   $2"
+    fi
+}
+check_do_disk "$out" "no line feeds a bogus filesystem RRD to the disk parser"
 
 # BusyBox df from a Zyxel NWA50AX Pro: /rom is 100% full by design
 # and must be hidden by default, the overlay is reported
@@ -654,6 +670,20 @@ expect "$out" '&yellow /srv 81% used .*reached the yellow threshold \(80%\)' \
     "per-mount threshold applied to the matching mount"
 expect "$out" '&green / 40% used' \
     "non-matching mounts keep the global thresholds"
+expect "$out" '^Per-mount thresholds apply \(DISK_THRESHOLDS=/srv:80:90\)$' \
+    "per-mount thresholds noted in the footer"
+check_do_disk "$out" "the DISK_THRESHOLDS note feeds no bogus RRD to the disk parser"
+
+# Many patterns: the comma-joined footer lists must stay single
+# fields, or the disk parser would read a pattern as a mount point
+# shellcheck disable=SC2086
+out=$(DISK_DF="$FAKEDF" FAKEDF_OUTPUT="$TESTDIR/disk/data/df-turris.txt" \
+    DISK_THRESHOLDS="/a:1:2 /b:3:4 /srv:80:90" \
+    DISK_EXCLUDE="/dev /rom /nosuch /other*" \
+    $TESTSH "$REPO/extensions/disk/disk.sh")
+expect "$out" '^status testhost\.disk yellow ' \
+    "long pattern lists still evaluate correctly"
+check_do_disk "$out" "long pattern lists feed no bogus RRD to the disk parser"
 
 # DISK_EXCLUDE patterns also match the device column
 # shellcheck disable=SC2086
@@ -661,7 +691,7 @@ out=$(DISK_DF="$FAKEDF" FAKEDF_OUTPUT="$TESTDIR/disk/data/df-turris.txt" \
     DISK_EXCLUDE="tmpfs /rom" $TESTSH "$REPO/extensions/disk/disk.sh")
 expect_not "$out" '/tmp' \
     "DISK_EXCLUDE matches the device column (tmpfs hides /tmp)"
-expect "$out" '^2 filesystem\(s\) hidden by DISK_EXCLUDE \(tmpfs /rom\)$' \
+expect "$out" '^2 filesystem\(s\) hidden \(DISK_EXCLUDE=tmpfs,/rom\)$' \
     "both tmpfs mounts counted as hidden"
 expect "$out" '&green /srv 81% used' \
     "real filesystems survive a device-column exclude"
