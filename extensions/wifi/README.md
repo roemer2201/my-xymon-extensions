@@ -64,12 +64,20 @@ the second poll.
   with clients associated (seen on a Turris Omnia); the retries/failed
   metrics are then omitted for that round. On devices where the dump
   is always empty those graphs stay empty.
-- Some hardware reports **garbage survey counters** (busy time far
-  beyond the channel active time; seen on a Zyxel NWA50AX Pro). The
-  extension detects this, notes it in the status and suppresses the
-  utilization percentages; the noise floor is still reported.
+- Some firmware reports **absolute survey counters with a huge
+  garbage offset** (busy/rx/tx far beyond the channel active time;
+  seen on a Zyxel NWA50AX Pro, mt798x). Since the utilization is
+  computed from the deltas between two polls, it still works there.
+  Only when the deltas themselves are implausible (busy/rx/tx growing
+  faster than the active time) does the extension note it in the
+  status and suppress the percentages; the noise floor is always
+  reported.
 - A counter reset (reboot, interface restart) skips the affected
-  rates for one poll.
+  rates for one poll. A **32-bit counter wrap** (after ~49.7 days at
+  ms resolution) looks the same - one negative delta - and is handled
+  identically: the utilization is silently omitted for a single poll,
+  then the re-primed state takes over. A wrap cannot fake a plausible
+  delta (the counter would have to regain ~49 days within one poll).
 - SSIDs are display-only; a `|` in an SSID is shown as `_`.
 
 ## Configuration

@@ -838,14 +838,17 @@ expect_not "$out" '^(rxkbps|txkbps|airrx|airtx|retries|failed)_phy0_ap0' \
     "no interface rates after a counter reset"
 expect_not "$out" '^(busy|rxpct|txpct)_phy0' \
     "no channel utilization after a survey counter reset"
+expect_not "$out" 'implausible' \
+    "a counter reset/wrap is skipped silently, not called out"
 expect_not "$out" '^(rxkbps|txkbps|airrx|airtx|retries|failed|busy|rxpct|txpct|clients|channel)[a-z0-9_]* : -' \
     "no negative values in any rate or count metric"
 expect "$out" '^clients_total : 8$' \
     "gauge metrics survive a counter reset"
 
-# Garbage survey counters (seen on a Zyxel NWA50AX Pro: busy time far
-# beyond the active time) and a client with auth=true but
-# authorized=false - it must not be counted
+# Garbage absolute survey counters (seen on a Zyxel NWA50AX Pro,
+# mt798x: busy/rx/tx carry a huge constant offset while the deltas are
+# fine) and a client with auth=true but authorized=false - it must not
+# be counted. First poll: primes the state, no complaint, no metrics.
 rm -f "$TMP"/wifi.*.state
 # shellcheck disable=SC2086
 out=$(FAKEIW_DEV="$TESTDIR/wifi/data/iw_dev.nwa.txt" \
@@ -853,17 +856,56 @@ out=$(FAKEIW_DEV="$TESTDIR/wifi/data/iw_dev.nwa.txt" \
     FAKEUBUS_JSON="$TESTDIR/wifi/data/hostapd.badclient.json" \
     $TESTSH "$REPO/extensions/wifi/wifi.sh")
 expect "$out" '^status testhost\.wifi green ' \
-    "implausible survey counters do not degrade the column"
-expect "$out" 'survey counters implausible' \
-    "implausible survey counters are called out in the status"
+    "garbage absolute survey counters do not degrade the column"
+expect_not "$out" 'implausible' \
+    "no implausible complaint while priming the state"
 expect_not "$out" '^(busy|rxpct|txpct)_' \
-    "no channel utilization from implausible counters"
+    "no channel utilization on the first poll"
 expect "$out" '^noise_phy0 : -91$' \
     "noise floor is still reported (that value is sane)"
 expect "$out" '^channel_phy0 : 1$' "NWA 2.4 GHz radio channel extracted"
 expect "$out" '^clients_phy0_ap0 : 0$' \
     "auth=true but authorized=false client is not counted"
 expect "$out" '^clients_total : 0$' "total is zero on the idle NWA"
+
+# Second poll on the NWA: previous counters = current garbage values
+# minus round deltas (active/busy/rx/tx = 300000/60000/3000/30000 ms)
+# - the utilization must come out of the deltas despite the absolute
+# garbage (busy/rx/tx way beyond the active time, rx/tx beyond 2^53)
+T0=$(($(date +%s) - 300))
+printf 'PHY phy0 %s 3635159991 2685914092659807 12142113357313468 16980392843074179\n' \
+    "$T0" > "$TMP/wifi.testhost.state"
+# shellcheck disable=SC2086
+out=$(FAKEIW_DEV="$TESTDIR/wifi/data/iw_dev.nwa.txt" \
+    FAKEIW_SURVEY="$TESTDIR/wifi/data/survey.garbage.txt" \
+    FAKEUBUS_JSON="$TESTDIR/wifi/data/hostapd.badclient.json" \
+    $TESTSH "$REPO/extensions/wifi/wifi.sh")
+expect "$out" '^busy_phy0 : 20\.0$' \
+    "channel busy percent from deltas of garbage absolute counters"
+expect "$out" '^rxpct_phy0 : 1\.0$' \
+    "channel receive percent despite counters beyond 2^53"
+expect "$out" '^txpct_phy0 : 10\.0$' \
+    "channel transmit percent despite counters beyond 2^53"
+expect "$out" 'busy=20\.0% rx=1\.0% tx=10\.0%' \
+    "status shows the utilization on the NWA"
+expect_not "$out" 'implausible' \
+    "plausible deltas silence the implausible complaint"
+
+# Implausible deltas (busy grew by 400000 ms in 300000 ms of active
+# time): utilization suppressed and called out, column stays green
+printf 'PHY phy0 %s 3635159991 2685914092319807 12142113357313468 16980392843074179\n' \
+    "$T0" > "$TMP/wifi.testhost.state"
+# shellcheck disable=SC2086
+out=$(FAKEIW_DEV="$TESTDIR/wifi/data/iw_dev.nwa.txt" \
+    FAKEIW_SURVEY="$TESTDIR/wifi/data/survey.garbage.txt" \
+    FAKEUBUS_JSON="$TESTDIR/wifi/data/hostapd.badclient.json" \
+    $TESTSH "$REPO/extensions/wifi/wifi.sh")
+expect "$out" '^status testhost\.wifi green ' \
+    "implausible survey deltas do not degrade the column"
+expect "$out" 'survey counter deltas implausible' \
+    "implausible survey deltas are called out in the status"
+expect_not "$out" '^(busy|rxpct|txpct)_' \
+    "no channel utilization from implausible deltas"
 
 # ubus/hostapd unavailable: client counts fall back to iwinfo,
 # airtime is unavailable, sysfs throughput keeps working

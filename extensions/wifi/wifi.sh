@@ -96,25 +96,26 @@ rate() {
     }'
 }
 
-# survey_plausible <active> <busy> <rx> <tx>
-# Some drivers report garbage survey counters (busy time far beyond
-# the active time). Compared in awk: the values can exceed the shell's
-# integer range on such hardware.
-survey_plausible() {
-    awk -v a="$1" -v b="$2" -v r="$3" -v t="$4" \
-        'BEGIN { exit !(b <= a && r <= a && t <= a) }'
-}
-
 # survey_pct <act> <busy> <rx> <tx> <prev-act> <prev-busy> <prev-rx> <prev-tx>
-# Prints "busy% rx% tx%" relative to the channel active time delta;
-# fails when any delta is negative (counter reset) or exceeds the
-# active-time delta (implausible counters).
+# Prints "busy% rx% tx%" relative to the channel active time delta.
+# Only the deltas are judged, never the absolute counters: some
+# firmware (seen on a Zyxel NWA50AX Pro, mt798x) reports busy/rx/tx
+# with a huge constant garbage offset while the deltas are correct.
+# Exit 1: counter reset or 32-bit wrap (negative delta) - the caller
+# skips the metric for one poll, like rate(). Exit 2: a delta grew
+# faster than the active time - garbage even as deltas. awk computes
+# in doubles; beyond 2^53 (the garbage offsets get there) a delta can
+# be off by a few ms, hence the slack in the exit-2 test and the cap
+# at 100% for a saturated channel.
 survey_pct() {
     awk -v a="$1" -v b="$2" -v r="$3" -v t="$4" \
         -v pa="$5" -v pb="$6" -v pr="$7" -v pt="$8" 'BEGIN {
         da = a - pa; db = b - pb; dr = r - pr; dt = t - pt
         if (da <= 0 || db < 0 || dr < 0 || dt < 0) exit 1
-        if (db > da || dr > da || dt > da) exit 1
+        if (db > da + 10 || dr > da + 10 || dt > da + 10) exit 2
+        if (db > da) db = da
+        if (dr > da) dr = da
+        if (dt > da) dt = da
         printf "%.1f %.1f %.1f", db * 100 / da, dr * 100 / da, dt * 100 / da
     }'
 }
@@ -291,19 +292,6 @@ while IFS='|' read -r ifn phyname chan freq width txp ssid <&3; do
             ')
             S_NOISE=${1:--}; S_ACT=${2:--}; S_BUSY=${3:--}; S_RXT=${4:--}; S_TXT=${5:--}
 
-            SURVEYOK=0
-            if is_uint "$S_ACT" && is_uint "$S_BUSY" \
-                && is_uint "$S_RXT" && is_uint "$S_TXT"; then
-                if survey_plausible "$S_ACT" "$S_BUSY" "$S_RXT" "$S_TXT"; then
-                    SURVEYOK=1
-                else
-                    # Seen in the wild (e.g. Zyxel NWA50AX Pro): busy
-                    # time centuries beyond the active time.
-                    printf '&clear %s survey counters implausible (busy/rx/tx exceed the active time) - channel utilization not reported\n' \
-                        "$phyname" >> "$STATUS"
-                fi
-            fi
-
             BUSYPCT=""; RXPCT=""; TXPCT=""
             PPT=""; PACT=""; PBUSY=""; PRXT=""; PTXT=""
             if prev=$(state_get PHY "$phyname"); then
@@ -311,16 +299,25 @@ while IFS='|' read -r ifn phyname chan freq width txp ssid <&3; do
                 set -- $prev
                 PPT=${1:-}; PACT=${2:-}; PBUSY=${3:-}; PRXT=${4:-}; PTXT=${5:-}
             fi
-            if [ "$SURVEYOK" -eq 1 ] && is_uint "$PPT" \
+            if is_uint "$S_ACT" && is_uint "$S_BUSY" \
+                && is_uint "$S_RXT" && is_uint "$S_TXT" \
+                && is_uint "$PPT" \
                 && [ "$NOW" -gt "$PPT" ] && [ $((NOW - PPT)) -ge 60 ] \
                 && is_uint "$PACT" && is_uint "$PBUSY" \
                 && is_uint "$PRXT" && is_uint "$PTXT"; then
-                if pct=$(survey_pct "$S_ACT" "$S_BUSY" "$S_RXT" "$S_TXT" \
-                    "$PACT" "$PBUSY" "$PRXT" "$PTXT"); then
-                    # shellcheck disable=SC2086  # word splitting is intended
-                    set -- $pct
-                    BUSYPCT=$1; RXPCT=$2; TXPCT=$3
-                fi
+                pct=$(survey_pct "$S_ACT" "$S_BUSY" "$S_RXT" "$S_TXT" \
+                    "$PACT" "$PBUSY" "$PRXT" "$PTXT")
+                case $? in
+                    0)
+                        # shellcheck disable=SC2086  # splitting intended
+                        set -- $pct
+                        BUSYPCT=$1; RXPCT=$2; TXPCT=$3
+                        ;;
+                    2)
+                        printf '&clear %s survey counter deltas implausible (busy/rx/tx grew faster than the active time) - channel utilization not reported\n' \
+                            "$phyname" >> "$STATUS"
+                        ;;
+                esac
             fi
 
             ncv "busy_$sphy" "$BUSYPCT"
