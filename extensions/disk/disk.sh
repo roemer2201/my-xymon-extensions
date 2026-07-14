@@ -197,8 +197,10 @@ fi
             "$DISK_THRESHOLDS"
     fi
     if [ "$HIDDEN" -gt 0 ]; then
-        printf 'Hidden by DISK_EXCLUDE (%s): %s filesystem(s)\n' \
-            "$DISK_EXCLUDE" "$HIDDEN"
+        # No "text: <number>" wording here - the server's NCV parser
+        # would pick it up as a bogus dataset.
+        printf '%s filesystem(s) hidden by DISK_EXCLUDE (%s)\n' \
+            "$HIDDEN" "$DISK_EXCLUDE"
     fi
 } > "$WORKDIR/final"
 

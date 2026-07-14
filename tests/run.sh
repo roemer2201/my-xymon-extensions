@@ -604,8 +604,10 @@ expect_not "$out" '% /dev$' \
     "default DISK_EXCLUDE hides /dev from the table"
 expect_not "$out" '&(green|yellow|red) /dev ' \
     "default DISK_EXCLUDE hides /dev from the details"
-expect "$out" 'Hidden by DISK_EXCLUDE \(/dev /rom\): 1 filesystem\(s\)' \
+expect "$out" '^1 filesystem\(s\) hidden by DISK_EXCLUDE \(/dev /rom\)$' \
     "exclusion note counts the hidden filesystems"
+expect_not "$out" ': [0-9.]+ *$' \
+    "no \"text : number\" lines that would trigger the server's NCV parser"
 
 # BusyBox df from a Zyxel NWA50AX Pro: /rom is 100% full by design
 # and must be hidden by default, the overlay is reported
@@ -659,7 +661,7 @@ out=$(DISK_DF="$FAKEDF" FAKEDF_OUTPUT="$TESTDIR/disk/data/df-turris.txt" \
     DISK_EXCLUDE="tmpfs /rom" $TESTSH "$REPO/extensions/disk/disk.sh")
 expect_not "$out" '/tmp' \
     "DISK_EXCLUDE matches the device column (tmpfs hides /tmp)"
-expect "$out" 'Hidden by DISK_EXCLUDE \(tmpfs /rom\): 2 filesystem\(s\)' \
+expect "$out" '^2 filesystem\(s\) hidden by DISK_EXCLUDE \(tmpfs /rom\)$' \
     "both tmpfs mounts counted as hidden"
 expect "$out" '&green /srv 81% used' \
     "real filesystems survive a device-column exclude"
