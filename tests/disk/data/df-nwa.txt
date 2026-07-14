@@ -1,0 +1,6 @@
+Filesystem           1024-blocks      Used Available Capacity Mounted on
+/dev/root                   4352      4352         0 100% /rom
+tmpfs                     249456      2532    246924   1% /tmp
+/dev/ubi0_2                31768     16140     13972  54% /overlay
+overlayfs:/overlay         31768     16140     13972  54% /
+tmpfs                        512         0       512   0% /dev

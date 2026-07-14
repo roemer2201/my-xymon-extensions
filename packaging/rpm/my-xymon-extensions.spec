@@ -35,6 +35,10 @@ Included extensions:
   default: the Xymon client already covers this on full clients).
 * memory - memory utilization in percent (task disabled by default:
   the Xymon client already covers this on full clients).
+* disk - filesystem usage from df with global and per-mount
+  thresholds, reporting into the standard "disk" column for
+  clientless hosts (task disabled by default: the Xymon client
+  already covers this on full clients).
 * opkg - pending package updates on opkg-based systems
   (OpenWrt/TurrisOS; task disabled by default: hosts with a full
   Xymon client have no opkg).
@@ -66,17 +70,20 @@ sh packaging/common/stage.sh "%{buildroot}" \
 %{xymonhome}/ext/temp.sh
 %{xymonhome}/ext/la.sh
 %{xymonhome}/ext/memory.sh
+%{xymonhome}/ext/disk.sh
 %{xymonhome}/ext/opkg.sh
 %config(noreplace) %{xymonhome}/etc/smart.cfg
 %config(noreplace) %{xymonhome}/etc/temp.cfg
 %config(noreplace) %{xymonhome}/etc/la.cfg
 %config(noreplace) %{xymonhome}/etc/memory.cfg
+%config(noreplace) %{xymonhome}/etc/disk.cfg
 %config(noreplace) %{xymonhome}/etc/opkg.cfg
 %dir %{xymonhome}/etc/tasks.d
 %config(noreplace) %{xymonhome}/etc/tasks.d/smart.cfg
 %config(noreplace) %{xymonhome}/etc/tasks.d/temp.cfg
 %config(noreplace) %{xymonhome}/etc/tasks.d/la.cfg
 %config(noreplace) %{xymonhome}/etc/tasks.d/memory.cfg
+%config(noreplace) %{xymonhome}/etc/tasks.d/disk.cfg
 %config(noreplace) %{xymonhome}/etc/tasks.d/opkg.cfg
 %{xymonhome}/ext/fritzdsl.sh
 %config(noreplace) %{xymonhome}/etc/fritzdsl.cfg
@@ -108,6 +115,15 @@ The "wifi" extension ships disabled too: enable it (remove the
 EOF
 
 %changelog
+* Tue Jul 14 2026 roemer2201 <r.oliver@web.de> - 0.10.0-1
+- disk: new extension - filesystem usage from "df -P -k" for
+  clientless hosts (standalone runner), reporting into the standard
+  "disk" column: global and per-mount thresholds, configurable
+  exclude globs (/dev and /rom hidden by default), df-style table in
+  the status parsed by the Xymon server's built-in disk RRD handler
+  (stock graphs, no server-side setup); the task snippet ships
+  disabled on full clients, which report "disk" themselves
+
 * Mon Jul 13 2026 roemer2201 <r.oliver@web.de> - 0.9.0-1
 - opkg: new extension - pending package update monitoring for
   opkg-based systems (OpenWrt/TurrisOS): refreshes the package lists

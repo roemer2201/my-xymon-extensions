@@ -15,7 +15,9 @@ Description: Portable Xymon client extensions with standalone runner
  SATA/ATA and NVMe disks, plus eMMC wear/pre-EOL health via mmc-utils;
  temp - all hwmon/thermal temperature sensors (CPU/SoC and switch on
  the Turris Omnia); la - load average with per-core thresholds;
- memory - memory utilization in percent; opkg - pending package
+ memory - memory utilization in percent; disk - filesystem usage from
+ df in the standard disk column (per-mount thresholds, /dev and /rom
+ hidden by default); opkg - pending package
  updates (refreshes the package lists itself, security-relevant
  updates turn red); wifi - Wi-Fi access point metadata via
  iw/ubus/iwinfo (client counts, channel utilization, airtime,

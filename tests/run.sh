@@ -574,6 +574,119 @@ expect "$out" '^status testhost\.memory green ' \
     "column name is overridable via MEM_COLUMN (e.g. back to the stock name)"
 
 # ----------------------------------------------------------------------
+echo "--- disk ---"
+FAKEDF="$TESTDIR/disk/fakedf"
+
+# Turris data (GNU df): /dev hidden by default, everything below the
+# default thresholds -> green
+# shellcheck disable=SC2086
+out=$(DISK_DF="$FAKEDF" FAKEDF_OUTPUT="$TESTDIR/disk/data/df-turris.txt" \
+    $TESTSH "$REPO/extensions/disk/disk.sh")
+rc=$?
+if [ "$rc" -ne 0 ]; then
+    echo "FAIL: disk.sh exited with $rc"
+    printf '%s\n' "$out"
+    exit 1
+fi
+expect "$out" '^status testhost\.disk green ' \
+    "disk status green (all filesystems below the default 90/95)"
+expect "$out" '&green / 40% used \(2\.8G of 7\.3G, 4\.3G free\)' \
+    "root filesystem line with human-readable sizes"
+expect "$out" '&green /srv 81% used \(356\.3G of 447\.1G, 88\.6G free\)' \
+    "81% used stays green below the default thresholds"
+expect "$out" '&green /tmp 11% used' \
+    "tmpfs mounts other than /dev are reported"
+expect "$out" '^/dev/sda +468851544 +373607712 +92898704 +81% /srv$' \
+    "df-style table line for the server's disk RRD parser"
+expect "$out" '^Filesystem +1024-blocks +Used +Available +Use% Mounted on$' \
+    "df-style table header present"
+expect_not "$out" '% /dev$' \
+    "default DISK_EXCLUDE hides /dev from the table"
+expect_not "$out" '&(green|yellow|red) /dev ' \
+    "default DISK_EXCLUDE hides /dev from the details"
+expect "$out" 'Hidden by DISK_EXCLUDE \(/dev /rom\): 1 filesystem\(s\)' \
+    "exclusion note counts the hidden filesystems"
+
+# BusyBox df from a Zyxel NWA50AX Pro: /rom is 100% full by design
+# and must be hidden by default, the overlay is reported
+# shellcheck disable=SC2086
+out=$(DISK_DF="$FAKEDF" FAKEDF_OUTPUT="$TESTDIR/disk/data/df-nwa.txt" \
+    $TESTSH "$REPO/extensions/disk/disk.sh")
+expect "$out" '^status testhost\.disk green ' \
+    "BusyBox df output parses, 100% /rom does not turn anything red"
+expect_not "$out" '&(green|yellow|red) /rom ' \
+    "default DISK_EXCLUDE hides the always-full /rom from the details"
+expect_not "$out" '% /rom$' \
+    "default DISK_EXCLUDE hides /rom from the table"
+expect "$out" '&green /overlay 54% used \(15\.8M of 31\.0M, 13\.6M free\)' \
+    "overlay partition reported with M-range sizes"
+expect "$out" '&green / 54% used' \
+    "overlayfs root mount reported separately"
+
+# Global thresholds from the environment
+# shellcheck disable=SC2086
+out=$(DISK_DF="$FAKEDF" FAKEDF_OUTPUT="$TESTDIR/disk/data/df-nwa.txt" \
+    DISK_WARN=50 $TESTSH "$REPO/extensions/disk/disk.sh")
+expect "$out" '^status testhost\.disk yellow ' \
+    "DISK_WARN from the environment turns the column yellow"
+expect "$out" '&yellow /overlay 54% used .*reached the yellow threshold \(50%\)' \
+    "yellow filesystem line names the threshold"
+expect "$out" '&green /tmp 1% used' \
+    "filesystems below the threshold stay green in a yellow report"
+
+# shellcheck disable=SC2086
+out=$(DISK_DF="$FAKEDF" FAKEDF_OUTPUT="$TESTDIR/disk/data/df-nwa.txt" \
+    DISK_CRIT=54 $TESTSH "$REPO/extensions/disk/disk.sh")
+expect "$out" '^status testhost\.disk red ' \
+    "DISK_CRIT from the environment turns the column red"
+expect "$out" '&red /overlay 54% used .*reached the red threshold \(54%\)' \
+    "red filesystem line names the threshold"
+
+# Per-mount thresholds: /srv gets 80/90, the rest keeps the defaults
+# shellcheck disable=SC2086
+out=$(DISK_DF="$FAKEDF" FAKEDF_OUTPUT="$TESTDIR/disk/data/df-turris.txt" \
+    DISK_THRESHOLDS="/srv:80:90" $TESTSH "$REPO/extensions/disk/disk.sh")
+expect "$out" '^status testhost\.disk yellow ' \
+    "DISK_THRESHOLDS pattern turns /srv yellow"
+expect "$out" '&yellow /srv 81% used .*reached the yellow threshold \(80%\)' \
+    "per-mount threshold applied to the matching mount"
+expect "$out" '&green / 40% used' \
+    "non-matching mounts keep the global thresholds"
+
+# DISK_EXCLUDE patterns also match the device column
+# shellcheck disable=SC2086
+out=$(DISK_DF="$FAKEDF" FAKEDF_OUTPUT="$TESTDIR/disk/data/df-turris.txt" \
+    DISK_EXCLUDE="tmpfs /rom" $TESTSH "$REPO/extensions/disk/disk.sh")
+expect_not "$out" '/tmp' \
+    "DISK_EXCLUDE matches the device column (tmpfs hides /tmp)"
+expect "$out" 'Hidden by DISK_EXCLUDE \(tmpfs /rom\): 2 filesystem\(s\)' \
+    "both tmpfs mounts counted as hidden"
+expect "$out" '&green /srv 81% used' \
+    "real filesystems survive a device-column exclude"
+
+# Column name override
+# shellcheck disable=SC2086
+out=$(DISK_DF="$FAKEDF" FAKEDF_OUTPUT="$TESTDIR/disk/data/df-nwa.txt" \
+    DISK_COLUMN=df $TESTSH "$REPO/extensions/disk/disk.sh")
+expect "$out" '^status testhost\.df green ' \
+    "column name is overridable via DISK_COLUMN"
+
+# df produces nothing usable -> clear
+# shellcheck disable=SC2086
+out=$(DISK_DF="$FAKEDF" FAKEDF_OUTPUT=/dev/null FAKEDF_RC=1 \
+    $TESTSH "$REPO/extensions/disk/disk.sh")
+expect "$out" '^status testhost\.disk clear ' \
+    "unusable df output reports clear, not red"
+expect "$out" 'no usable filesystem lines' "unusable-output note present"
+
+# No df at all -> clear
+# shellcheck disable=SC2086
+out=$(DISK_DF="$TMP/no-such-df" $TESTSH "$REPO/extensions/disk/disk.sh")
+expect "$out" '^status testhost\.disk clear ' \
+    "missing df reports clear, not red"
+expect "$out" 'df not found' "missing df hint present"
+
+# ----------------------------------------------------------------------
 echo "--- opkg ---"
 export FAKEOPKG="$TESTDIR/opkg/fakeopkg"
 export FAKEOPKG_LISTSDIR="$TMP/opkg-lists"
@@ -1011,6 +1124,7 @@ cp "$REPO/extensions/smart/smart.sh" "$STAGE/ext/smart.sh"
 cp "$REPO/extensions/temp/temp.sh" "$STAGE/ext/temp.sh"
 cp "$REPO/extensions/la/la.sh" "$STAGE/ext/la.sh"
 cp "$REPO/extensions/memory/memory.sh" "$STAGE/ext/memory.sh"
+cp "$REPO/extensions/disk/disk.sh" "$STAGE/ext/disk.sh"
 cp "$REPO/extensions/opkg/opkg.sh" "$STAGE/ext/opkg.sh"
 cp "$TESTDIR/smart/smart_test.cfg" "$STAGE/etc/smart.cfg"
 # The extensions must pick these up via $XYMONHOME/etc/<name>.cfg
@@ -1024,6 +1138,10 @@ LA_NCPU=4
 EOF
 cat > "$STAGE/etc/memory.cfg" <<EOF
 MEM_MEMINFO="$MEMFIX"
+EOF
+cat > "$STAGE/etc/disk.cfg" <<EOF
+DISK_DF="$FAKEDF"
+export FAKEDF_OUTPUT="$TESTDIR/disk/data/df-turris.txt"
 EOF
 # Fresh lists so opkg.sh neither calls "opkg update" nor warns
 mkdir -p "$FAKEOPKG_LISTSDIR"
@@ -1079,6 +1197,10 @@ expect "$captured" '^status turris,example,org\.mem green ' \
     "memory extension runs under the standalone runner, defaulted to column \"mem\""
 expect "$captured" '^used : 50\.0$' \
     "memory NCV payload arrives, config read from \$XYMONHOME/etc"
+expect "$captured" '^status turris,example,org\.disk green ' \
+    "disk extension runs under the standalone runner"
+expect "$captured" '% /srv$' \
+    "disk df table arrives, config read from \$XYMONHOME/etc"
 expect "$captured" '^status turris,example,org\.opkg green ' \
     "opkg extension runs under the standalone runner"
 expect "$captured" '^updates : 0$' \
@@ -1131,7 +1253,7 @@ expect "$captured" '^status turris,example,org\.temp ' \
     "TESTS: listed extension temp runs"
 expect "$captured" '^status turris,example,org\.la ' \
     "TESTS: listed extension la runs"
-expect_not "$captured" '^status turris,example,org\.(smart|mem|opkg) ' \
+expect_not "$captured" '^status turris,example,org\.(smart|mem|disk|opkg) ' \
     "TESTS: unlisted extensions do not run"
 
 # Extensions named explicitly run even when not in TESTS

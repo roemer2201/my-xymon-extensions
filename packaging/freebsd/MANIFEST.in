@@ -15,6 +15,10 @@ Included extensions:
   extension is Linux-only and inactive on FreeBSD.)
 * la - load average with per-CPU-core thresholds (task disabled by
   default: the Xymon client already covers this on full clients).
+* disk - filesystem usage from df with global and per-mount
+  thresholds, reporting into the standard "disk" column (task
+  disabled by default: the Xymon client already covers this on full
+  clients).
 * temp and memory - Linux-only (hwmon sysfs, /proc/meminfo); they
   report a clear status on FreeBSD.
 * fritzdsl - AVM FRITZ!Box DSL line monitoring via TR-064: line

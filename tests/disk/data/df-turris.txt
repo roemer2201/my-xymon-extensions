@@ -1,0 +1,5 @@
+Filesystem     1024-blocks      Used Available Capacity Mounted on
+/dev/mmcblk0p1     7634936   2937768   4468216      40% /
+tmpfs                  512         0       512       0% /dev
+tmpfs              1031208    113084    918124      11% /tmp
+/dev/sda         468851544 373607712  92898704      81% /srv
