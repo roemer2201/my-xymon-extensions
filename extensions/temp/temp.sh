@@ -37,6 +37,13 @@ TEMP_CRIT="${TEMP_CRIT:-90}"        # red at/above, degrees Celsius
 TEMP_HWMON_DIR="${TEMP_HWMON_DIR:-/sys/class/hwmon}"
 TEMP_THERMAL_DIR="${TEMP_THERMAL_DIR:-/sys/class/thermal}"
 
+# Plausibility bounds: some sensors (e.g. mt7915/mt76 wifi radio hwmon)
+# report an uncalibrated raw value for a while after boot, before the
+# driver's thermal calibration completes. Readings outside this range
+# are ignored rather than scored, since they are not real temperatures.
+TEMP_PLAUSIBLE_MIN="${TEMP_PLAUSIBLE_MIN:--40}"
+TEMP_PLAUSIBLE_MAX="${TEMP_PLAUSIBLE_MAX:-150}"
+
 CFGFILE="${TEMP_CFG:-${XYMONHOME:+${XYMONHOME}/etc/temp.cfg}}"
 if [ -n "$CFGFILE" ] && [ -r "$CFGFILE" ]; then
     # shellcheck disable=SC1090  # user config, sourced on purpose
@@ -71,6 +78,12 @@ color_hi() {
     elif ge "$1" "$2"; then echo yellow
     else echo green
     fi
+}
+
+# plausible <value> -> true if within TEMP_PLAUSIBLE_MIN..TEMP_PLAUSIBLE_MAX
+plausible() {
+    awk -v v="$1" -v lo="$TEMP_PLAUSIBLE_MIN" -v hi="$TEMP_PLAUSIBLE_MAX" \
+        'BEGIN { exit !(v + 0 >= lo + 0 && v + 0 <= hi + 0) }'
 }
 
 # sanitize <text> -> lowercase, [a-z0-9_] only, squeezed and trimmed
@@ -128,9 +141,20 @@ add_sensor() {
     SEEN="$SEEN$a_name "
 
     a_c=$(awk -v m="$2" 'BEGIN { printf "%.1f", m / 1000 }')
+    NSENSORS=$((NSENSORS + 1))
+
+    if ! plausible "$a_c"; then
+        # Uncalibrated/garbage reading (e.g. mt7915 wifi radio hwmon
+        # shortly after boot) - do not score it, and keep it out of
+        # the NCV data so it cannot spike the RRD graph.
+        OVERALL=$(worst "$OVERALL" clear)
+        printf '&clear %s = %s C (ignored: outside plausible range %s..%s C, sensor still initializing?)\n' \
+            "$a_name" "$a_c" "$TEMP_PLAUSIBLE_MIN" "$TEMP_PLAUSIBLE_MAX" >> "$STATUS"
+        return
+    fi
+
     a_color=$(color_hi "$a_c" "$TEMP_WARN" "$TEMP_CRIT")
     OVERALL=$(worst "$OVERALL" "$a_color")
-    NSENSORS=$((NSENSORS + 1))
     # "=" on purpose: a "name : value" line here would be picked up
     # by the server's NCV parser (those lines live in the comment)
     printf '&%s %s = %s C\n' "$a_color" "$a_name" "$a_c" >> "$STATUS"
