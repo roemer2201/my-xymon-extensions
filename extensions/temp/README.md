@@ -44,6 +44,24 @@ all sensor colors. Only `green`/`yellow`/`red` are sent (`clear` when
 no sensor exists) — never `blue`/`purple`, those are managed by the
 server.
 
+### Implausible readings (sensor warm-up glitches)
+
+Some sensors briefly report an uncalibrated raw value instead of a
+real temperature — most notably the **mt7915/mt76 wifi radio hwmon**
+on OpenWrt/TurrisOS devices, which can show several hundred degrees
+(or `0.0`) for a while after a reboot, until the driver's thermal
+calibration completes. `temp.sh` guards against this with a
+plausibility range (`TEMP_PLAUSIBLE_MIN`/`TEMP_PLAUSIBLE_MAX`, default
+`-40`..`150` °C): readings outside it are reported with color `clear`
+and an "ignored" note instead of being scored, and are left out of the
+NCV data so they cannot spike the RRD graph. Re-run the extension a
+minute or two later (or wait for the next cron run) — once the sensor
+settles, it reports normally again.
+
+```
+&clear mt7915_wifi0_temp1 = 491.0 C (ignored: outside plausible range -40..150 C, sensor still initializing?)
+```
+
 ## Configuration
 
 Every setting is an environment variable with a built-in default and
@@ -113,3 +131,10 @@ scheduled by cron:
 ```
 
 Dry run on the router: `/usr/lib/xymon-standalone/xymon-run.sh -n temp`
+
+To debug an implausible reading, read the raw sysfs value directly and
+compare it against the plausibility range, e.g.
+`cat /sys/class/hwmon/hwmon*/name /sys/class/hwmon/hwmon*/temp*_input`
+— a value that only settles down a minute or so after boot confirms
+the sensor warm-up glitch described above rather than an extension
+bug.

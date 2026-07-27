@@ -486,6 +486,23 @@ out=$(TEMP_HWMON_DIR="$EMPTYDIR" TEMP_THERMAL_DIR="$EMPTYDIR" \
 expect "$out" '^status testhost\.temp clear ' \
     "no sensors at all reports clear, not red"
 
+# Boot-time driver glitch (e.g. mt7915/mt76 wifi radio hwmon on
+# OpenWrt/TurrisOS): an uncalibrated raw reading of several hundred
+# degrees must not turn the column red - it is ignored instead.
+# shellcheck disable=SC2086
+out=$(TEMP_HWMON_DIR="$TESTDIR/temp/mt7915boot/sys/class/hwmon" \
+    TEMP_THERMAL_DIR="$EMPTYDIR" $TESTSH "$REPO/extensions/temp/temp.sh")
+expect "$out" '^status testhost\.temp green ' \
+    "implausible reading does not turn the column red"
+expect "$out" '&clear mt7915_wifi0 = 491\.0 C \(ignored: outside plausible range -40\.\.150 C' \
+    "implausible sensor reported as clear with an explanatory note"
+expect "$out" '&green cwl_thermal_temp1 = 62\.2 C' \
+    "a normal sensor alongside the glitching one is still scored"
+expect_not "$out" '^mt7915_wifi0 : ' \
+    "implausible reading is excluded from the NCV data"
+expect "$out" '^cwl_thermal_temp1 : 62\.2$' \
+    "the normal sensor still gets an NCV line"
+
 # ----------------------------------------------------------------------
 echo "--- la ---"
 LAFIX="$TESTDIR/la/loadavg"
