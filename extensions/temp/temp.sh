@@ -37,10 +37,13 @@ TEMP_CRIT="${TEMP_CRIT:-90}"        # red at/above, degrees Celsius
 TEMP_HWMON_DIR="${TEMP_HWMON_DIR:-/sys/class/hwmon}"
 TEMP_THERMAL_DIR="${TEMP_THERMAL_DIR:-/sys/class/thermal}"
 
-# Plausibility bounds: some sensors (e.g. mt7915/mt76 wifi radio hwmon)
-# report an uncalibrated raw value for a while after boot, before the
-# driver's thermal calibration completes. Readings outside this range
-# are ignored rather than scored, since they are not real temperatures.
+# Plausibility bounds: some sensors (e.g. mt7915/mt76 wifi radio hwmon
+# on certain hardware/firmware combinations) return a stuck or bogus
+# value instead of a real reading - observed as a constant reading
+# with zero jitter across repeated samples, unlike a real (even
+# miscalibrated) ADC. This can be transient after boot or persist
+# indefinitely; either way it is not a real temperature, so readings
+# outside this range are ignored rather than scored.
 TEMP_PLAUSIBLE_MIN="${TEMP_PLAUSIBLE_MIN:--40}"
 TEMP_PLAUSIBLE_MAX="${TEMP_PLAUSIBLE_MAX:-150}"
 
@@ -148,7 +151,7 @@ add_sensor() {
         # shortly after boot) - do not score it, and keep it out of
         # the NCV data so it cannot spike the RRD graph.
         OVERALL=$(worst "$OVERALL" clear)
-        printf '&clear %s = %s C (ignored: outside plausible range %s..%s C, sensor still initializing?)\n' \
+        printf '&clear %s = %s C (ignored: outside plausible range %s..%s C, sensor reading invalid or stuck)\n' \
             "$a_name" "$a_c" "$TEMP_PLAUSIBLE_MIN" "$TEMP_PLAUSIBLE_MAX" >> "$STATUS"
         return
     fi
