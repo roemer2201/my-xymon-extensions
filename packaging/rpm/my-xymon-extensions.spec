@@ -115,6 +115,16 @@ The "wifi" extension ships disabled too: enable it (remove the
 EOF
 
 %changelog
+* Tue Jul 28 2026 roemer2201 <r.oliver@web.de> - 0.10.4-1
+- temp: keep implausible sensor readings out of the RRD. Values
+  outside TEMP_PLAUSIBLE_MIN..MAX were already reported as "clear"
+  and left out of the NCV comment block, but the server's NCV parser
+  treats "=" like ":" and so picked the bogus value up from the
+  human-readable "&clear NAME = 491.0 C" line anyway. That whole part
+  of the status message is now fenced off with the parser's
+  ncv_skipstart/ncv_skipend markers, which also stops the normal
+  display lines from creating a duplicate RRD dataset each
+
 * Tue Jul 28 2026 roemer2201 <r.oliver@web.de> - 0.10.3-1
 - disk: stop the Xymon server from creating bogus filesystem RRDs.
   The table header no longer says "Filesystem": that word made the

@@ -34,6 +34,20 @@ expect_not() {
     fi
 }
 
+ncv_view() {
+    # ncv_view <status-message> -> the part of the message that the
+    # Xymon server's NCV parser (xymond_rrd) actually looks at: the
+    # first line carries the date and is skipped, and everything
+    # between <!-- ncv_skipstart --> and <!-- ncv_skipend --> is
+    # dropped. Anything left that looks like "NAME : VALUE" or
+    # "NAME = VALUE" ends up in an RRD.
+    printf '%s\n' "$1" | awk '
+        NR == 1                  { next }
+        /<!-- ncv_skipstart -->/ { skip = 1; next }
+        /<!-- ncv_skipend -->/   { skip = 0; next }
+        !skip'
+}
+
 # ----------------------------------------------------------------------
 echo "--- smart ---"
 export FAKESMARTCTL="$TESTDIR/smart/fakesmartctl"
@@ -454,6 +468,15 @@ expect "$out" '^armada_thermal_temp1 : 78\.1$' "temp NCV line (CPU sensor)"
 expect "$out" '^mv88e6xxx_internal : 85\.4$'   "temp NCV line (switch sensor)"
 expect "$out" '^mv88e6xxx_internal_2 : 44\.1$' "temp NCV line (deduplicated name)"
 
+# The NCV parser treats "=" like ":", so the human-readable sensor
+# lines must be fenced off - otherwise every one of them would become
+# an RRD dataset of its own.
+view=$(ncv_view "$out")
+expect "$view" '^armada_thermal_temp1 : 78\.1$' \
+    "NCV block stays visible to the server's parser"
+expect_not "$view" '=' \
+    "no '=' line reaches the NCV parser (display lines are fenced off)"
+
 # shellcheck disable=SC2086
 out=$(TEMP_HWMON_DIR="$TEMPFIX/sys/class/hwmon" TEMP_THERMAL_DIR="$EMPTYDIR" \
     TEMP_CRIT=85 $TESTSH "$REPO/extensions/temp/temp.sh")
@@ -502,6 +525,13 @@ expect_not "$out" '^mt7915_wifi0 : ' \
     "implausible reading is excluded from the NCV data"
 expect "$out" '^cwl_thermal_temp1 : 62\.2$' \
     "the normal sensor still gets an NCV line"
+view=$(ncv_view "$out")
+expect_not "$view" '491' \
+    "implausible value is invisible to the NCV parser (never hits the RRD)"
+expect_not "$view" 'mt7915' \
+    "no dataset is created for the stuck sensor at all"
+expect "$view" '^cwl_thermal_temp1 : 62\.2$' \
+    "the plausible sensor is still graphed"
 
 # ----------------------------------------------------------------------
 echo "--- la ---"

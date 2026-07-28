@@ -69,6 +69,11 @@ cannot spike the RRD graph.
 &clear mt7915_wifi0_temp1 = 491.0 C (ignored: outside plausible range -40..150 C, sensor reading invalid or stuck)
 ```
 
+Note that this display line quotes the bogus value only for the human
+reader — it never reaches the RRD, because the whole human-readable
+part of the status message is fenced off from the NCV parser (see
+[Graphing](#graphing-xymon-server-setup) below).
+
 If a sensor stays outside the plausible range permanently, that
 particular sensor simply never contributes to the column color or the
 graph — nothing else to do on the monitoring side, since there is no
@@ -90,6 +95,27 @@ inside an HTML comment (the NCV parser still sees it):
 armada_thermal_temp1 : 62.3
 mv88e6xxx_internal : 71.5
 ```
+
+Only these lines are meant for the RRD. Since `xymond_rrd`'s NCV
+parser treats `=` exactly like `:`, the human-readable part above them
+(`&green armada_thermal_temp1 = 62.3 C` …) would otherwise be turned
+into datasets of its own — including the ignored, implausible
+readings. It is therefore wrapped in the parser's skip markers:
+
+```
+<!-- ncv_skipstart -->
+&green armada_thermal_temp1 = 62.3 C
+&clear mt7915_wifi0_temp1 = 491.0 C (ignored: ...)
+Checked 2 sensor(s). Thresholds per sensor: yellow >= 80 C, red >= 90 C
+<!-- ncv_skipend -->
+```
+
+Both markers are HTML comments and stay invisible on the web page.
+If you upgraded from an earlier version of this extension, the server
+may already have collected junk RRD files from those display lines
+(names like `temp,_green_armada_thermal_temp1.rrd`); they stop being
+updated after the upgrade and can simply be deleted from
+`$XYMONVAR/rrd/<host>/`.
 
 Because the number of sensors varies per host, use **split-NCV** (one
 RRD file per sensor) on the server. In `xymonserver.cfg` (or a local

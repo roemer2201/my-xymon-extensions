@@ -8,6 +8,9 @@
 # thresholds, the worst sensor color wins. The status text carries
 # "NAME : VALUE" lines (hidden in an HTML comment) for NCV graphing
 # on the Xymon server - see README.md for the server-side setup.
+# The human-readable part above those lines is wrapped in
+# <!-- ncv_skipstart --> / <!-- ncv_skipend --> so that the server's
+# NCV parser only ever sees the machine-readable block.
 #
 # Written for clientless hosts driven by the standalone runner, e.g.
 # the Turris Omnia (armada_thermal = CPU/SoC, several mv88e6xxx
@@ -119,8 +122,15 @@ trap 'rm -rf "$WORKDIR"' EXIT INT TERM
 
 STATUS="$WORKDIR/status"
 NCV="$WORKDIR/ncv"
-: > "$STATUS"
 : > "$NCV"
+
+# Everything written to $STATUS is for humans only. xymond_rrd's NCV
+# parser treats both ":" and "=" as a name/value separator, so without
+# these markers every "&color NAME = VALUE C" line would be turned
+# into an RRD dataset of its own - including the ignored, implausible
+# readings we explicitly do not want in the graph. The markers are
+# HTML comments, so they stay invisible on the Xymon web page.
+printf '<!-- ncv_skipstart -->\n' > "$STATUS"
 
 OVERALL=green
 NSENSORS=0
@@ -147,9 +157,11 @@ add_sensor() {
     NSENSORS=$((NSENSORS + 1))
 
     if ! plausible "$a_c"; then
-        # Uncalibrated/garbage reading (e.g. mt7915 wifi radio hwmon
-        # shortly after boot) - do not score it, and keep it out of
-        # the NCV data so it cannot spike the RRD graph.
+        # Stuck/garbage reading (e.g. mt7915 wifi radio hwmon) - do
+        # not score it, and keep it out of the NCV data below so it
+        # never reaches the RRD. The note printed here is inside the
+        # ncv_skipstart/ncv_skipend block, so the value quoted in it
+        # is not picked up by the server's NCV parser either.
         OVERALL=$(worst "$OVERALL" clear)
         printf '&clear %s = %s C (ignored: outside plausible range %s..%s C, sensor reading invalid or stuck)\n' \
             "$a_name" "$a_c" "$TEMP_PLAUSIBLE_MIN" "$TEMP_PLAUSIBLE_MAX" >> "$STATUS"
@@ -158,8 +170,6 @@ add_sensor() {
 
     a_color=$(color_hi "$a_c" "$TEMP_WARN" "$TEMP_CRIT")
     OVERALL=$(worst "$OVERALL" "$a_color")
-    # "=" on purpose: a "name : value" line here would be picked up
-    # by the server's NCV parser (those lines live in the comment)
     printf '&%s %s = %s C\n' "$a_color" "$a_name" "$a_c" >> "$STATUS"
     printf '%s : %s\n' "$a_name" "$a_c" >> "$NCV"
 }
@@ -199,6 +209,7 @@ if [ "$NSENSORS" -eq 0 ]; then
             Linux) printf 'The kernel exposes no hwmon/thermal sensors on this host.\n' ;;
             *)     printf 'This interface exists on Linux only - test not applicable here.\n' ;;
         esac
+        printf '<!-- ncv_skipend -->\n'
     } >> "$STATUS"
     send_report clear "$STATUS"
     exit 0
@@ -208,6 +219,8 @@ fi
     cat "$STATUS"
     printf '\nChecked %s sensor(s). Thresholds per sensor: yellow >= %s C, red >= %s C\n' \
         "$NSENSORS" "$TEMP_WARN" "$TEMP_CRIT"
+    printf '<!-- ncv_skipend -->\n'
+    # Only the lines below are meant for the server's NCV parser.
     printf '\n<!--\n'
     cat "$NCV"
     printf '%s\n' '-->'
