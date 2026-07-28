@@ -69,15 +69,51 @@ value set there wins over the environment). See the shipped
 **None needed.** The status body ends with a `df -P -k`-style table:
 
 ```
-Filesystem           1024-blocks      Used Available  Use% Mounted on
+Device               1024-blocks      Used Available  Use% Mounted on
 /dev/mmcblk0p1           7634936   2937768   4468216   40% /
 /dev/sda               468851544 373607712  92898704   81% /srv
 ```
 
 The Xymon server's built-in RRD handler for the `disk` column (part
 of the default `TEST2RRD` setting, `disk=disk`) parses exactly this
-format and creates one `disk,<mountpoint>.rrd` per filesystem; the
-stock `[disk]` graph in `graphs.cfg` displays them. NCV is not used.
+format and creates one `disk,<mountpoint>.rrd` per filesystem (`/`
+becomes `disk,root.rrd`); the stock `[disk]` graph in `graphs.cfg`
+displays them. NCV is not used.
+
+### Why the header says "Device" and notes start with "&clear"
+
+The server-side handler (`xymond_rrd`, `do_disk.c`) is a good deal
+less picky than the format suggests, and getting the wording of the
+status body wrong silently creates junk RRD files. Two rules come out
+of its source and both are enforced by the unit tests:
+
+1. **The word `Filesystem` must not appear anywhere in the message.**
+   The handler guesses the client format from magic words in the whole
+   message, and `Filesystem` selects the *Windows* format, in which
+   the RRD is named after the **device** column instead of the mount
+   point. It only falls back to the Unix format once it meets a line
+   whose device column contains a `/` — so on a host whose first df
+   row is a `tmpfs` or an overlay (typical for OpenWrt), that row ends
+   up as `disk,tmpfs.rrd` instead of `disk,tmp.rrd`. Dropping the word
+   makes the Unix format the default for every row. The same goes for
+   `DASD`, `NetAPP`, `NetWare Volumes`, `Summary`, ` xfs `, ` efs `
+   and ` cxfs `, which select yet other formats.
+
+2. **Every line except the table rows must contain no `/` at all, or
+   start with `&`.** Apart from the first line, the handler skips only
+   lines without a `/`, lines starting with `&` and lines containing
+   ` red ` or ` yellow `; *every* other line becomes a filesystem RRD
+   named after its 6th field. Fewer than six fields does not help —
+   the name is then empty and a nameless `disk.rrd` appears. That is
+   why the footer notes echoing `DISK_EXCLUDE`/`DISK_THRESHOLDS`, and
+   the `clear` messages quoting `DISK_DF` (which may be an absolute
+   path), are prefixed with `&clear`.
+
+If a host was ever monitored with a version that got this wrong, the
+bogus RRD files stay behind — delete them on the server, e.g.
+`rm '/var/lib/xymon/rrd/<host>/disk.rrd'`,
+`'.../disk(,dev.rrd'`, `'.../disk,tmpfs.rrd'` (quote the names, they
+contain shell metacharacters), then reload the page.
 
 ## OpenWrt / TurrisOS
 

@@ -615,32 +615,73 @@ expect "$out" '&green /tmp 11% used' \
     "tmpfs mounts other than /dev are reported"
 expect "$out" '^/dev/sda +468851544 +373607712 +92898704 +81% /srv$' \
     "df-style table line for the server's disk RRD parser"
-expect "$out" '^Filesystem +1024-blocks +Used +Available +Use% Mounted on$' \
-    "df-style table header present"
+expect "$out" '^Device +1024-blocks +Used +Available +Use% Mounted on$' \
+    "df-style table header present (\"Device\", never \"Filesystem\")"
 expect_not "$out" '% /dev$' \
     "default DISK_EXCLUDE hides /dev from the table"
 expect_not "$out" '&(green|yellow|red) /dev ' \
     "default DISK_EXCLUDE hides /dev from the details"
-expect "$out" '^1 filesystem\(s\) hidden \(DISK_EXCLUDE=/dev,/rom\)$' \
+expect "$out" '^&clear 1 filesystem\(s\) hidden \(DISK_EXCLUDE=/dev,/rom\)$' \
     "exclusion note counts the hidden filesystems"
 expect_not "$out" ': [0-9.]+ *$' \
     "no \"text : number\" lines that would trigger the server's NCV parser"
 
-# Emulate the server's disk RRD parser (do_disk.c): every line after
-# the first that contains a "/", does not start with "&" and has at
-# least six fields becomes a filesystem RRD named after field 6 - so
-# only real mount points may ever sit in that position.
-check_do_disk() { # check_do_disk <output> <description>
-    c_bogus=$(printf '%s\n' "$1" | awk \
-        'NR > 1 && index($0, "/") && $1 !~ /^&/ && NF >= 6 && $6 !~ /^\// { print $6 }')
-    if [ -n "$c_bogus" ]; then
-        echo "FAIL: $2 (do_disk would create bogus RRDs: $c_bogus)"
+# Emulate the server's disk RRD handler (xymond_rrd, do_disk.c) for
+# the Unix format: it skips the first line, every line without a "/",
+# every line starting with "&" and every line containing " red " or
+# " yellow " - and turns EVERY other line into a filesystem RRD named
+# after its 6th field ("/" -> ",", a bare "/" -> ",root"). A line with
+# fewer than six fields yields an empty name, i.e. a bogus "disk.rrd".
+do_disk_rrds() { # do_disk_rrds <output>
+    printf '%s\n' "$1" | awk '
+        NR == 1                                     { next }
+        index($0, "/") == 0                         { next }
+        substr($0, 1, 1) == "&"                     { next }
+        index($0, " red ") || index($0, " yellow ") { next }
+        {
+            name = (NF >= 6) ? $6 : ""
+            gsub(/\//, ",", name)
+            if (name == ",") name = ",root"
+            print "disk" name ".rrd"
+        }'
+}
+
+check_disk_rrds() { # check_disk_rrds <output> <expected list> <description>
+    c_got=$(do_disk_rrds "$1" | tr '\n' ' ' | sed 's/  *$//')
+    if [ "$c_got" = "$2" ]; then
+        echo "ok:   $3"
+    else
+        echo "FAIL: $3"
+        echo "      expected RRDs: $2"
+        echo "      got RRDs:      $c_got"
+        FAIL=1
+    fi
+}
+
+# The handler guesses the message format from magic words anywhere in
+# the message. "Filesystem" selects the Windows format, which names
+# the RRD after the device column instead of the mount point (that is
+# how "disk,tmpfs.rrd" gets created); the others pick even more exotic
+# formats. None of them may appear in our message.
+check_disk_format() { # check_disk_format <output> <description>
+    c_bad=""
+    for c_w in Filesystem DASD NetAPP "NetWare Volumes" Summary \
+               " xfs " " efs " " cxfs " netapp.pl dbcheck.pl; do
+        case "$1" in
+            *"$c_w"*) c_bad="${c_bad}${c_bad:+, }'${c_w}'" ;;
+        esac
+    done
+    if [ -n "$c_bad" ]; then
+        echo "FAIL: $2 (message triggers a non-Unix format guess: $c_bad)"
         FAIL=1
     else
         echo "ok:   $2"
     fi
 }
-check_do_disk "$out" "no line feeds a bogus filesystem RRD to the disk parser"
+
+check_disk_format "$out" "no magic word switches the parser off the Unix format"
+check_disk_rrds "$out" "disk,root.rrd disk,tmp.rrd disk,srv.rrd" \
+    "the parser sees exactly the reported mount points, no bogus RRD"
 
 # BusyBox df from a Zyxel NWA50AX Pro: /rom is 100% full by design
 # and must be hidden by default, the overlay is reported
@@ -657,6 +698,13 @@ expect "$out" '&green /overlay 54% used \(15\.8M of 31\.0M, 13\.6M free\)' \
     "overlay partition reported with M-range sizes"
 expect "$out" '&green / 54% used' \
     "overlayfs root mount reported separately"
+# The regression this guards: with "tmpfs" (no slash) as the first
+# device column the server used to name the first RRD after the
+# device - "disk,tmpfs.rrd" instead of "disk,tmp.rrd" - and the
+# footer note produced an extra, nameless "disk.rrd".
+check_disk_format "$out" "BusyBox df output keeps the parser on the Unix format"
+check_disk_rrds "$out" "disk,tmp.rrd disk,overlay.rrd disk,root.rrd" \
+    "a slash-less first device column still yields mount-point RRDs"
 
 # Global thresholds from the environment
 # shellcheck disable=SC2086
@@ -687,9 +735,10 @@ expect "$out" '&yellow /srv 81% used .*reached the yellow threshold \(80%\)' \
     "per-mount threshold applied to the matching mount"
 expect "$out" '&green / 40% used' \
     "non-matching mounts keep the global thresholds"
-expect "$out" '^Per-mount thresholds apply \(DISK_THRESHOLDS=/srv:80:90\)$' \
+expect "$out" '^&clear Per-mount thresholds apply \(DISK_THRESHOLDS=/srv:80:90\)$' \
     "per-mount thresholds noted in the footer"
-check_do_disk "$out" "the DISK_THRESHOLDS note feeds no bogus RRD to the disk parser"
+check_disk_rrds "$out" "disk,root.rrd disk,tmp.rrd disk,srv.rrd" \
+    "the DISK_THRESHOLDS note feeds no bogus RRD to the disk parser"
 
 # Many patterns: the comma-joined footer lists must stay single
 # fields, or the disk parser would read a pattern as a mount point
@@ -700,7 +749,8 @@ out=$(DISK_DF="$FAKEDF" FAKEDF_OUTPUT="$TESTDIR/disk/data/df-turris.txt" \
     $TESTSH "$REPO/extensions/disk/disk.sh")
 expect "$out" '^status testhost\.disk yellow ' \
     "long pattern lists still evaluate correctly"
-check_do_disk "$out" "long pattern lists feed no bogus RRD to the disk parser"
+check_disk_rrds "$out" "disk,root.rrd disk,tmp.rrd disk,srv.rrd" \
+    "long pattern lists feed no bogus RRD to the disk parser"
 
 # DISK_EXCLUDE patterns also match the device column
 # shellcheck disable=SC2086
@@ -708,7 +758,7 @@ out=$(DISK_DF="$FAKEDF" FAKEDF_OUTPUT="$TESTDIR/disk/data/df-turris.txt" \
     DISK_EXCLUDE="tmpfs /rom" $TESTSH "$REPO/extensions/disk/disk.sh")
 expect_not "$out" '/tmp' \
     "DISK_EXCLUDE matches the device column (tmpfs hides /tmp)"
-expect "$out" '^2 filesystem\(s\) hidden \(DISK_EXCLUDE=tmpfs,/rom\)$' \
+expect "$out" '^&clear 2 filesystem\(s\) hidden \(DISK_EXCLUDE=tmpfs,/rom\)$' \
     "both tmpfs mounts counted as hidden"
 expect "$out" '&green /srv 81% used' \
     "real filesystems survive a device-column exclude"
@@ -727,6 +777,8 @@ out=$(DISK_DF="$FAKEDF" FAKEDF_OUTPUT=/dev/null FAKEDF_RC=1 \
 expect "$out" '^status testhost\.disk clear ' \
     "unusable df output reports clear, not red"
 expect "$out" 'no usable filesystem lines' "unusable-output note present"
+check_disk_rrds "$out" "" \
+    "the unusable-output note feeds no RRD to the disk parser"
 
 # No df at all -> clear
 # shellcheck disable=SC2086
@@ -734,6 +786,8 @@ out=$(DISK_DF="$TMP/no-such-df" $TESTSH "$REPO/extensions/disk/disk.sh")
 expect "$out" '^status testhost\.disk clear ' \
     "missing df reports clear, not red"
 expect "$out" 'df not found' "missing df hint present"
+check_disk_rrds "$out" "" \
+    "an absolute DISK_DF path in the note feeds no RRD to the disk parser"
 
 # ----------------------------------------------------------------------
 echo "--- opkg ---"

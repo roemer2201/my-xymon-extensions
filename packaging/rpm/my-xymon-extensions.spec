@@ -115,6 +115,17 @@ The "wifi" extension ships disabled too: enable it (remove the
 EOF
 
 %changelog
+* Tue Jul 28 2026 roemer2201 <r.oliver@web.de> - 0.10.3-1
+- disk: stop the Xymon server from creating bogus filesystem RRDs.
+  The table header no longer says "Filesystem": that word made the
+  server's disk RRD handler use the Windows format and name the RRD
+  after the device column, so hosts whose first df row is a tmpfs or
+  an overlay (OpenWrt) got "disk,tmpfs.rrd" instead of
+  "disk,tmp.rrd". Footer notes and the "clear" messages are now
+  prefixed with "&clear", the only reliable way to keep a line that
+  contains a "/" out of that handler - short notes were still picked
+  up and produced a nameless "disk.rrd" (and, before, "disk(,dev.rrd")
+
 * Tue Jul 14 2026 roemer2201 <r.oliver@web.de> - 0.10.2-1
 - disk: new extension - filesystem usage from "df -P -k" for
   clientless hosts (standalone runner), reporting into the standard
