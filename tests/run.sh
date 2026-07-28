@@ -486,9 +486,9 @@ out=$(TEMP_HWMON_DIR="$EMPTYDIR" TEMP_THERMAL_DIR="$EMPTYDIR" \
 expect "$out" '^status testhost\.temp clear ' \
     "no sensors at all reports clear, not red"
 
-# Boot-time driver glitch (e.g. mt7915/mt76 wifi radio hwmon on
-# OpenWrt/TurrisOS): an uncalibrated raw reading of several hundred
-# degrees must not turn the column red - it is ignored instead.
+# Stuck/invalid sensor (e.g. mt7915/mt76 wifi radio hwmon on
+# OpenWrt/TurrisOS): a fixed bogus reading of several hundred degrees
+# must not turn the column red - it is ignored instead.
 # shellcheck disable=SC2086
 out=$(TEMP_HWMON_DIR="$TESTDIR/temp/mt7915boot/sys/class/hwmon" \
     TEMP_THERMAL_DIR="$EMPTYDIR" $TESTSH "$REPO/extensions/temp/temp.sh")

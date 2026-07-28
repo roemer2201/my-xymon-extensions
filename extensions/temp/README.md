@@ -44,23 +44,35 @@ all sensor colors. Only `green`/`yellow`/`red` are sent (`clear` when
 no sensor exists) — never `blue`/`purple`, those are managed by the
 server.
 
-### Implausible readings (sensor warm-up glitches)
+### Implausible readings (stuck or invalid sensors)
 
-Some sensors briefly report an uncalibrated raw value instead of a
-real temperature — most notably the **mt7915/mt76 wifi radio hwmon**
-on OpenWrt/TurrisOS devices, which can show several hundred degrees
-(or `0.0`) for a while after a reboot, until the driver's thermal
-calibration completes. `temp.sh` guards against this with a
-plausibility range (`TEMP_PLAUSIBLE_MIN`/`TEMP_PLAUSIBLE_MAX`, default
-`-40`..`150` °C): readings outside it are reported with color `clear`
-and an "ignored" note instead of being scored, and are left out of the
-NCV data so they cannot spike the RRD graph. Re-run the extension a
-minute or two later (or wait for the next cron run) — once the sensor
-settles, it reports normally again.
+Some sensors report a bogus value instead of a real temperature —
+observed on the **mt7915/mt76 wifi radio hwmon** on some
+OpenWrt/TurrisOS devices (e.g. Zyxel NWA50AX Pro), which can get stuck
+at a fixed, obviously-wrong reading such as several hundred degrees.
+Unlike a real (even miscalibrated) ADC, repeated samples show zero
+jitter, and no thermal-throttling kernel messages appear
+(`logread | grep -i therm`) — both point to the firmware/MCU not
+returning a real measurement at all, rather than a wrong scale or
+offset applied to a real one. This can appear right after boot or
+persist indefinitely; there is no known fix as of this writing (see
+[openwrt/mt76#729](https://github.com/openwrt/mt76/issues/729) for
+background on unreliable mt7915 thermal sensors).
+
+`temp.sh` guards against this with a plausibility range
+(`TEMP_PLAUSIBLE_MIN`/`TEMP_PLAUSIBLE_MAX`, default `-40`..`150` °C):
+readings outside it are reported with color `clear` and an "ignored"
+note instead of being scored, and are left out of the NCV data so they
+cannot spike the RRD graph.
 
 ```
-&clear mt7915_wifi0_temp1 = 491.0 C (ignored: outside plausible range -40..150 C, sensor still initializing?)
+&clear mt7915_wifi0_temp1 = 491.0 C (ignored: outside plausible range -40..150 C, sensor reading invalid or stuck)
 ```
+
+If a sensor stays outside the plausible range permanently, that
+particular sensor simply never contributes to the column color or the
+graph — nothing else to do on the monitoring side, since there is no
+reliable real value to recover from a stuck reading.
 
 ## Configuration
 
