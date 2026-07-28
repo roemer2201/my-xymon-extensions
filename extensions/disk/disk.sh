@@ -69,12 +69,11 @@ kb2h() {
 }
 
 # join_c <space-separated list> -> the words joined with commas.
-# Used for the footer notes: the server-side disk RRD parser
-# (do_disk.c) treats every line that contains a "/", does not start
-# with "&" and has six or more whitespace-separated fields as a df
-# line and turns its 6th field into a filesystem RRD. Comma-joining
-# a pattern list keeps it a single field, so such notes can never
-# reach six fields.
+# Used for the footer notes: it keeps a pattern list on one line (any
+# newline or tab in the value collapses into a comma) and makes it a
+# single whitespace-separated field, which keeps such a note short and
+# out of the shape of a df line. See "Server-side parser" below for
+# why that alone is not enough.
 join_c() {
     j_out=""
     set -f
@@ -107,8 +106,12 @@ $(cat "$2")"
 WORKDIR=$(mktemp -d "${XYMONTMP}/disk.XXXXXX") || exit 1
 trap 'rm -rf "$WORKDIR"' EXIT INT TERM
 
+# clear_report <text> - report "clear" and stop. The text quotes
+# $DISK_DF, which may well be an absolute path, so it is prefixed with
+# "&clear" like every other line that can contain a "/" (see the
+# parser notes further down).
 clear_report() {
-    printf '%s\n' "$1" > "$WORKDIR/status"
+    printf '&clear %s\n' "$1" > "$WORKDIR/status"
     send_report clear "$WORKDIR/status"
     exit 0
 }
@@ -200,26 +203,60 @@ if [ "$COUNT" -eq 0 ]; then
     clear_report "\"${DISK_DF} -P -k\" produced no usable filesystem lines (exit code ${DFRC})."
 fi
 
+# ----------------------------------------------------------------------
+# Server-side parser (xymond_rrd, do_disk.c) - read before touching
+# the wording of anything below!
+#
+# The handler walks the status message line by line, skipping only
+#   1. the very first line (the "status host.disk COLOR date ..." one),
+#   2. every line without a "/",
+#   3. every line starting with "&",
+#   4. every line containing " red " or " yellow ".
+# EVERY other line is treated as a df line: the 6th whitespace-
+# separated field becomes the filesystem name ("/" -> ",", a bare "/"
+# -> ",root") and an RRD "disk<name>.rrd" is created and updated. A
+# line with fewer than six fields yields an EMPTY name, i.e. a bogus
+# "disk.rrd" - so keeping notes short does not help. The invariant is
+# therefore:
+#
+#   every line except the df table rows must either contain no "/"
+#   at all, or start with "&".
+#
+# Which column holds the mount point depends on a format guess made
+# from the whole message: the word "Filesystem" anywhere in it selects
+# the Windows format, where the RRD is named after the DEVICE column
+# instead. The handler only falls back to the Unix format once it sees
+# a line whose device column contains a "/" - so on a host whose first
+# df row is a "tmpfs" or another slash-less device, the mount point is
+# ignored and RRDs like "disk,tmpfs.rrd" appear. The table header here
+# therefore says "Device", not "Filesystem": with no such word in the
+# message the Unix format is the default and every row is named after
+# its mount point. For the same reason the message must not contain
+# "DASD", "NetAPP", "NetWare Volumes", "Summary", " xfs ", " efs " or
+# " cxfs " - each of them selects yet another format.
+#
+# Finally, avoid ": <number>" anywhere, or the NCV parser picks up a
+# bogus dataset as well.
+# ----------------------------------------------------------------------
 {
     cat "$WORKDIR/details"
     # df-style table - the Xymon server's disk RRD handler parses this
     # for the stock per-filesystem graphs.
     printf '\n'
     printf '%-20s %11s %9s %9s %5s %s\n' \
-        Filesystem 1024-blocks Used Available 'Use%' 'Mounted on'
+        Device 1024-blocks Used Available 'Use%' 'Mounted on'
     cat "$WORKDIR/table"
-    # Footer notes. Careful with the wording: keep any line that
-    # contains a "/" below six fields (see join_c) so the server's
-    # disk RRD parser ignores it, and avoid ": <number>" so the NCV
-    # parser cannot pick up a bogus dataset either.
+    # Footer notes. Anything echoing a configured pattern contains a
+    # "/" and must be prefixed with "&clear" to stay out of the RRD
+    # parser (see above); Xymon renders that as an informational icon.
     printf '\nThresholds (percent used): yellow >= %s, red >= %s\n' \
         "$DISK_WARN" "$DISK_CRIT"
     if [ -n "$DISK_THRESHOLDS" ]; then
-        printf 'Per-mount thresholds apply (DISK_THRESHOLDS=%s)\n' \
+        printf '&clear Per-mount thresholds apply (DISK_THRESHOLDS=%s)\n' \
             "$(join_c "$DISK_THRESHOLDS")"
     fi
     if [ "$HIDDEN" -gt 0 ]; then
-        printf '%s filesystem(s) hidden (DISK_EXCLUDE=%s)\n' \
+        printf '&clear %s filesystem(s) hidden (DISK_EXCLUDE=%s)\n' \
             "$HIDDEN" "$(join_c "$DISK_EXCLUDE")"
     fi
 } > "$WORKDIR/final"
