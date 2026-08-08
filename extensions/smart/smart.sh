@@ -46,6 +46,11 @@ CRC_WARN=1         CRC_CRIT=100       # interface CRC errors (cabling!)
 MEDIAERR_WARN=1    MEDIAERR_CRIT=10   # NVMe media/data integrity errors
 SPARE_WARN=50      SPARE_CRIT=10      # NVMe available spare, percent LEFT
 
+# DWPD (disk writes per day). Both metrics are graph-only (no thresholds).
+DWPD_MIN_HOURS=24      # dwpd: minimum power-on hours before reporting
+DWPD_WINDOW_HOURS=24   # dwpdrecent: rolling window length in hours
+DWPD_SAMPLE_HOURS=1    # dwpdrecent: minimum spacing between stored samples
+
 DEVLIST=""             # filled by device() from smart.cfg, else auto-scan
 USERMAP=""             # filled by attrmap() from smart.cfg
 
@@ -71,6 +76,16 @@ if [ -n "$CFGFILE" ] && [ -r "$CFGFILE" ]; then
     # shellcheck disable=SC1090  # user config, sourced on purpose
     . "$CFGFILE"
 fi
+
+# The DWPD settings end up in shell arithmetic, so a non-numeric value
+# from the config file must not reach it. Fall back to the default and
+# keep the window large enough that the poll interval does not become
+# the dominating noise source.
+case "$DWPD_MIN_HOURS"    in ''|*[!0-9]*) DWPD_MIN_HOURS=24    ;; esac
+case "$DWPD_WINDOW_HOURS" in ''|*[!0-9]*) DWPD_WINDOW_HOURS=24 ;; esac
+case "$DWPD_SAMPLE_HOURS" in ''|*[!0-9]*) DWPD_SAMPLE_HOURS=1  ;; esac
+[ "$DWPD_WINDOW_HOURS" -ge 6 ] || DWPD_WINDOW_HOURS=6
+[ "$DWPD_SAMPLE_HOURS" -ge 1 ] || DWPD_SAMPLE_HOURS=1
 
 # ----------------------------------------------------------------------
 # Built-in attribute map: <model-glob>|<id-or-name-glob>|<metric>|<source>
@@ -226,6 +241,64 @@ $(cat "$3")"
     fi
 }
 
+# is_uint <value> -> true if the value is a non-negative integer
+is_uint() {
+    case "${1:-}" in
+        ''|*[!0-9]*) return 1 ;;
+    esac
+    return 0
+}
+
+# is_num <value> -> true if the value is a non-negative decimal number
+is_num() {
+    case "${1:-}" in
+        ''|*[!0-9.]*) return 1 ;;
+        *.*.*)        return 1 ;;
+        .|*.)         return 1 ;;
+    esac
+    return 0
+}
+
+# cap_gib <smartctl output> -> drive capacity in GiB, empty if unknown
+#
+# ATA prints "User Capacity: 512,110,190,592 bytes [512 GB]", NVMe
+# "Namespace 1 Size/Capacity: 1,000,204,886,016 [1.00 TB]" (preferred:
+# that is the OS-visible size, matching ATA's User Capacity) and
+# "Total NVM Capacity:" (controller-wide, used as a fallback).
+cap_gib() {
+    c_bytes=$(printf '%s\n' "$1" | sed -n \
+        -e 's/^User Capacity: *\([0-9,]*\) bytes.*/\1/p' | head -n 1)
+    [ -n "$c_bytes" ] || c_bytes=$(printf '%s\n' "$1" | sed -n \
+        -e 's#^Namespace 1 Size/Capacity: *\([0-9,]*\).*#\1#p' | head -n 1)
+    [ -n "$c_bytes" ] || c_bytes=$(printf '%s\n' "$1" | sed -n \
+        -e 's/^Total NVM Capacity: *\([0-9,]*\).*/\1/p' | head -n 1)
+
+    c_bytes=$(printf '%s' "$c_bytes" | tr -d ',')
+    is_uint "$c_bytes" || return 0
+    awk -v b="$c_bytes" 'BEGIN { if (b > 0) printf "%.1f", b / 1073741824 }'
+}
+
+# dwpd_lifetime <written GiB> <capacity GiB> <power-on hours>
+# Lifetime average writes per day. Both inputs are counters kept by the
+# drive firmware, so this needs no state and survives host reboots.
+dwpd_lifetime() {
+    awk -v w="$1" -v c="$2" -v h="$3" 'BEGIN {
+        if (c <= 0 || h <= 0) exit 1
+        printf "%.5f", w / c / (h / 24)
+    }'
+}
+
+# dwpd_rate <written now> <written before> <capacity GiB> <elapsed s>
+# Writes per day over the sampling window. Fails on a shrinking counter
+# (disk replaced, firmware counter reset) so the caller can start over.
+dwpd_rate() {
+    awk -v c="$1" -v p="$2" -v cap="$3" -v e="$4" 'BEGIN {
+        d = c - p
+        if (d < 0 || cap <= 0 || e <= 0) exit 1
+        printf "%.5f", d / cap / (e / 86400)
+    }'
+}
+
 # ----------------------------------------------------------------------
 # Main
 # ----------------------------------------------------------------------
@@ -239,6 +312,19 @@ NOTES="$WORKDIR/notes"
 : > "$STATUS"
 : > "$DATA"
 : > "$NOTES"
+
+# dwpdrecent keeps a few samples per device between runs. Losing this
+# file (reboot with a tmpfs $XYMONTMP, first run, fresh install) only
+# costs one window of history - it is re-seeded silently and never
+# produces a wrong value, see README.md.
+STATEFILE="${XYMONTMP}/smart.${MACHINE}.state"
+OLDSTATE="$WORKDIR/oldstate"
+NEWSTATE="$WORKDIR/newstate"
+SEEN="$WORKDIR/seen"
+cp "$STATEFILE" "$OLDSTATE" 2>/dev/null || : > "$OLDSTATE"
+: > "$NEWSTATE"
+: > "$SEEN"
+NOW=$(date +%s)
 
 clear_report() {
     printf '%s\n' "$1" > "$STATUS"
@@ -403,6 +489,13 @@ while IFS='|' read -r dev opts alias <&3; do
         -e 's/^SMART overall-health self-assessment test result: *//p' \
         -e 's/^SMART Health Status: *//p' | head -n 1)
 
+    # Capacity feeds the DWPD metrics; the serial detects a disk swap
+    # behind an unchanged device name.
+    serial=$(printf '%s\n' "$out" | sed -n -e 's/^Serial Number: *//p' \
+        | head -n 1 | tr -d ' \t')
+    [ -n "$serial" ] || serial="-"
+    cap=$(cap_gib "$out")
+
     # Unknown to smartctl's drive database: vendor attributes keep their
     # generic (sometimes wrong) default names, so mappings may be
     # incomplete for models the built-in map does not cover by ID.
@@ -413,6 +506,7 @@ while IFS='|' read -r dev opts alias <&3; do
 
     critwarn=""
     : > "$WORKDIR/metrics.raw"
+    : > "$WORKDIR/written.precise"
 
     # ATA/SATA: attribute table lines look like
     # ID# ATTRIBUTE_NAME FLAG VALUE WORST THRESH TYPE UPDATED WHEN_FAILED RAW
@@ -436,6 +530,22 @@ while IFS='|' read -r dev opts alias <&3; do
                 mib32)   v=$(awk -v r="$a_raw" 'BEGIN { printf "%.0f", r / 32 }') ;;
                 *)       v=$a_raw ;;   # raw and gib
             esac
+            # The displayed "written" metric is whole GiB, but the
+            # rolling DWPD window must not inherit that rounding: at a
+            # low write rate a 1-GiB step is hours or days wide and the
+            # graph would turn into a square wave. Keep the unrounded
+            # value where the drive's own counter is finer than 1 GiB.
+            if [ "$m" = "written" ]; then
+                case "$src" in
+                    lba)   awk -v r="$a_raw" \
+                        'BEGIN { printf "%.6f\n", r * 512 / 1073741824 }' \
+                        > "$WORKDIR/written.precise" ;;
+                    mib32) awk -v r="$a_raw" \
+                        'BEGIN { printf "%.6f\n", r / 32 }' \
+                        > "$WORKDIR/written.precise" ;;
+                    *)     printf '%s\n' "$v" > "$WORKDIR/written.precise" ;;
+                esac
+            fi
             printf '%s %s\n' "$m" "$v" >> "$WORKDIR/metrics.raw"
         done < "$WORKDIR/attrs"
     elif printf '%s\n' "$out" | grep -q "NVMe Log"; then
@@ -453,6 +563,13 @@ while IFS='|' read -r dev opts alias <&3; do
             /^Data Units Written:/              { printf "written %.0f\n", num($2) * 512000 / 1073741824 }
             /^Data Units Read:/                 { printf "read %.0f\n", num($2) * 512000 / 1073741824 }
         ' > "$WORKDIR/metrics.raw"
+        # Unrounded writes for the DWPD window (see the ATA branch):
+        # NVMe counts in 512000-byte units, far finer than 1 GiB.
+        printf '%s\n' "$out" | awk -F': *' '
+            /^Data Units Written:/ {
+                gsub(/[ ,]/, "", $2)
+                printf "%.6f\n", $2 * 512000 / 1073741824
+            }' > "$WORKDIR/written.precise"
         critwarn=$(printf '%s\n' "$out" | sed -n -e 's/^Critical Warning: *//p' | head -n 1)
     else
         # SCSI/SAS: no attribute table; grab what is there
@@ -491,6 +608,88 @@ while IFS='|' read -r dev opts alias <&3; do
     if [ -n "$critwarn" ] && [ "$critwarn" != "0x00" ] && [ "$critwarn" != "0" ]; then
         devcolor=$(worst "$devcolor" yellow)
         printf '&yellow %s: NVMe critical warning flags set (%s)\n' "$dev" "$critwarn" >> "$NOTES"
+    fi
+
+    # --- DWPD -------------------------------------------------------
+    # Needs the deduplicated metrics, so this runs after the awk above
+    # and appends to the same file: the loop below then turns the two
+    # values into NCV lines and status pairs like any other metric.
+    w_gib=$(awk '$1 == "written" { print $2; exit }' "$WORKDIR/metrics")
+    h_hrs=$(awk '$1 == "hours"   { print $2; exit }' "$WORKDIR/metrics")
+
+    # Prefer the unrounded writes counter; fall back to the displayed
+    # whole-GiB value if this device did not provide one.
+    w_prec=$(head -n 1 "$WORKDIR/written.precise" 2>/dev/null)
+    is_num "$w_prec" || w_prec="$w_gib"
+
+    if is_num "$w_gib" && is_num "$cap"; then
+        # Lifetime average - no state involved, hence reboot-proof.
+        # Below DWPD_MIN_HOURS the ratio is meaningless (dividing by a
+        # handful of hours), so it is withheld rather than reported.
+        if is_uint "$h_hrs" && [ "$h_hrs" -ge "$DWPD_MIN_HOURS" ]; then
+            dwpd_v=$(dwpd_lifetime "$w_prec" "$cap" "$h_hrs")
+            [ -n "$dwpd_v" ] && \
+                printf 'dwpd %s\n' "$dwpd_v" >> "$WORKDIR/metrics"
+        fi
+
+        printf '%s\n' "$name" >> "$SEEN"
+
+        # Rolling window: pick the newest sample that is at least one
+        # window old, prune anything older than two windows, and drop
+        # the whole history when the serial changed (disk replaced).
+        awk -v alias="$name" -v serial="$serial" -v now="$NOW" \
+            -v win="$((DWPD_WINDOW_HOURS * 3600))" \
+            -v ret="$((DWPD_WINDOW_HOURS * 7200))" '
+            $1 == "S" && $2 == alias {
+                if ($3 != "-" && serial != "-" && $3 != serial) {
+                    swapped = 1
+                    next
+                }
+                if ($4 !~ /^[0-9]+$/) next
+                if ($5 !~ /^[0-9]+(\.[0-9]+)?$/) next
+                age = now - $4
+                if (age < 0 || age > ret) next
+                n++; st[n] = $4; sw[n] = $5
+                if (age >= win && (reft == "" || $4 + 0 > reft + 0)) {
+                    reft = $4; refw = $5
+                }
+            }
+            END {
+                if (swapped) { print "REF - -"; exit }
+                printf "REF %s %s\n", (reft == "" ? "-" : reft), \
+                                      (refw == "" ? "-" : refw)
+                for (i = 1; i <= n; i++) printf "K %s %s\n", st[i], sw[i]
+            }' "$OLDSTATE" > "$WORKDIR/dwpd.state"
+
+        ref_tag=""; ref_t="-"; ref_w="-"
+        read -r ref_tag ref_t ref_w < "$WORKDIR/dwpd.state" || true
+        [ "$ref_tag" = "REF" ] || { ref_t="-"; ref_w="-"; }
+
+        keep=1
+        if is_uint "$ref_t" && is_num "$ref_w" && [ "$NOW" -gt "$ref_t" ]; then
+            dr_v=$(dwpd_rate "$w_prec" "$ref_w" "$cap" "$((NOW - ref_t))")
+            if [ -n "$dr_v" ]; then
+                printf 'dwpdrecent %s\n' "$dr_v" >> "$WORKDIR/metrics"
+            else
+                # Counter went backwards - the history is not comparable
+                # to the current reading any more, so start over.
+                keep=0
+            fi
+        fi
+
+        newest=0
+        if [ "$keep" -eq 1 ]; then
+            while read -r k_tag k_t k_w; do
+                [ "$k_tag" = "K" ] || continue
+                printf 'S %s %s %s %s\n' "$name" "$serial" "$k_t" "$k_w" \
+                    >> "$NEWSTATE"
+                [ "$k_t" -gt "$newest" ] && newest="$k_t"
+            done < "$WORKDIR/dwpd.state"
+        fi
+        if [ $((NOW - newest)) -ge $((DWPD_SAMPLE_HOURS * 3600)) ]; then
+            printf 'S %s %s %s %s\n' "$name" "$serial" "$NOW" "$w_prec" \
+                >> "$NEWSTATE"
+        fi
     fi
 
     pairs=""
@@ -624,6 +823,25 @@ for dev in $MMCLIST; do
 
     OVERALL=$(worst "$OVERALL" "$devcolor")
 done
+
+# Carry forward the samples of devices that were not processed this run
+# (standby, a transient smartctl error): a single miss must not throw
+# away a whole window of history.
+awk -v now="$NOW" -v ret="$((DWPD_WINDOW_HOURS * 7200))" '
+    FILENAME == seenfile { seen[$1] = 1; next }
+    $1 == "S" && !($2 in seen) {
+        if ($4 !~ /^[0-9]+$/) next
+        if (now - $4 < 0 || now - $4 > ret) next
+        print
+    }' seenfile="$SEEN" "$SEEN" "$OLDSTATE" >> "$NEWSTATE"
+
+# Persist the samples (best effort - a read-only or missing $XYMONTMP
+# only disables dwpdrecent, it must not break the report).
+if [ -s "$NEWSTATE" ]; then
+    if cat "$NEWSTATE" > "${STATEFILE}.$$" 2>/dev/null; then
+        mv "${STATEFILE}.$$" "$STATEFILE" 2>/dev/null || rm -f "${STATEFILE}.$$"
+    fi
+fi
 
 {
     if [ -s "$NOTES" ]; then

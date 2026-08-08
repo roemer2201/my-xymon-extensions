@@ -30,6 +30,8 @@ graphs on the Xymon server.
 | `unsafeshut` | unsafe shutdowns                   | —                                          | `Unsafe Shutdowns`              | graph only        |
 | `written`    | host data written (GiB)            | 241 `Total_LBAs_Written`, `Host_Writes_…`  | `Data Units Written`            | graph only        |
 | `read`       | host data read (GiB)               | 242 `Total_LBAs_Read`, `Host_Reads_…`      | `Data Units Read`               | graph only        |
+| `dwpd`       | lifetime avg writes per day        | computed: `written` ÷ capacity ÷ days      | computed (same)                 | graph only        |
+| `dwpdrecent` | writes per day, recent window      | computed from stored samples               | computed (same)                 | graph only        |
 
 Additionally, the SMART overall health verdict (`PASSED`/`FAILED`) turns
 the column **red** on failure, and NVMe *Critical Warning* flags turn it
@@ -104,6 +106,103 @@ extension attacks this in three layers:
 NVMe needs none of this: the NVMe health log is standardized and is
 mapped directly.
 
+## Disk writes per day (DWPD)
+
+DWPD expresses write load in the unit SSD endurance is rated in: how
+many times the drive's own capacity is written per day. Two variants are
+reported, both **graph only** — they never colour the column, because
+the acceptable DWPD depends on the drive's endurance rating (enterprise
+SSDs 1–10, consumer SSDs often below 0.3), which the extension cannot
+know.
+
+**Capacity** comes from the `smartctl -i` output that is already
+fetched for every device: `User Capacity:` (ATA) or
+`Namespace 1 Size/Capacity:` (NVMe, falling back to
+`Total NVM Capacity:`). No extra command, no extra privileges. Devices
+without a usable capacity or host-writes counter — SAS/SCSI, plain
+HDDs, eMMC — simply do not get these metrics.
+
+### `dwpd` — lifetime average, immune to reboots
+
+```
+dwpd = written / capacity / (power-on hours / 24)
+```
+
+Both inputs are counters kept by the **drive's firmware**, not by this
+extension, so nothing about it depends on the host: a reboot, a wiped
+`$XYMONTMP`, a reinstalled package or a moved disk all leave it intact,
+and the next run recomputes exactly the same value. This is why the
+metric needs no state file at all.
+
+Below `DWPD_MIN_HOURS` (default 24) it is withheld — right after a disk
+is installed, dividing by a few hours produces a meaningless number.
+
+### `dwpdrecent` — rolling window
+
+The lifetime average is by definition slow: on a disk that has been
+running for years, a workload change barely moves it. `dwpdrecent`
+therefore averages over a sliding window (`DWPD_WINDOW_HOURS`, default
+24). One sample per device — timestamp, writes and serial number — is
+kept in `$XYMONTMP/smart.<host>.state`, at most one every
+`DWPD_SAMPLE_HOURS`; samples older than two windows are dropped.
+
+A value is emitted on **every** run (not once per window), computed
+against the most recent sample that is at least one window old. That
+matters for graphing: Xymon's RRD files use a 300-second step with a
+600-second heartbeat, so a metric that only appears once a day would
+leave the RRD almost entirely undefined and the graph empty. Emitting
+every run keeps the line continuous while the *measurement* still spans
+the full window.
+
+The state file is expendable by design. If it is missing, unreadable,
+truncated, holds a different serial number (disk replaced), or the
+writes counter went backwards, the extension silently starts a fresh
+sample and reports nothing this round — indistinguishable from a fresh
+install, and never a false spike. A read-only `$XYMONTMP` only disables
+this one metric; the rest of the report is unaffected.
+
+### Choosing the window
+
+The window controls two things that pull in opposite directions.
+
+**Responsiveness.** "Per day" is a *unit*, not an averaging period —
+like km/h does not require driving for an hour. A sliding window of
+length *W* turns a step change in write rate into a linear ramp exactly
+*W* long. If the write rate doubles, the graph reaches the new value
+after 1 h with `DWPD_WINDOW_HOURS=1`, and after 24 h with the default.
+Neither is more "correct"; a short window shows *when* something
+changed, a long one shows the trend.
+
+**Counter quantization.** Drives report writes in coarse units, and
+that — not the averaging — is usually the limiting factor:
+
+| Attribute source | Resolution | At 0.8 GiB/day, one step takes |
+|------------------|-----------|--------------------------------|
+| `Total_LBAs_Written` (512-byte LBAs) | 0.5 KiB | under a second |
+| NVMe `Data Units Written` (512000 B) | 500 kB   | ~50 seconds |
+| `Host_Writes_32MiB` / 32-MiB units   | 32 MiB   | ~55 minutes |
+| `Host_Writes_GiB` (whole GiB)        | 1 GiB    | ~30 hours |
+
+The extension stores the **unrounded** counter in its state file, so
+drives in the first three rows are limited only by their own hardware.
+The `written` metric shown on the status page and in its own graph
+stays whole GiB — only DWPD uses the finer value.
+
+A drive that counts in whole GiB cannot do better than 1 GiB per
+sample, though. On a lightly loaded system (say a constant 10 kB/s ≈
+0.8 GiB/day on a 480 GB SSD, a true DWPD of 0.0018) a 24-hour window
+sees either zero or one GiB and the graph alternates between `0` and
+`0.00224` instead of showing a flat line. Raising
+`DWPD_WINDOW_HOURS` to several days fixes that; the guide is that the
+window should be long enough to accumulate a good handful of counter
+steps. Drives counting in LBAs or NVMe data units produce a flat,
+accurate line even at a one-hour window.
+
+Because RRD consolidates to averages for the weekly and monthly graphs
+anyway, it is generally better to collect with a window just long
+enough to beat the quantization and let RRD do the rest of the
+smoothing — smoothing applied at collection time cannot be undone.
+
 ## Client installation
 
 1. Copy `smart.sh` to `$XYMONHOME/ext/smart.sh` (executable).
@@ -168,3 +267,9 @@ see [`server/README.md`](server/README.md).
   `attrmap "Intel SSD*" 241 written mib32`.
 - NVMe `Temperature` is the composite value; individual sensors are not
   reported separately.
+- `dwpdrecent` restarts its window whenever the sample file is lost, so
+  after a reboot with a tmpfs `$XYMONTMP` it stays absent for one
+  window. `dwpd` is unaffected — see the DWPD section above.
+- If a device fails to report for a single run (standby, a transient
+  `smartctl` error), its samples are carried over so the window is not
+  reset; only devices absent for more than two windows are forgotten.
