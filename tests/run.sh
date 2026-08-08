@@ -56,6 +56,7 @@ export SMART_CFG="$TESTDIR/smart/smart_test.cfg"
 export XYMONTMP="$TMP"
 export MACHINE="testhost"
 unset XYMON XYMSRV XYMONHOME 2>/dev/null || true
+rm -f "$TMP"/smart.*.state
 
 # shellcheck disable=SC2086  # TESTSH may be multi-word ("busybox sh")
 out=$($TESTSH "$REPO/extensions/smart/smart.sh")
@@ -150,6 +151,37 @@ expect "$out" '&yellow /dev/tmmc1: wear=80' \
 expect "$out" '^tmmc1_wear : 80$' \
     "eMMC wear is the worst of estimates A (0x08) and B (0x02)"
 
+# DWPD - lifetime average: written / capacity / (hours/24), computed
+# from drive-firmware counters only, so no state file is involved.
+# tssd: 23288 GiB / 931.5 GiB / 730 d, tsdk: 21543 / 447.1 / 1987.8,
+# tsdc: 2549 / 476.9 / 73.1, tnvme0: 15784 / 931.5 / 365.
+expect "$out" '^tssd_dwpd : 0\.03425$' \
+    "lifetime dwpd (ATA, 512-byte LBA writes, User Capacity)"
+expect "$out" '^tsdk_dwpd : 0\.02424$' \
+    "lifetime dwpd (ATA, GiB-native writes)"
+expect "$out" '^tsdc_dwpd : 0\.07314$' \
+    "lifetime dwpd (32-MiB write units, drive not in smartctl database)"
+expect "$out" '^tnvme0_dwpd : 0\.04642$' \
+    "lifetime dwpd (NVMe Data Units Written, namespace capacity)"
+expect_not "$out" '^tsda_dwpd' \
+    "no dwpd for a disk without a host-writes attribute (HDD)"
+expect "$out" 'dwpd=0\.03425' "dwpd also shown in the status section"
+
+# dwpdrecent needs a previous sample - the first run only seeds one.
+expect_not "$out" '_dwpdrecent' \
+    "no dwpdrecent on the first run (state file was just created)"
+expect "$(cat "$TMP/smart.testhost.state" 2>/dev/null)" \
+    '^S tssd S3Z8TEST [0-9]+ 23288\.4[0-9]+$' \
+    "sample keeps the drive's sub-GiB write resolution (512-byte LBAs)"
+expect "$(cat "$TMP/smart.testhost.state" 2>/dev/null)" \
+    '^S tsdc 50026B7TEST2 [0-9]+ 2549\.125' \
+    "sample keeps sub-GiB resolution for 32-MiB write units too"
+expect "$(cat "$TMP/smart.testhost.state" 2>/dev/null)" \
+    '^S tsdk 50026B7TEST [0-9]+ 21543$' \
+    "GiB-native counter stays whole GiB - that is the drive's own limit"
+expect_not "$(cat "$TMP/smart.testhost.state" 2>/dev/null)" '^S tsda ' \
+    "no sample seeded for a disk without writes/capacity data"
+
 # Status display must not contain NCV-style "name : value" lines other
 # than in the data section (they would pollute the RRDs).
 expect "$out" 'pending=8' "status section uses key=value, not key : value"
@@ -177,6 +209,75 @@ expect "$out" '&green /dev/tmmc0 - eMMC, MMC 5\.1 - health: Normal' \
     "eMMC checked although smartctl is missing"
 expect "$out" '^tmmc0_wear : 10$' \
     "eMMC-only mode still delivers the wear metric"
+
+# --- dwpdrecent: rolling window over a persisted sample ---------------
+# A usable reference sample is between one and two windows old (default
+# 24h/48h). 30h back with 22788 GiB written means 500 GiB over 1.25
+# days on a 931.5 GiB disk -> 0.429 writes per day.
+smart_state="$TMP/smart.testhost.state"
+now=$(date +%s)
+
+rm -f "$TMP"/smart.*.state
+printf 'S tssd S3Z8TEST %s 22788\n' "$((now - 108000))" > "$smart_state"
+# shellcheck disable=SC2086
+out=$($TESTSH "$REPO/extensions/smart/smart.sh")
+expect "$out" '^tssd_dwpdrecent : 0\.42977$' \
+    "dwpdrecent over the rolling window (500 GiB in 30h)"
+expect "$(cat "$smart_state")" '^S tssd S3Z8TEST [0-9]+ 23288\.4[0-9]+$' \
+    "a new sample is appended after the sample interval"
+expect "$(cat "$smart_state")" '^S tssd S3Z8TEST [0-9]+ 22788$' \
+    "the reference sample is kept until it ages out of the window"
+
+# Reference younger than the window: no value yet, sample untouched.
+rm -f "$TMP"/smart.*.state
+printf 'S tssd S3Z8TEST %s 23000\n' "$((now - 60))" > "$smart_state"
+# shellcheck disable=SC2086
+out=$($TESTSH "$REPO/extensions/smart/smart.sh")
+expect_not "$out" '^tssd_dwpdrecent' \
+    "no dwpdrecent before the window has elapsed"
+expect "$(cat "$smart_state")" "^S tssd S3Z8TEST $((now - 60)) 23000\$" \
+    "sample kept unchanged while the window is still filling"
+
+# Losing or corrupting the state must never yield a wrong value: each
+# of these silently re-seeds and simply reports nothing this round.
+for c in "corrupt:S tssd" \
+         "swapped:S tssd OLDSERIAL $((now - 108000)) 100" \
+         "reset:S tssd S3Z8TEST $((now - 108000)) 99999" \
+         "stale:S tssd S3Z8TEST $((now - 999999)) 100"; do
+    rm -f "$TMP"/smart.*.state
+    printf '%s\n' "${c#*:}" > "$smart_state"
+    # shellcheck disable=SC2086
+    out=$($TESTSH "$REPO/extensions/smart/smart.sh")
+    rc=$?
+    [ "$rc" -eq 0 ] || { echo "FAIL: smart.sh exited $rc on ${c%%:*} state"; FAIL=1; }
+    expect_not "$out" '^tssd_dwpdrecent' \
+        "no dwpdrecent value from ${c%%:*} state"
+    expect "$(cat "$smart_state")" '^S tssd S3Z8TEST [0-9]+ 23288\.4[0-9]+$' \
+        "${c%%:*} state is silently re-seeded"
+done
+
+# A device missing for one run keeps its history (transient smartctl
+# failure, disk in standby); samples older than two windows are pruned.
+rm -f "$TMP"/smart.*.state
+{
+    printf 'S tabsent ABSENTSERIAL %s 500\n' "$((now - 3600))"
+    printf 'S tabsent ABSENTSERIAL %s 100\n' "$((now - 999999))"
+} > "$smart_state"
+# shellcheck disable=SC2086
+$TESTSH "$REPO/extensions/smart/smart.sh" > /dev/null
+expect "$(cat "$smart_state")" "^S tabsent ABSENTSERIAL $((now - 3600)) 500\$" \
+    "samples of a device not seen this run are carried forward"
+expect_not "$(cat "$smart_state")" '^S tabsent ABSENTSERIAL [0-9]+ 100$' \
+    "samples older than two windows are pruned"
+
+# DWPD_MIN_HOURS guard: raised above every fixture's power-on hours.
+rm -f "$TMP"/smart.*.state
+# shellcheck disable=SC2086
+out=$(SMART_CFG="$TESTDIR/smart/smart_test_dwpd.cfg" \
+    $TESTSH "$REPO/extensions/smart/smart.sh")
+expect_not "$out" '_dwpd :' \
+    "no lifetime dwpd below DWPD_MIN_HOURS power-on hours"
+rm -f "$TMP"/smart.*.state
 
 # ----------------------------------------------------------------------
 echo "--- fritzdsl ---"

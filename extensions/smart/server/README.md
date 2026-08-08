@@ -33,12 +33,18 @@ To make the graphs appear on the trends column and on the `smart`
 status page, also extend:
 
 ```
-GRAPHS+=",smarttemp,smartwear,smartspare,smartrealloc,smartpending,smartuncorr,smartcrc,smartmediaerr,smarthours,smartwritten,smartread"
+GRAPHS+=",smarttemp,smartwear,smartspare,smartrealloc,smartpending,smartuncorr,smartcrc,smartmediaerr,smarthours,smartwritten,smartread,smartdwpd,smartdwpdrecent"
 GRAPHS_smart="smarttemp,smartwear,smartrealloc,smartpending,smartcrc"
 ```
 
 (`GRAPHS_smart` is the selection shown on the status page itself —
 pick the ones you care about.)
+
+`smartdwpd` and `smartdwpdrecent` show disk writes per day. Note that
+`dwpdrecent` is only sent once its averaging window has filled, so a
+freshly installed client (or one whose `$XYMONTMP` is a tmpfs that was
+cleared by a reboot) leaves a gap of up to `DWPD_WINDOW_HOURS` in that
+graph — the client-side README explains why this is deliberate.
 
 ## 2. graphs.cfg
 
