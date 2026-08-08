@@ -154,6 +154,17 @@ leave the RRD almost entirely undefined and the graph empty. Emitting
 every run keeps the line continuous while the *measurement* still spans
 the full window.
 
+**The poll interval does not affect the values.** Neither metric assumes
+a fixed schedule: `dwpd` uses only firmware counters, and `dwpdrecent`
+divides by the *measured* time between two samples, not by an assumed
+one. Running every 5 minutes on one host and every 10 on another (or
+switching between them) yields the same number for the same workload —
+only how densely the graph is populated differs. The one thing worth
+knowing is that Xymon's RRDs use a 600-second heartbeat, so a 10-minute
+schedule sits right at that limit: a late run can leave a gap in the
+graph. That applies to every metric this extension sends, not just
+DWPD; a 5-minute schedule has margin, a 10-minute one does not.
+
 The state file is expendable by design. If it is missing, unreadable,
 truncated, holds a different serial number (disk replaced), or the
 writes counter went backwards, the extension silently starts a fresh
