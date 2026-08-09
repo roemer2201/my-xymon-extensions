@@ -41,3 +41,8 @@ Description: Portable Xymon client extensions
     by default: full clients are rarely APs): client counts, channel
     utilization, airtime, throughput, TX retries and noise floor
     with RRD graphing; informational only.
+  * if_link - network interface link state changes from the kernel's
+    carrier counters: counts every link down/up transition per port,
+    including short flaps between two polls, with optional per-port
+    thresholds and RRD graphs; Linux-only, green until thresholds are
+    configured.

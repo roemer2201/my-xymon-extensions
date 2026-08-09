@@ -33,6 +33,11 @@ Included extensions:
   configured.
 * wifi - Wi-Fi access point metadata. Linux-only (iw/nl80211);
   reports a clear status on FreeBSD and ships disabled.
+* if_link - link state changes per network interface, counted from
+  the kernel's carrier counters, with optional per-port thresholds.
+  Linux-only (there is no equivalent counter on FreeBSD, and polling
+  the current state would miss short flaps); reports a clear status
+  on FreeBSD - comment its tasks.d snippet out to hide the column.
 
 Requires net-mgmt/xymon-client and sysutils/smartmontools (>= 7.0).
 Activation steps (sudoers rule, tasks.d include, server-side graphs)

@@ -22,6 +22,9 @@ Description: Portable Xymon client extensions with standalone runner
  updates turn red); wifi - Wi-Fi access point metadata via
  iw/ubus/iwinfo (client counts, channel utilization, airtime,
  throughput, TX retries, noise floor; reports clear on routers
- without AP radios); fritzdsl - AVM FRITZ!Box DSL line monitoring via
+ without AP radios); if_link - link state changes per network
+ interface from the kernel's carrier counters, so even short flaps
+ between two polls are counted (physical ports and DSA switch ports
+ auto-detected, optional per-port thresholds); fritzdsl - AVM FRITZ!Box DSL line monitoring via
  TR-064; fritzwan - AVM FRITZ!Box WAN throughput monitoring (both
  need the curl package and stay silent until configured).

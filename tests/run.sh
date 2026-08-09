@@ -1341,6 +1341,197 @@ expect "$out" '^status testhost\.wlan green ' \
 unset WIFI_CFG
 
 # ----------------------------------------------------------------------
+echo "--- if_link ---"
+# The fake sysfs tree mirrors a Turris Omnia (mvebu, DSA switch ports
+# lan0..lan4, unused SFP eth0 administratively down) plus a wireless
+# AP, bridges, a docker veth and the usual non-Ethernet devices.
+export FAKESYSNET_LINK="$TESTDIR/if_link/sysnet"
+export IF_LINK_CFG="$TESTDIR/if_link/if_link_test.cfg"
+unset IF_LINK_INTERFACES IF_LINK_EXCLUDE IF_LINK_WIRELESS \
+    IF_LINK_VIRTUAL IF_LINK_YELLOW IF_LINK_RED IF_LINK_THRESHOLDS \
+    2>/dev/null || true
+LINKSTATE="$TMP/if_link.testhost.state"
+rm -f "$LINKSTATE"
+
+# First poll: primes the state, no deltas yet
+# shellcheck disable=SC2086
+out=$($TESTSH "$REPO/extensions/if_link/if_link.sh")
+rc=$?
+if [ "$rc" -ne 0 ]; then
+    echo "FAIL: if_link.sh exited with $rc"
+    printf '%s\n' "$out"
+    exit 1
+fi
+expect "$out" '^status testhost\.if_link green ' \
+    "first poll reports green (no thresholds configured)"
+expect "$out" 'if_link: 9 interface\(s\) monitored' \
+    "auto-detection finds the nine physical Ethernet ports"
+expect_not "$out" '^data testhost\.if_link$' \
+    "no data message on the first poll - there is no delta yet"
+expect "$out" '&green lan3  link=up  speed=1000Mb/full  master=br-iot .*total=161' \
+    "port line carries link state, speed/duplex, bridge and the cumulative counter"
+expect "$out" '&clear eth0  link=admin-down' \
+    "administratively down port is marked, not counted as a fault"
+expect "$out" '&green eth3 .*total=5' \
+    "carrier_up_count + carrier_down_count fallback for kernels without carrier_changes"
+expect "$out" '&green lan2  link=down  operstate=lowerlayerdown' \
+    "a port that never had a link shows its operstate"
+expect_not "$out" '^&[a-z]+ (lo|sit0|ip6tnl0) ' \
+    "loopback and tunnel devices are not monitored"
+expect_not "$out" '^&[a-z]+ (br-lan|br-iot|docker0|vethpVH4oZ) ' \
+    "bridges and veth pairs are not monitored by default"
+expect_not "$out" '^&[a-z]+ phy[01]-ap' \
+    "wireless interfaces are not monitored by default"
+expect_not "$out" '^&[a-z]+ eth9 ' \
+    "a port without any link change counter is skipped silently"
+if grep -q '^IF lan3 [0-9][0-9]* 161$' "$LINKSTATE" 2>/dev/null; then
+    echo "ok:   state file primed with the cumulative counters"
+else
+    echo "FAIL: state file missing or incomplete ($LINKSTATE)"
+    FAIL=1
+fi
+
+# Previous poll, 5 minutes ago: lan0 has gained 4 changes (two flaps)
+# since then, everything else is unchanged, and lan3's counter went
+# backwards (reboot). Every run below rewrites this state first - the
+# extension replaces it with the current counters on each poll.
+link_prev_state() {
+    lps_t0=$(($(date +%s) - 300))
+    {
+        printf 'IF eth0 %s 0\n'   "$lps_t0"
+        printf 'IF eth1 %s 1\n'   "$lps_t0"
+        printf 'IF eth2 %s 0\n'   "$lps_t0"
+        printf 'IF eth3 %s 5\n'   "$lps_t0"
+        printf 'IF lan0 %s 4\n'   "$lps_t0"
+        printf 'IF lan1 %s 1\n'   "$lps_t0"
+        printf 'IF lan2 %s 0\n'   "$lps_t0"
+        printf 'IF lan3 %s 999\n' "$lps_t0"
+        printf 'IF lan4 %s 1\n'   "$lps_t0"
+    } > "$LINKSTATE"
+}
+
+link_prev_state
+# shellcheck disable=SC2086
+out=$($TESTSH "$REPO/extensions/if_link/if_link.sh")
+expect "$out" '^status testhost\.if_link green ' \
+    "link changes alone do not color the column"
+expect "$out" 'if_link: 4 link change\(s\) on 1 of 9 interface\(s\)' \
+    "summary counts the changes and the affected interfaces"
+expect "$out" '^data testhost\.if_link$' "data message for the RRDs is sent"
+expect "$out" '^changes_lan0 : 4$' \
+    "delta of the kernel counter reaches the RRD"
+expect "$out" '^changes_lan1 : 0$' \
+    "a stable port reports zero, so the graph has a value"
+expect "$out" 'changes=\+4  total=8' \
+    "status shows delta and cumulative counter (key=value style)"
+expect "$out" '\(300 s ago\)' "footer names the age of the previous poll"
+expect_not "$out" '^changes_[a-z0-9_]* : -' \
+    "no negative value ever reaches the RRD"
+expect "$out" 'lan3 .*changes=n/a\(counter reset\)' \
+    "a counter that went backwards (reboot) is skipped for one poll"
+expect_not "$out" '^changes_lan3 : ' \
+    "no metric for the interface whose counter was reset"
+expect_not "$out" '^changes_(lo|br_lan|docker0|phy0_ap0) : ' \
+    "only the monitored interfaces produce metrics"
+
+# The NCV parser treats "=" like ":", so the human-readable port lines
+# must be fenced off - otherwise every "link=up" would become an RRD
+# dataset of its own.
+view=$(ncv_view "$out")
+expect "$view" '^changes_lan0 : 4$' \
+    "the data message stays visible to the server's parser"
+expect_not "$view" '=' \
+    "no '=' line reaches the NCV parser (display lines are fenced off)"
+
+# Thresholds: global yellow, per-interface red, and an override that
+# switches alerting off again for a single port
+link_prev_state
+# shellcheck disable=SC2086
+out=$(IF_LINK_YELLOW=2 $TESTSH "$REPO/extensions/if_link/if_link.sh")
+expect "$out" '^status testhost\.if_link yellow ' \
+    "IF_LINK_YELLOW turns the column yellow above the limit"
+expect "$out" '&yellow lan0 .*\[yellow at >=2\]' \
+    "the offending port names the threshold it crossed"
+expect "$out" '&green lan1 ' \
+    "ports below the threshold stay green"
+link_prev_state
+# shellcheck disable=SC2086
+out=$(IF_LINK_YELLOW=2 IF_LINK_THRESHOLDS="lan0:1:3" \
+    $TESTSH "$REPO/extensions/if_link/if_link.sh")
+expect "$out" '^status testhost\.if_link red ' \
+    "IF_LINK_THRESHOLDS raises the per-interface limit to red"
+expect "$out" '&red lan0 .*\[red at >=3\]' "red limit named on the port line"
+link_prev_state
+# shellcheck disable=SC2086
+out=$(IF_LINK_YELLOW=2 IF_LINK_THRESHOLDS="lan*::" \
+    $TESTSH "$REPO/extensions/if_link/if_link.sh")
+expect "$out" '^status testhost\.if_link green ' \
+    "an empty per-interface entry switches alerting off for those ports"
+link_prev_state
+# shellcheck disable=SC2086
+out=$(IF_LINK_YELLOW=2 IF_LINK_EXCLUDE="lan0" \
+    $TESTSH "$REPO/extensions/if_link/if_link.sh")
+expect "$out" '^status testhost\.if_link green ' \
+    "IF_LINK_EXCLUDE keeps a known-flapping port out entirely"
+expect_not "$out" '^changes_lan0 : ' "excluded port produces no metric"
+
+# Explicit interface list: patterns allowed, kind filters bypassed,
+# and a named port without a counter is reported instead of dropped
+rm -f "$LINKSTATE"
+# shellcheck disable=SC2086
+out=$(IF_LINK_INTERFACES="lan* eth9 br-lan" \
+    $TESTSH "$REPO/extensions/if_link/if_link.sh")
+expect "$out" 'if_link: 6 interface\(s\) monitored' \
+    "IF_LINK_INTERFACES limits and expands the list by glob"
+expect "$out" '&green br-lan ' \
+    "a bridge named explicitly is monitored despite the virtual filter"
+expect "$out" '&clear eth9  no link change counter' \
+    "a named port without a counter is called out"
+expect_not "$out" '^&[a-z]+ eth1 ' "unlisted ports are skipped"
+
+# Wireless and virtual interfaces can be switched on
+rm -f "$LINKSTATE"
+# shellcheck disable=SC2086
+out=$(IF_LINK_WIRELESS=yes IF_LINK_VIRTUAL=yes IF_LINK_EXCLUDE="veth* docker*" \
+    $TESTSH "$REPO/extensions/if_link/if_link.sh")
+expect "$out" '&green phy0-ap0 ' "IF_LINK_WIRELESS includes the AP interfaces"
+expect "$out" '&green br-lan '   "IF_LINK_VIRTUAL includes the bridges"
+expect_not "$out" '^&[a-z]+ (vethpVH4oZ|docker0) ' \
+    "container interfaces stay out via IF_LINK_EXCLUDE"
+T0=$(($(date +%s) - 300))
+printf 'IF phy0-ap0 %s 0\n' "$T0" > "$LINKSTATE"
+# shellcheck disable=SC2086
+out=$(IF_LINK_WIRELESS=yes $TESTSH "$REPO/extensions/if_link/if_link.sh")
+expect "$out" '^changes_phy0_ap0 : 2$' \
+    "NCV names are sanitized (no raw interface names with dashes)"
+expect_not "$out" 'phy0-ap0 :' "no unsanitized metric name in the data message"
+
+# No interface matches -> clear, not red
+rm -f "$LINKSTATE"
+# shellcheck disable=SC2086
+out=$(IF_LINK_INTERFACES="nosuchif0" $TESTSH "$REPO/extensions/if_link/if_link.sh")
+expect "$out" '^status testhost\.if_link clear ' \
+    "an empty interface list reports clear, not red"
+expect "$out" 'no interface matches IF_LINK_INTERFACES' "hint names the setting"
+
+# No sysfs at all (FreeBSD) -> clear
+# shellcheck disable=SC2086
+out=$(FAKESYSNET_LINK="$TMP/no-such-sysfs" \
+    $TESTSH "$REPO/extensions/if_link/if_link.sh")
+expect "$out" '^status testhost\.if_link clear ' \
+    "a host without the sysfs counters reports clear"
+
+# Column name override
+rm -f "$LINKSTATE"
+# shellcheck disable=SC2086
+out=$(IF_LINK_COLUMN=iflink $TESTSH "$REPO/extensions/if_link/if_link.sh")
+expect "$out" '^status testhost\.iflink green ' \
+    "column name is overridable via IF_LINK_COLUMN"
+
+rm -f "$LINKSTATE"
+unset IF_LINK_CFG FAKESYSNET_LINK
+
+# ----------------------------------------------------------------------
 echo "--- standalone: xymon-send.sh ---"
 
 # Fake "nc" that records its arguments and stdin instead of connecting.
