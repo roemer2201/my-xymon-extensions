@@ -108,6 +108,12 @@ Run logs go to `$XYMONTMP` (default `/tmp`, a RAM disk on OpenWrt) as
   more (see `extensions/wifi/README.md`). On routers without AP
   radios it reports a `clear` column — remove it from `TESTS` there
   if you don't want that.
+- The `if_link` extension is in the default `TESTS` list: it counts
+  the link state changes of the router's physical Ethernet ports
+  (including the individual DSA switch ports, e.g. `lan0`..`lan4` on
+  a Turris Omnia). It stays green unless you configure thresholds -
+  see `extensions/if_link/README.md`. Keep the cron interval stable,
+  since the metric is "changes since the previous poll".
 - The FRITZ!Box pollers `fritzdsl`/`fritzwan` are installed but not in
   the default `TESTS` list: they are remote pollers that query a
   FRITZ!Box over the network, a job that normally belongs on the

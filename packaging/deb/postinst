@@ -21,6 +21,9 @@ The FRITZ!Box extensions "fritzdsl" and "fritzwan" ship disabled:
 The "wifi" extension ships disabled too: enable it (remove the
  DISABLED line from /etc/xymon/tasks.d/wifi.cfg) only on a Linux
  access point with iw installed.
+The "if_link" extension (link state changes per network interface)
+ is active out of the box and adds an "if_link" column. It stays
+ green until you configure thresholds in /etc/xymon/if_link.cfg.
 EOF
         ;;
 esac

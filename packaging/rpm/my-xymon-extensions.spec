@@ -54,6 +54,11 @@ Included extensions:
   default: full clients are rarely APs): client counts, channel
   utilization, airtime, throughput, TX retries and noise floor with
   RRD graphing; informational only.
+* if_link - network interface link state changes from the kernel's
+  carrier counters: counts every link down/up transition per port,
+  including short flaps between two polls, with optional per-port
+  thresholds and RRD graphs; Linux-only, green until thresholds are
+  configured.
 
 %prep
 %setup -q
@@ -94,6 +99,9 @@ sh packaging/common/stage.sh "%{buildroot}" \
 %{xymonhome}/ext/wifi.sh
 %config(noreplace) %{xymonhome}/etc/wifi.cfg
 %config(noreplace) %{xymonhome}/etc/tasks.d/wifi.cfg
+%{xymonhome}/ext/if_link.sh
+%config(noreplace) %{xymonhome}/etc/if_link.cfg
+%config(noreplace) %{xymonhome}/etc/tasks.d/if_link.cfg
 %{_docdir}/%{name}/
 
 %post
@@ -112,9 +120,23 @@ The FRITZ!Box extensions "fritzdsl" and "fritzwan" ship disabled:
 The "wifi" extension ships disabled too: enable it (remove the
  DISABLED line from the tasks.d snippet) only on a Linux access
  point with iw installed.
+The "if_link" extension (link state changes per network interface)
+ is active out of the box and adds an "if_link" column. It stays
+ green until you configure thresholds in %{xymonhome}/etc/if_link.cfg.
 EOF
 
 %changelog
+* Sun Aug 09 2026 roemer2201 <r.oliver@web.de> - 0.11.0-1
+- if_link: new extension - network interface link state changes from
+  the kernel's carrier_changes counter (fallback: carrier_up_count +
+  carrier_down_count), so even flaps that start and end between two
+  polls are counted; dynamic interface discovery (physical Ethernet
+  ports including DSA switch ports, with glob-based include/exclude
+  lists and switches for wireless and virtual devices), green by
+  default with optional global and per-port thresholds, split-NCV RRD
+  graphing; active out of the box (it needs nothing but sysfs) and in
+  the default TESTS list of the standalone runner
+
 * Tue Jul 28 2026 roemer2201 <r.oliver@web.de> - 0.10.4-1
 - temp: keep implausible sensor readings out of the RRD. Values
   outside TEMP_PLAUSIBLE_MIN..MAX were already reported as "clear"

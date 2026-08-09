@@ -46,7 +46,7 @@ task() { # task NAME
     inst 0644 "packaging/common/tasks.d/$1.cfg" "$DESTDIR$TASKSDIR/$1.cfg$SUF"
 }
 
-for ext in smart temp la memory disk opkg wifi; do
+for ext in smart temp la memory disk opkg wifi if_link; do
     inst 0755 "extensions/$ext/$ext.sh" "$DESTDIR$EXTDIR/$ext.sh" || exit 1
     inst 0644 "extensions/$ext/$ext.cfg" "$DESTDIR$ETCDIR/$ext.cfg$SUF" || exit 1
     task "$ext" || exit 1
@@ -64,7 +64,8 @@ if [ "$DOCDIR" != "-" ]; then
     mkdir -p "$DESTDIR$DOCDIR/smart/server/graphs.d" \
         "$DESTDIR$DOCDIR/fritzdsl/server/graphs.d" \
         "$DESTDIR$DOCDIR/fritzwan/server/graphs.d" \
-        "$DESTDIR$DOCDIR/wifi/server/graphs.d" || exit 1
+        "$DESTDIR$DOCDIR/wifi/server/graphs.d" \
+        "$DESTDIR$DOCDIR/if_link/server/graphs.d" || exit 1
     inst 0644 README.md "$DESTDIR$DOCDIR/README.md" || exit 1
     for ext in temp la memory disk opkg; do
         mkdir -p "$DESTDIR$DOCDIR/$ext" || exit 1
@@ -83,6 +84,9 @@ if [ "$DOCDIR" != "-" ]; then
     inst 0644 extensions/wifi/README.md "$DESTDIR$DOCDIR/wifi/README.md" || exit 1
     inst 0644 extensions/wifi/server/README.md "$DESTDIR$DOCDIR/wifi/server/README.md" || exit 1
     inst 0644 extensions/wifi/server/graphs.d/wifi.cfg "$DESTDIR$DOCDIR/wifi/server/graphs.d/wifi.cfg" || exit 1
+    inst 0644 extensions/if_link/README.md "$DESTDIR$DOCDIR/if_link/README.md" || exit 1
+    inst 0644 extensions/if_link/server/README.md "$DESTDIR$DOCDIR/if_link/server/README.md" || exit 1
+    inst 0644 extensions/if_link/server/graphs.d/if_link.cfg "$DESTDIR$DOCDIR/if_link/server/graphs.d/if_link.cfg" || exit 1
 fi
 
 exit 0
