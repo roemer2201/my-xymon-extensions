@@ -49,6 +49,7 @@ SPARE_WARN=50      SPARE_CRIT=10      # NVMe available spare, percent LEFT
 # DWPD (disk writes per day). Both metrics are graph-only (no thresholds).
 DWPD_MIN_HOURS=24      # dwpd: minimum power-on hours before reporting
 DWPD_WINDOW_HOURS=24   # dwpdrecent: rolling window length in hours
+DWPD_WARMUP_HOURS=6    # dwpdrecent: report over a shorter span from here
 DWPD_SAMPLE_HOURS=1    # dwpdrecent: minimum spacing between stored samples
 
 DEVLIST=""             # filled by device() from smart.cfg, else auto-scan
@@ -83,9 +84,15 @@ fi
 # the dominating noise source.
 case "$DWPD_MIN_HOURS"    in ''|*[!0-9]*) DWPD_MIN_HOURS=24    ;; esac
 case "$DWPD_WINDOW_HOURS" in ''|*[!0-9]*) DWPD_WINDOW_HOURS=24 ;; esac
+case "$DWPD_WARMUP_HOURS" in ''|*[!0-9]*) DWPD_WARMUP_HOURS=6  ;; esac
 case "$DWPD_SAMPLE_HOURS" in ''|*[!0-9]*) DWPD_SAMPLE_HOURS=1  ;; esac
 [ "$DWPD_WINDOW_HOURS" -ge 6 ] || DWPD_WINDOW_HOURS=6
 [ "$DWPD_SAMPLE_HOURS" -ge 1 ] || DWPD_SAMPLE_HOURS=1
+[ "$DWPD_WARMUP_HOURS" -ge 1 ] || DWPD_WARMUP_HOURS=1
+# Warming up longer than the window itself would only delay the first
+# value without making it any smoother.
+[ "$DWPD_WARMUP_HOURS" -le "$DWPD_WINDOW_HOURS" ] || \
+    DWPD_WARMUP_HOURS="$DWPD_WINDOW_HOURS"
 
 # ----------------------------------------------------------------------
 # Built-in attribute map: <model-glob>|<id-or-name-glob>|<metric>|<source>
@@ -653,17 +660,36 @@ while IFS='|' read -r dev opts alias <&3; do
                 if (age >= win && (reft == "" || $4 + 0 > reft + 0)) {
                     reft = $4; refw = $5
                 }
+                # Oldest sample overall - used while warming up, so the
+                # averaged span grows towards the full window.
+                if (oldt == "" || $4 + 0 < oldt + 0) {
+                    oldt = $4; oldw = $5
+                }
             }
             END {
-                if (swapped) { print "REF - -"; exit }
-                printf "REF %s %s\n", (reft == "" ? "-" : reft), \
-                                      (refw == "" ? "-" : refw)
+                if (swapped) { print "REF - - - -"; exit }
+                printf "REF %s %s %s %s\n", (reft == "" ? "-" : reft), \
+                                            (refw == "" ? "-" : refw), \
+                                            (oldt == "" ? "-" : oldt), \
+                                            (oldw == "" ? "-" : oldw)
                 for (i = 1; i <= n; i++) printf "K %s %s\n", st[i], sw[i]
             }' "$OLDSTATE" > "$WORKDIR/dwpd.state"
 
-        ref_tag=""; ref_t="-"; ref_w="-"
-        read -r ref_tag ref_t ref_w < "$WORKDIR/dwpd.state" || true
-        [ "$ref_tag" = "REF" ] || { ref_t="-"; ref_w="-"; }
+        ref_tag=""; ref_t="-"; ref_w="-"; old_t="-"; old_w="-"
+        read -r ref_tag ref_t ref_w old_t old_w < "$WORKDIR/dwpd.state" || true
+        [ "$ref_tag" = "REF" ] || { ref_t="-"; ref_w="-"; old_t="-"; old_w="-"; }
+
+        # Warm-up: with no sample old enough for the full window yet,
+        # average over the oldest one available instead of leaving the
+        # graph empty for a whole window. The span grows run by run
+        # until it reaches DWPD_WINDOW_HOURS and the branch above takes
+        # over. The value is a true average either way - just measured
+        # over a shorter time, and correspondingly less smooth.
+        if ! is_uint "$ref_t" && is_uint "$old_t" && is_num "$old_w" \
+            && [ "$NOW" -gt "$old_t" ] \
+            && [ $((NOW - old_t)) -ge $((DWPD_WARMUP_HOURS * 3600)) ]; then
+            ref_t="$old_t"; ref_w="$old_w"
+        fi
 
         keep=1
         if is_uint "$ref_t" && is_num "$ref_w" && [ "$NOW" -gt "$ref_t" ]; then

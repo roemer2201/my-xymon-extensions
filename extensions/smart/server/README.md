@@ -41,10 +41,11 @@ GRAPHS_smart="smarttemp,smartwear,smartrealloc,smartpending,smartcrc"
 pick the ones you care about.)
 
 `smartdwpd` and `smartdwpdrecent` show disk writes per day. Note that
-`dwpdrecent` is only sent once its averaging window has filled, so a
-freshly installed client (or one whose `$XYMONTMP` is a tmpfs that was
-cleared by a reboot) leaves a gap of up to `DWPD_WINDOW_HOURS` in that
-graph — the client-side README explains why this is deliberate.
+`dwpdrecent` needs some history before it can report anything: a freshly
+installed client (or one whose `$XYMONTMP` is a tmpfs that was cleared
+by a reboot) starts sending it after `DWPD_WARMUP_HOURS` (default 6),
+initially averaged over a shorter span that grows into the full
+`DWPD_WINDOW_HOURS`. The client-side README explains the trade-off.
 
 ## 2. graphs.cfg
 

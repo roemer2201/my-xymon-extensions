@@ -216,17 +216,53 @@ expect "$out" '^tmmc0_wear : 10$' \
 # days on a 931.5 GiB disk -> 0.429 writes per day.
 smart_state="$TMP/smart.testhost.state"
 now=$(date +%s)
+# dwpdrecent divides by the time actually elapsed, which includes the
+# script's own runtime, so the trailing decimals of these values drift
+# by a digit or two between runs. The assertions pin three decimals -
+# enough to prove the arithmetic, loose enough not to flap on a busy
+# machine.
 
 rm -f "$TMP"/smart.*.state
 printf 'S tssd S3Z8TEST %s 22788\n' "$((now - 108000))" > "$smart_state"
 # shellcheck disable=SC2086
 out=$($TESTSH "$REPO/extensions/smart/smart.sh")
-expect "$out" '^tssd_dwpdrecent : 0\.42977$' \
+expect "$out" '^tssd_dwpdrecent : 0\.429[0-9][0-9]$' \
     "dwpdrecent over the rolling window (500 GiB in 30h)"
 expect "$(cat "$smart_state")" '^S tssd S3Z8TEST [0-9]+ 23288\.4[0-9]+$' \
     "a new sample is appended after the sample interval"
 expect "$(cat "$smart_state")" '^S tssd S3Z8TEST [0-9]+ 22788$' \
     "the reference sample is kept until it ages out of the window"
+
+# Warm-up: no sample old enough for the full 24h window yet, but the
+# oldest one is past DWPD_WARMUP_HOURS, so the average is taken over
+# that shorter span instead of leaving the graph empty for a whole day.
+# 100.413 GiB over 7h on a 931.5 GiB disk -> 0.36959 writes per day.
+rm -f "$TMP"/smart.*.state
+printf 'S tssd S3Z8TEST %s 23188\n' "$((now - 25200))" > "$smart_state"
+# shellcheck disable=SC2086
+out=$($TESTSH "$REPO/extensions/smart/smart.sh")
+expect "$out" '^tssd_dwpdrecent : 0\.369[0-9][0-9]$' \
+    "dwpdrecent reported during warm-up over the oldest sample"
+
+# Below the warm-up threshold nothing is reported yet.
+rm -f "$TMP"/smart.*.state
+printf 'S tssd S3Z8TEST %s 23188\n' "$((now - 10800))" > "$smart_state"
+# shellcheck disable=SC2086
+out=$($TESTSH "$REPO/extensions/smart/smart.sh")
+expect_not "$out" '^tssd_dwpdrecent' \
+    "no dwpdrecent before DWPD_WARMUP_HOURS has elapsed"
+
+# A full-window reference wins over the warm-up fallback: with samples
+# at 30h and 7h the 30h one must be used (0.08624, not 0.36959).
+rm -f "$TMP"/smart.*.state
+{
+    printf 'S tssd S3Z8TEST %s 23188\n' "$((now - 108000))"
+    printf 'S tssd S3Z8TEST %s 23188\n' "$((now - 25200))"
+} > "$smart_state"
+# shellcheck disable=SC2086
+out=$($TESTSH "$REPO/extensions/smart/smart.sh")
+expect "$out" '^tssd_dwpdrecent : 0\.086[0-9][0-9]$' \
+    "full window takes precedence over the warm-up fallback"
 
 # Reference younger than the window: no value yet, sample untouched.
 rm -f "$TMP"/smart.*.state
