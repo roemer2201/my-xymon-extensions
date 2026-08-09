@@ -154,6 +154,28 @@ leave the RRD almost entirely undefined and the graph empty. Emitting
 every run keeps the line continuous while the *measurement* still spans
 the full window.
 
+**Warm-up.** Waiting a full window before showing anything would leave
+the graph blank for a day after every fresh install or reboot that
+clears `$XYMONTMP`. Instead, once `DWPD_WARMUP_HOURS` (default 6) have
+passed, the average is taken over the *oldest* sample available. The
+measured span therefore grows run by run — 6 h, 7 h, 8 h … — until it
+reaches `DWPD_WINDOW_HOURS`, from which point the normal sliding window
+takes over. There is no jump at the transition: under a constant load
+the warm-up value already equals the steady-state one.
+
+Warm-up values are true averages, just over a shorter time, so they are
+correct but less smooth — and how much less depends entirely on the
+drive's counter resolution (see the table below). At a typical 14
+GiB/day on a 480 GB SSD:
+
+| Counter | Warm-up (6–12 h) | Full window (>24 h) |
+|---------|------------------|---------------------|
+| whole GiB (`Host_Writes_GiB`) | up to 24 % off | up to 7 % off |
+| 32-MiB units, LBAs, NVMe      | exact           | exact              |
+
+If the first hours look too coarse on a whole-GiB drive, raise
+`DWPD_WARMUP_HOURS` to 12 — the graph then starts later but smoother.
+
 **The poll interval does not affect the values.** Neither metric assumes
 a fixed schedule: `dwpd` uses only firmware counters, and `dwpdrecent`
 divides by the *measured* time between two samples, not by an assumed
@@ -279,8 +301,9 @@ see [`server/README.md`](server/README.md).
 - NVMe `Temperature` is the composite value; individual sensors are not
   reported separately.
 - `dwpdrecent` restarts its window whenever the sample file is lost, so
-  after a reboot with a tmpfs `$XYMONTMP` it stays absent for one
-  window. `dwpd` is unaffected — see the DWPD section above.
+  after a reboot with a tmpfs `$XYMONTMP` it stays absent until
+  `DWPD_WARMUP_HOURS` have passed. `dwpd` is unaffected — see the DWPD
+  section above.
 - If a device fails to report for a single run (standby, a transient
   `smartctl` error), its samples are carried over so the window is not
   reset; only devices absent for more than two windows are forgotten.
