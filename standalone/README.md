@@ -23,6 +23,13 @@ Extensions run **unmodified** — they cannot tell the difference from a
 full client. Any future extension in this repo works the same way:
 drop its script into `ext/`, done.
 
+When the [`xymonext`](../extensions/xymonext/) extension is installed,
+the runner calls the extensions through its wrapper
+(`ext/xymonext.sh <name>`), which measures how long each test takes,
+how much CPU it burns and how many bytes it sends, and reports that in
+the `xymonext` column. The measured extension still runs unmodified;
+`XYMONEXT_ENABLE="no"` in `standalone.cfg` turns the measuring off.
+
 Scheduling is plain cron (`crontab.example`); no daemon needed.
 
 ## Installation on OpenWrt / TurrisOS

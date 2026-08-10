@@ -18,3 +18,4 @@
 /etc/xymon/tasks.d/wifi.cfg
 /etc/xymon/if_link.cfg
 /etc/xymon/tasks.d/if_link.cfg
+/etc/xymon/xymonext.cfg

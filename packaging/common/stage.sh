@@ -60,13 +60,22 @@ inst 0755 extensions/fritzwan/fritzwan.sh "$DESTDIR$EXTDIR/fritzwan.sh" || exit 
 inst 0644 extensions/fritzwan/fritzwan.cfg "$DESTDIR$ETCDIR/fritzwan.cfg$SUF" || exit 1
 task fritzwan || exit 1
 
+# xymonext measures the other extensions and therefore has no task of
+# its own: the tasks.d snippets above call it with the extension to
+# run. Two scripts: the wrapper and the shim it puts in front of
+# $XYMON to count the bytes an extension sends.
+inst 0755 extensions/xymonext/xymonext.sh "$DESTDIR$EXTDIR/xymonext.sh" || exit 1
+inst 0755 extensions/xymonext/xymonext-send.sh "$DESTDIR$EXTDIR/xymonext-send.sh" || exit 1
+inst 0644 extensions/xymonext/xymonext.cfg "$DESTDIR$ETCDIR/xymonext.cfg$SUF" || exit 1
+
 if [ "$DOCDIR" != "-" ]; then
     mkdir -p "$DESTDIR$DOCDIR/smart/server/graphs.d" \
         "$DESTDIR$DOCDIR/fritzdsl/server/graphs.d" \
         "$DESTDIR$DOCDIR/fritzwan/server/graphs.d" \
         "$DESTDIR$DOCDIR/wifi/server/graphs.d" \
         "$DESTDIR$DOCDIR/if_link/server/graphs.d" \
-        "$DESTDIR$DOCDIR/if_link/server/rrddefinitions.d" || exit 1
+        "$DESTDIR$DOCDIR/if_link/server/rrddefinitions.d" \
+        "$DESTDIR$DOCDIR/xymonext/server/graphs.d" || exit 1
     inst 0644 README.md "$DESTDIR$DOCDIR/README.md" || exit 1
     for ext in temp la memory disk opkg; do
         mkdir -p "$DESTDIR$DOCDIR/$ext" || exit 1
@@ -89,6 +98,9 @@ if [ "$DOCDIR" != "-" ]; then
     inst 0644 extensions/if_link/server/README.md "$DESTDIR$DOCDIR/if_link/server/README.md" || exit 1
     inst 0644 extensions/if_link/server/graphs.d/if_link.cfg "$DESTDIR$DOCDIR/if_link/server/graphs.d/if_link.cfg" || exit 1
     inst 0644 extensions/if_link/server/rrddefinitions.d/if_link.cfg "$DESTDIR$DOCDIR/if_link/server/rrddefinitions.d/if_link.cfg" || exit 1
+    inst 0644 extensions/xymonext/README.md "$DESTDIR$DOCDIR/xymonext/README.md" || exit 1
+    inst 0644 extensions/xymonext/server/README.md "$DESTDIR$DOCDIR/xymonext/server/README.md" || exit 1
+    inst 0644 extensions/xymonext/server/graphs.d/xymonext.cfg "$DESTDIR$DOCDIR/xymonext/server/graphs.d/xymonext.cfg" || exit 1
 fi
 
 exit 0

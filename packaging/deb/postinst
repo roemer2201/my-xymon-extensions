@@ -24,6 +24,10 @@ The "wifi" extension ships disabled too: enable it (remove the
 The "if_link" extension (link state changes per network interface)
  is active out of the box and adds an "if_link" column. It stays
  green until you configure thresholds in /etc/xymon/if_link.cfg.
+Every task runs through /usr/lib/xymon/client/ext/xymonext.sh, which
+ measures the extension and adds an "xymonext" column with runtime,
+ CPU time and traffic per test. Set XYMONEXT_ENABLE="no" in
+ /etc/xymon/xymonext.cfg to run the extensions directly again.
 EOF
         ;;
 esac

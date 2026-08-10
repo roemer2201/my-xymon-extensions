@@ -14,6 +14,12 @@
 #
 #   -n   dry run: do not send anything, print the reports to stdout
 #
+# When the xymonext extension is installed, the extensions are run
+# through its wrapper ($XYMONHOME/ext/xymonext.sh), which measures
+# their runtime, CPU time and traffic and reports them in the
+# "xymonext" column. XYMONEXT_ENABLE="no" in the config file turns
+# that off and runs the extensions directly.
+#
 # "all" runs the extensions listed in TESTS in the config file; with
 # TESTS unset or empty it runs every extension installed in
 # $XYMONHOME/ext/. Naming extensions explicitly always runs exactly
@@ -51,6 +57,7 @@ XYMONTMP="${XYMONTMP:-/tmp}"
 XYMONCLIENTLOGS="${XYMONCLIENTLOGS:-}"
 XYMONDPORT="${XYMONDPORT:-1984}"
 TESTS="${TESTS:-}"
+XYMONEXT_ENABLE="${XYMONEXT_ENABLE:-yes}"
 
 CFG=""
 for f in "${STANDALONE_CFG:-}" /etc/xymon-standalone/standalone.cfg \
@@ -97,16 +104,42 @@ export XYMON XYMSRV XYMSERVERS XYMONDPORT
 export XYMONHOME XYMONTMP XYMONCLIENTLOGS
 export MACHINE MACHINEDOTS
 
+# is_off <value> -- true for the usual spellings of "switched off"
+is_off() {
+    case "$1" in
+        no|No|NO|off|Off|OFF|0|false|False|FALSE) return 0 ;;
+    esac
+    return 1
+}
+
 run_ext() {
-    r_script="$XYMONHOME/ext/$1.sh"
+    r_ext=$1
+    case "$r_ext" in
+        xymonext|xymonext-send)
+            echo "$0: $r_ext is the measurement wrapper, not a test" \
+                 "- remove it from TESTS" >&2
+            return 1
+            ;;
+    esac
+    r_script="$XYMONHOME/ext/$r_ext.sh"
     if [ ! -x "$r_script" ]; then
         echo "$0: extension not found or not executable: $r_script" >&2
         return 1
     fi
-    if [ -n "$DRYRUN" ]; then
-        "$r_script"
+    # Run the extension through the xymonext wrapper when it is
+    # installed: the extension itself runs unchanged, and the wrapper
+    # adds the "xymonext" column with its runtime, CPU time and the
+    # number of bytes it sent.
+    r_wrap="$XYMONHOME/ext/xymonext.sh"
+    if [ -x "$r_wrap" ] && ! is_off "$XYMONEXT_ENABLE"; then
+        set -- "$r_wrap" "$r_ext"
     else
-        "$r_script" > "$LOGDIR/$1.log" 2>&1
+        set -- "$r_script"
+    fi
+    if [ -n "$DRYRUN" ]; then
+        "$@"
+    else
+        "$@" > "$LOGDIR/$r_ext.log" 2>&1
     fi
 }
 
@@ -121,6 +154,11 @@ if [ "$1" = "all" ]; then
         found=""
         for script in "$XYMONHOME"/ext/*.sh; do
             [ -e "$script" ] || continue    # glob did not match anything
+            case "$script" in
+                # Measurement wrapper and its transport shim: they run
+                # extensions, they are not extensions themselves.
+                */xymonext.sh|*/xymonext-send.sh) continue ;;
+            esac
             found=yes
             ext=$(basename "$script" .sh)
             run_ext "$ext" || RC=1

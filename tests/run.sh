@@ -1459,7 +1459,9 @@ expect "$out" '^changes_lan1 : 0$' \
     "a stable port reports zero, so the graph has a value"
 expect "$out" 'changes=\+4  total=8' \
     "status shows delta and cumulative counter (key=value style)"
-expect "$out" '\(300 s ago\)' "footer names the age of the previous poll"
+# 300 or 301: the fixture timestamp and the extension read the clock a
+# moment apart, so a second boundary in between must not fail the test.
+expect "$out" '\(30[01] s ago\)' "footer names the age of the previous poll"
 expect_not "$out" '^changes_[a-z0-9_]* : -' \
     "no negative value ever reaches the RRD"
 expect "$out" 'lan3 .*changes=n/a\(counter reset\)' \
@@ -1567,6 +1569,254 @@ rm -f "$LINKSTATE"
 unset IF_LINK_CFG FAKESYSNET_LINK
 
 # ----------------------------------------------------------------------
+echo "--- xymonext ---"
+
+# Install tree for the measurement wrapper plus fake extensions that
+# behave like a real one (report through $XYMON, burn a little CPU,
+# return an exit code) - the wrapper must run them unchanged.
+XEDIR="$TMP/xymonext"
+mkdir -p "$XEDIR/ext" "$XEDIR/etc" "$XEDIR/tmp"
+cp "$REPO/extensions/xymonext/xymonext.sh" "$XEDIR/ext/"
+cp "$REPO/extensions/xymonext/xymonext-send.sh" "$XEDIR/ext/"
+
+cat > "$XEDIR/ext/fake.sh" <<'EOF'
+#!/bin/sh
+awk 'BEGIN { for (i = 0; i < 500000; i++) x += i }'
+if [ -n "${XYMON:-}" ] && [ -n "${XYMSRV:-}" ]; then
+    "$XYMON" "$XYMSRV" "status ${MACHINE}.fake green fake report"
+else
+    echo "status ${MACHINE}.fake green fake report"
+fi
+exit "${FAKE_RC:-0}"
+EOF
+
+# Sends its message on stdin, the other calling convention of the
+# xymon client ("-" for xymon-send.sh, "@" for the xymon binary).
+cat > "$XEDIR/ext/fakein.sh" <<'EOF'
+#!/bin/sh
+printf 'status %s.fakein green via stdin\n' "$MACHINE" | "$XYMON" "$XYMSRV" -
+EOF
+
+# Takes a full second, so the wall clock really has something to see.
+cat > "$XEDIR/ext/slowfake.sh" <<'EOF'
+#!/bin/sh
+sleep 1
+"$XYMON" "$XYMSRV" "status ${MACHINE}.slowfake green slow"
+EOF
+
+# Fake xymon client: records every message instead of sending it.
+cat > "$XEDIR/fakexymon" <<'EOF'
+#!/bin/sh
+if [ "${2:-}" = "-" ] || [ "${2:-}" = "@" ]; then
+    cat >> "${XE_CAPTURE:?}"
+else
+    printf '%s\n' "$2" >> "${XE_CAPTURE:?}"
+fi
+EOF
+chmod +x "$XEDIR/ext/fake.sh" "$XEDIR/ext/fakein.sh" \
+    "$XEDIR/ext/slowfake.sh" "$XEDIR/fakexymon"
+
+XE_OLDTMP="$XYMONTMP"
+export XYMONHOME="$XEDIR"
+export XYMONTMP="$XEDIR/tmp"
+export XYMON="$XEDIR/fakexymon"
+export XYMSRV="127.0.0.1"
+export XE_CAPTURE="$XEDIR/capture"
+
+# --- a normal measured run --------------------------------------------
+: > "$XE_CAPTURE"
+# shellcheck disable=SC2086
+$TESTSH "$XEDIR/ext/xymonext.sh" fake
+rc=$?
+if [ "$rc" -eq 0 ]; then
+    echo "ok:   xymonext.sh exits 0 when the extension does"
+else
+    echo "FAIL: xymonext.sh exited with $rc"
+    FAIL=1
+fi
+captured=$(cat "$XE_CAPTURE")
+expect "$captured" '^status testhost\.fake green fake report$' \
+    "the measured extension runs and reports unchanged"
+expect "$captured" '^status testhost\.xymonext green ' \
+    "xymonext sends its own status column"
+expect "$captured" '^data testhost\.xymonext$' \
+    "data message for the RRD graphs is sent"
+expect "$captured" '^wall_fake : [0-9]+\.[0-9][0-9]$' \
+    "wall clock time is reported for the measured extension"
+expect "$captured" '^cpu_fake : [0-9]+\.[0-9][0-9]$' \
+    "CPU time is reported for the measured extension"
+expect "$captured" '&green fake +wall +[0-9]+\.[0-9][0-9]s' \
+    "the status table has a line for the measured extension"
+expect "$captured" '<!-- ncv_skipstart -->' \
+    "the human-readable table is fenced off from the NCV parser"
+
+# The byte count must be the real length of what the extension sent.
+xe_msg="status testhost.fake green fake report"
+expect "$captured" "^bytes_fake : $(( ${#xe_msg} + 1 ))\$" \
+    "byte count matches the length of the message sent"
+expect "$captured" '&green fake .* msgs +1 ' \
+    "the number of messages is counted"
+
+# --- messages sent on stdin -------------------------------------------
+: > "$XE_CAPTURE"
+# shellcheck disable=SC2086
+$TESTSH "$XEDIR/ext/xymonext.sh" fakein
+captured=$(cat "$XE_CAPTURE")
+expect "$captured" '^status testhost\.fakein green via stdin$' \
+    "the shim passes a message read from stdin through"
+xe_msg="status testhost.fakein green via stdin"
+expect "$captured" "^bytes_fakein : $(( ${#xe_msg} + 1 ))\$" \
+    "a message sent on stdin is counted too"
+
+# --- wall clock ---------------------------------------------------------
+: > "$XE_CAPTURE"
+# shellcheck disable=SC2086
+$TESTSH "$XEDIR/ext/xymonext.sh" slowfake
+expect "$(cat "$XE_CAPTURE")" '^wall_slowfake : [12]\.[0-9][0-9]$' \
+    "a one second extension is measured as one second of wall clock"
+
+# --- the other wall clock sources ---------------------------------------
+# XYMONEXT_WALLSRC pins the source, so the paths for hosts without a
+# readable /proc/uptime (FreeBSD) are covered here as well.
+: > "$XE_CAPTURE"
+# shellcheck disable=SC2086
+XYMONEXT_WALLSRC="date" $TESTSH "$XEDIR/ext/xymonext.sh" slowfake
+captured=$(cat "$XE_CAPTURE")
+expect "$captured" '^wall_slowfake : [12]\.00$' \
+    "the date fallback measures the wall clock in whole seconds"
+expect "$captured" 'date \+%s \(1 s resolution only\)' \
+    "the status names the coarse timing source"
+
+if [ -x /usr/bin/time ]; then
+    : > "$XE_CAPTURE"
+    # shellcheck disable=SC2086
+    XYMONEXT_WALLSRC="time" FAKE_RC=5 $TESTSH "$XEDIR/ext/xymonext.sh" fake
+    rc=$?
+    captured=$(cat "$XE_CAPTURE")
+    expect "$captured" '^wall_fake : [0-9]+\.[0-9][0-9]$' \
+        "/usr/bin/time -p delivers the wall clock (the FreeBSD path)"
+    expect "$captured" '^cpu_fake : [0-9]+\.[0-9][0-9]$' \
+        "/usr/bin/time -p delivers the CPU time"
+    expect "$captured" '^status testhost\.fake green fake report$' \
+        "the extension reports normally under /usr/bin/time"
+    if [ "$rc" -eq 5 ]; then
+        echo "ok:   the exit code survives the /usr/bin/time path"
+    else
+        echo "FAIL: expected exit code 5 through /usr/bin/time, got $rc"
+        FAIL=1
+    fi
+else
+    echo "ok:   (skipped) /usr/bin/time is not installed on this host"
+fi
+
+# --- exit code and thresholds -------------------------------------------
+: > "$XE_CAPTURE"
+# shellcheck disable=SC2086
+FAKE_RC=3 $TESTSH "$XEDIR/ext/xymonext.sh" fake
+rc=$?
+if [ "$rc" -eq 3 ]; then
+    echo "ok:   the exit code of the measured extension is passed back"
+else
+    echo "FAIL: expected exit code 3 from the measured extension, got $rc"
+    FAIL=1
+fi
+captured=$(cat "$XE_CAPTURE")
+expect "$captured" '^status testhost\.xymonext yellow ' \
+    "a failing extension turns the column yellow"
+expect "$captured" 'exit 3' "the failed run is marked in the table"
+
+: > "$XE_CAPTURE"
+# shellcheck disable=SC2086
+XYMONEXT_WALL_WARN=0.01 XYMONEXT_WALL_CRIT=0.02 \
+    $TESTSH "$XEDIR/ext/xymonext.sh" slowfake
+expect "$(cat "$XE_CAPTURE")" '^status testhost\.xymonext red ' \
+    "a run above XYMONEXT_WALL_CRIT turns the column red"
+
+# --- ageing of the table ------------------------------------------------
+printf '%s 0 0.10 0.05 1 100\n' "$(( $(date +%s) - 99999 ))" \
+    > "$XYMONTMP/xymonext.d/oldext"
+: > "$XE_CAPTURE"
+# shellcheck disable=SC2086
+$TESTSH "$XEDIR/ext/xymonext.sh" fake
+captured=$(cat "$XE_CAPTURE")
+expect_not "$captured" '&[a-z]+ oldext ' \
+    "an extension that has not run for a long time drops out of the table"
+expect "$captured" '&green fake ' "recent extensions stay in the table"
+: > "$XE_CAPTURE"
+# shellcheck disable=SC2086
+XYMONEXT_MAXAGE=0 $TESTSH "$XEDIR/ext/xymonext.sh" fake
+expect "$(cat "$XE_CAPTURE")" '&green oldext ' \
+    "XYMONEXT_MAXAGE=0 keeps every entry in the table"
+rm -f "$XYMONTMP/xymonext.d/oldext"
+
+# --- switches -----------------------------------------------------------
+: > "$XE_CAPTURE"
+# shellcheck disable=SC2086
+XYMONEXT_ENABLE=no $TESTSH "$XEDIR/ext/xymonext.sh" fake
+captured=$(cat "$XE_CAPTURE")
+expect "$captured" '^status testhost\.fake green fake report$' \
+    "XYMONEXT_ENABLE=no still runs the extension"
+expect_not "$captured" 'xymonext' \
+    "XYMONEXT_ENABLE=no reports nothing of its own"
+
+: > "$XE_CAPTURE"
+# shellcheck disable=SC2086
+XYMONEXT_COUNT_BYTES=no $TESTSH "$XEDIR/ext/xymonext.sh" fake
+captured=$(cat "$XE_CAPTURE")
+expect "$captured" '^wall_fake : ' \
+    "XYMONEXT_COUNT_BYTES=no still measures the times"
+expect_not "$captured" '^bytes_fake : ' \
+    "XYMONEXT_COUNT_BYTES=no reports no traffic"
+
+: > "$XE_CAPTURE"
+# shellcheck disable=SC2086
+XYMONEXT_COLUMN=extcost $TESTSH "$XEDIR/ext/xymonext.sh" fake
+expect "$(cat "$XE_CAPTURE")" '^status testhost\.extcost green ' \
+    "column name is overridable via XYMONEXT_COLUMN"
+
+# --- configuration file -------------------------------------------------
+cat > "$XEDIR/etc/xymonext.cfg" <<'EOF'
+XYMONEXT_COLUMN="fromcfg"
+EOF
+: > "$XE_CAPTURE"
+# shellcheck disable=SC2086
+$TESTSH "$XEDIR/ext/xymonext.sh" fake
+expect "$(cat "$XE_CAPTURE")" '^status testhost\.fromcfg green ' \
+    "settings are read from \$XYMONHOME/etc/xymonext.cfg"
+rm -f "$XEDIR/etc/xymonext.cfg"
+
+# --- usage errors -------------------------------------------------------
+# shellcheck disable=SC2086
+out=$($TESTSH "$XEDIR/ext/xymonext.sh" --help)
+rc=$?
+if [ "$rc" -eq 0 ]; then
+    echo "ok:   --help exits 0"
+else
+    echo "FAIL: --help exited with $rc"
+    FAIL=1
+fi
+expect "$out" 'usage: .*EXTENSION' "--help prints the usage"
+
+# shellcheck disable=SC2086
+if $TESTSH "$XEDIR/ext/xymonext.sh" nosuchext 2>/dev/null; then
+    echo "FAIL: an unknown extension should fail"
+    FAIL=1
+else
+    echo "ok:   an unknown extension reports an error"
+fi
+
+# shellcheck disable=SC2086
+if $TESTSH "$XEDIR/ext/xymonext.sh" "../../etc/passwd" 2>/dev/null; then
+    echo "FAIL: an extension name with a path should be rejected"
+    FAIL=1
+else
+    echo "ok:   an extension name with a path is rejected"
+fi
+
+unset XE_CAPTURE XYMONHOME XYMON XYMSRV 2>/dev/null || true
+export XYMONTMP="$XE_OLDTMP"
+
+# ----------------------------------------------------------------------
 echo "--- standalone: xymon-send.sh ---"
 
 # Fake "nc" that records its arguments and stdin instead of connecting.
@@ -1622,6 +1872,10 @@ cp "$REPO/extensions/la/la.sh" "$STAGE/ext/la.sh"
 cp "$REPO/extensions/memory/memory.sh" "$STAGE/ext/memory.sh"
 cp "$REPO/extensions/disk/disk.sh" "$STAGE/ext/disk.sh"
 cp "$REPO/extensions/opkg/opkg.sh" "$STAGE/ext/opkg.sh"
+# The measurement wrapper is installed like an extension, but the
+# runner must call it instead of running it as a test of its own.
+cp "$REPO/extensions/xymonext/xymonext.sh" "$STAGE/ext/xymonext.sh"
+cp "$REPO/extensions/xymonext/xymonext-send.sh" "$STAGE/ext/xymonext-send.sh"
 cp "$TESTDIR/smart/smart_test.cfg" "$STAGE/etc/smart.cfg"
 # The extensions must pick these up via $XYMONHOME/etc/<name>.cfg
 cat > "$STAGE/etc/temp.cfg" <<EOF
@@ -1701,6 +1955,14 @@ expect "$captured" '^status turris,example,org\.opkg green ' \
     "opkg extension runs under the standalone runner"
 expect "$captured" '^updates : 0$' \
     "opkg NCV payload arrives, config read from \$XYMONHOME/etc"
+expect "$captured" '^status turris,example,org\.xymonext ' \
+    "the runner measures the extensions and reports the xymonext column"
+expect "$captured" '^wall_smart : [0-9]+\.[0-9][0-9]$' \
+    "xymonext graphs the runtime of an extension run by the runner"
+expect "$captured" '^bytes_smart : [0-9]+$' \
+    "xymonext counts the bytes sent through the standalone transport"
+expect_not "$captured" '^wall_xymonext : ' \
+    "the wrapper is not run as a test of its own"
 if [ -f "$TMP/work/logs/smart.log" ]; then
     echo "ok:   extension run log written to auto-created \$XYMONCLIENTLOGS"
 else

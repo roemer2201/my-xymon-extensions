@@ -9,3 +9,4 @@
 /etc/xymon-standalone/fritzwan.cfg
 /etc/xymon-standalone/wifi.cfg
 /etc/xymon-standalone/if_link.cfg
+/etc/xymon-standalone/xymonext.cfg

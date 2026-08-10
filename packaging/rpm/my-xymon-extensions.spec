@@ -59,6 +59,12 @@ Included extensions:
   including short flaps between two polls, with optional per-port
   thresholds and RRD graphs; Linux-only, green until thresholds are
   configured.
+* xymonext - what the extensions above cost this host: wall clock
+  time, CPU time and the number of bytes each test sends to the
+  Xymon server, measured on every run and reported in one
+  "xymonext" column with RRD graphs per test. The tasks.d snippets
+  call the extensions through its wrapper; measuring can be turned
+  off in xymonext.cfg.
 
 %prep
 %setup -q
@@ -102,6 +108,9 @@ sh packaging/common/stage.sh "%{buildroot}" \
 %{xymonhome}/ext/if_link.sh
 %config(noreplace) %{xymonhome}/etc/if_link.cfg
 %config(noreplace) %{xymonhome}/etc/tasks.d/if_link.cfg
+%{xymonhome}/ext/xymonext.sh
+%{xymonhome}/ext/xymonext-send.sh
+%config(noreplace) %{xymonhome}/etc/xymonext.cfg
 %{_docdir}/%{name}/
 
 %post
@@ -123,9 +132,25 @@ The "wifi" extension ships disabled too: enable it (remove the
 The "if_link" extension (link state changes per network interface)
  is active out of the box and adds an "if_link" column. It stays
  green until you configure thresholds in %{xymonhome}/etc/if_link.cfg.
+Every task now runs through %{xymonhome}/ext/xymonext.sh, which
+ measures the extension and adds an "xymonext" column with runtime,
+ CPU time and traffic per test. Set XYMONEXT_ENABLE="no" in
+ %{xymonhome}/etc/xymonext.cfg to run the extensions directly again.
 EOF
 
 %changelog
+* Mon Aug 10 2026 roemer2201 <r.oliver@web.de> - 0.12.0-1
+- xymonext: new extension - measures what the client extensions cost
+  the host. A wrapper runs each extension unchanged and records its
+  wall clock time (/proc/uptime, /usr/bin/time -p on FreeBSD), the
+  CPU time of the whole process tree (the POSIX "times" builtin, so
+  no external tool is needed) and the number of bytes it sent to the
+  server (a shim in front of $XYMON). One "xymonext" column carrying
+  the table of all measured tests, split-NCV RRD graphs per test and
+  metric, thresholds on the wall clock time to catch a hanging test;
+  the tasks.d snippets and the standalone runner call the extensions
+  through the wrapper, which can be switched off in xymonext.cfg
+
 * Mon Aug 10 2026 roemer2201 <r.oliver@web.de> - 0.11.2-1
 - smart: make the two DWPD graphs readable. A lifetime DWPD of 0.0034 is
   a normal value, and with rrdtool's defaults the y-axis of the smartdwpd
