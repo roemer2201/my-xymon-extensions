@@ -2093,6 +2093,103 @@ else
     FAIL=1
 fi
 
+# --- the server package ------------------------------------------------
+# Same idea for stage-server.sh: it must install every drop-in file, and
+# the deb conffiles list must name exactly the installed config files.
+
+SRVSTAGE="$TMP/srvstage"
+SRVETC=/etc/xymon
+SRVDOC=/usr/share/doc/my-xymon-extensions-server
+
+if (cd "$REPO" && sh packaging/common/stage-server.sh "$SRVSTAGE" \
+        "$SRVETC" "$SRVDOC" >/dev/null); then
+    echo "ok:   stage-server.sh runs"
+else
+    echo "FAIL: stage-server.sh failed"
+    FAIL=1
+fi
+
+# Every drop-in file in the repo must be installed into the drop-in
+# directory of the same name. (The server READMEs are documentation and
+# are checked through the conffiles comparison below, not here.)
+grep '/server/.*\.d/' "$TMP/server-files" | while read -r rel; do
+    # rel = <ext>/server/<dropin>/<ext>.cfg -> <dropin>/<ext>.cfg
+    dropin=${rel#*/server/}
+    if [ -f "$SRVSTAGE$SRVETC/$dropin" ]; then
+        echo "ok:   stage-server.sh installs $SRVETC/$dropin"
+    else
+        echo "FAIL: stage-server.sh does not install $SRVETC/$dropin"
+        echo "$rel" >> "$TMP/srv-missing"
+    fi
+done
+[ -f "$TMP/srv-missing" ] && FAIL=1
+
+(cd "$SRVSTAGE" && find . -type f) | sed 's|^\.||' | grep "^$SRVETC/" \
+    | sort > "$TMP/srv-etc"
+sort < "$REPO/packaging/deb-server/conffiles" > "$TMP/srv-conffiles"
+if cmp -s "$TMP/srv-etc" "$TMP/srv-conffiles"; then
+    echo "ok:   deb-server conffiles lists exactly the installed config files"
+else
+    echo "FAIL: deb-server conffiles and stage-server.sh disagree"
+    echo "      only staged:      $(grep -Fxv -f "$TMP/srv-conffiles" "$TMP/srv-etc" | tr '\n' ' ')"
+    echo "      only in conffiles:$(grep -Fxv -f "$TMP/srv-etc" "$TMP/srv-conffiles" | tr '\n' ' ')"
+    FAIL=1
+fi
+
+# On Debian/Ubuntu the client and the server both keep their config in
+# /etc/xymon, so the two packages must not claim the same path - dpkg
+# refuses to install packages that do. Stage both with the Debian paths
+# and compare.
+CLIENTSTAGE="$TMP/pkgstage-deb"
+(cd "$REPO" && sh packaging/common/stage.sh "$CLIENTSTAGE" \
+    /usr/lib/xymon/client/ext /etc/xymon /etc/xymon/tasks.d - >/dev/null)
+(cd "$CLIENTSTAGE" && find . -type f) | sed 's|^\.||' | sort > "$TMP/client-paths"
+(cd "$SRVSTAGE" && find . -type f) | sed 's|^\.||' | sort > "$TMP/server-paths"
+overlap=$(grep -Fxf "$TMP/client-paths" "$TMP/server-paths" || true)
+if [ -z "$overlap" ]; then
+    echo "ok:   client and server package share no file path in /etc/xymon"
+else
+    echo "FAIL: client and server package both ship: $(echo "$overlap" | tr '\n' ' ')"
+    FAIL=1
+fi
+
+# The server package does not edit the stock Xymon configs; its
+# post-install tells the admin which drop-in directory is not read yet.
+# Debian wires up xymonserver.d and graphs.d (via the include files its
+# init script regenerates in /var/run/xymon), but ships no
+# rrddefinitions.d - so exactly one TODO is the expected outcome there.
+SRVPOSTINST="$REPO/packaging/deb-server/postinst"
+
+XYMONETC="$TMP/xymonetc-debian"
+mkdir -p "$XYMONETC"
+printf 'TEST2RRD="x"\ninclude /var/run/xymon/xymonserver-include.cfg\n' \
+    > "$XYMONETC/xymonserver.cfg"
+printf '[la]\ninclude /var/run/xymon/graphs-include.cfg\n' > "$XYMONETC/graphs.cfg"
+printf '[default]\n\tRRA:AVERAGE:0.5:1:576\n' > "$XYMONETC/rrddefinitions.cfg"
+out=$(XYMONETCDIR="$XYMONETC" $TESTSH "$SRVPOSTINST" configure)
+expect "$out" 'ok: +xymonserver\.cfg reads' "postinst: Debian xymonserver.d wiring detected"
+expect "$out" 'ok: +graphs\.cfg reads' "postinst: Debian graphs.d wiring detected"
+expect "$out" 'TODO: +rrddefinitions\.cfg does not read' \
+    "postinst: missing rrddefinitions.d reported"
+expect "$out" 'optional directory .*/rrddefinitions\.d' \
+    "postinst: prints the line to add for rrddefinitions.d"
+expect "$out" 'service xymon restart' "postinst: asks for a restart"
+
+# A Xymon that reads none of the three: three TODOs, no crash.
+XYMONETC="$TMP/xymonetc-bare"
+mkdir -p "$XYMONETC"
+printf 'TEST2RRD="x"\n' > "$XYMONETC/xymonserver.cfg"
+out=$(XYMONETCDIR="$XYMONETC" $TESTSH "$SRVPOSTINST" configure)
+expect "$out" 'TODO: +xymonserver\.cfg does not read' \
+    "postinst: unwired xymonserver.d reported"
+expect "$out" 'TODO: +graphs\.cfg does not read' \
+    "postinst: missing graphs.cfg reported"
+expect_not "$out" ' ok: ' "postinst: nothing reported as wired up"
+
+# Any other dpkg action must be a no-op.
+out=$(XYMONETCDIR="$TMP/xymonetc-bare" $TESTSH "$SRVPOSTINST" abort-upgrade 1.0)
+expect_not "$out" '.' "postinst: silent for actions other than configure"
+
 echo ""
 if [ "$FAIL" -eq 0 ]; then
     echo "All tests passed."

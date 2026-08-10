@@ -1,0 +1,80 @@
+#!/bin/sh
+# Post-install for the server package: report whether the three
+# drop-in directories this package writes into are actually read by
+# the stock Xymon configuration, and how to fix it if not.
+#
+# The package deliberately does not edit xymonserver.cfg, graphs.cfg or
+# rrddefinitions.cfg: those are conffiles of the xymon package, and
+# editing another package's conffile makes dpkg prompt on its next
+# upgrade. It also does not restart Xymon by itself - this is a
+# monitoring server, the admin picks the moment.
+set -e
+
+# The Xymon configuration directory. The override exists so the test
+# suite can point the check at a fixture; dpkg always runs this script
+# without it, i.e. against /etc/xymon.
+ETC=${XYMONETCDIR:-/etc/xymon}
+
+# wired FILE PATTERN - true if FILE exists and mentions PATTERN
+wired() {
+    [ -f "$1" ] || return 1
+    grep -Eq "$2" "$1"
+}
+
+case "${1:-}" in
+    configure)
+        todo=0
+
+        echo "my-xymon-extensions-server: drop-in configuration installed."
+
+        # Debian's init script regenerates one "include" line per *.cfg
+        # in /var/run/xymon/{xymonserver,graphs}-include.cfg at every
+        # start, and the stock configs include those files.
+        if wired "$ETC/xymonserver.cfg" 'xymonserver-include\.cfg|xymonserver\.d'; then
+            echo " ok:   xymonserver.cfg reads $ETC/xymonserver.d/"
+        else
+            echo " TODO: xymonserver.cfg does not read $ETC/xymonserver.d/ -"
+            echo "       add this line at the END of $ETC/xymonserver.cfg"
+            echo "       (the end matters: the snippets extend the stock"
+            echo "       TEST2RRD/GRAPHS values with '+=')"
+            echo "         optional directory $ETC/xymonserver.d"
+            todo=1
+        fi
+
+        if wired "$ETC/graphs.cfg" 'graphs-include\.cfg|graphs\.d'; then
+            echo " ok:   graphs.cfg reads $ETC/graphs.d/"
+        else
+            echo " TODO: graphs.cfg does not read $ETC/graphs.d/ - add"
+            echo "       this line at the end of $ETC/graphs.cfg"
+            echo "         optional directory $ETC/graphs.d"
+            todo=1
+        fi
+
+        # Debian ships no rrddefinitions.d, so this one normally is a
+        # TODO. Only the if_link extension needs it.
+        if wired "$ETC/rrddefinitions.cfg" 'rrddefinitions\.d'; then
+            echo " ok:   rrddefinitions.cfg reads $ETC/rrddefinitions.d/"
+        else
+            echo " TODO: rrddefinitions.cfg does not read $ETC/rrddefinitions.d/"
+            echo "       (Debian ships no such drop-in directory) - add"
+            echo "       this line at the end of $ETC/rrddefinitions.cfg"
+            echo "         optional directory $ETC/rrddefinitions.d"
+            echo "       Only the if_link graphs need it; without it they"
+            echo "       keep working, but single link changes stay diluted"
+            echo "       in graphs longer than 48 hours."
+            todo=1
+        fi
+
+        echo " Then restart the Xymon server:  service xymon restart"
+        echo " (a restart, not a reload: the include lists in"
+        echo " /var/run/xymon/ are regenerated at start)"
+        if [ "$todo" -eq 1 ]; then
+            echo " See /usr/share/doc/my-xymon-extensions-server/README.md,"
+            echo " section \"Server-side setup: drop-in directories\"."
+        fi
+        echo " Per-extension notes (thresholds, what the graphs show, how"
+        echo " to verify): /usr/share/doc/my-xymon-extensions-server/<name>/"
+        ;;
+esac
+
+exit 0

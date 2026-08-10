@@ -41,6 +41,38 @@ jobs:
           name: deb-package
           path: build/*.deb
 
+  deb-server:
+    name: build server .deb (Ubuntu)
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+      - run: make deb-server
+      - name: Verify package contents
+        run: |
+          dpkg-deb -I build/my-xymon-extensions-server_*.deb
+          dpkg-deb -c build/my-xymon-extensions-server_*.deb
+      - name: Both packages must be co-installable (shared /etc/xymon)
+        run: |
+          set -e
+          make deb
+          # xymon/xymon-client are not installed on the runner, so the
+          # dependencies are forced - this checks the file layout, not
+          # the dependency chain.
+          sudo dpkg --force-depends -i \
+            build/my-xymon-extensions_*.deb \
+            build/my-xymon-extensions-server_*.deb
+          dpkg -L my-xymon-extensions | sort > /tmp/client.list
+          dpkg -L my-xymon-extensions-server | sort > /tmp/server.list
+          shared=$(comm -12 /tmp/client.list /tmp/server.list \
+            | while read -r p; do [ -f "$p" ] && echo "$p"; done)
+          test -z "$shared" || { echo "both packages ship: $shared"; exit 1; }
+          sudo dpkg --purge my-xymon-extensions-server my-xymon-extensions
+      - uses: actions/upload-artifact@v4
+        with:
+          name: deb-server-package
+          path: build/my-xymon-extensions-server_*.deb
+
   rpm:
     name: build .rpm (Rocky Linux)
     runs-on: ubuntu-latest

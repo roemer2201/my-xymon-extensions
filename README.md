@@ -86,17 +86,50 @@ sources for the three files used here:
 | `rrddefinitions.cfg` | `load_rrddefs()`, `xymond/xymond_rrd.c` | yes |
 | `xymonserver.cfg` | `loadenv()`, `lib/environ.c` | yes |
 
+### Debian/Ubuntu: the server package
+
+On Debian/Ubuntu there is no need to copy anything by hand —
+`make deb-server` builds **`my-xymon-extensions-server`**, which
+installs all drop-in files into `/etc/xymon/{xymonserver,graphs,
+rrddefinitions}.d/` as conffiles:
+
+```sh
+make deb-server
+sudo dpkg -i build/my-xymon-extensions-server_*.deb
+sudo service xymon restart
+```
+
+It is independent of the client package: install it on the Xymon
+server, the client package on the monitored hosts, both together where
+the server also runs a client (which Debian does by default — `xymon`
+depends on `xymon-client`). They share `/etc/xymon` but no single file:
+the client owns `<name>.cfg` and `tasks.d/`, the server package only
+writes into the three drop-in directories above.
+
+The package never edits `xymonserver.cfg`, `graphs.cfg` or
+`rrddefinitions.cfg` — those are conffiles of the `xymon` package, and
+editing another package's conffile makes dpkg prompt on its next
+upgrade. Instead its post-install checks whether each drop-in directory
+is actually read and prints the one line to add if not (in practice
+only for `rrddefinitions.d`, which Debian does not ship). It also does
+not restart Xymon by itself; a monitoring server restarts when *you*
+say so.
+
 ### Wiring it up on your server
 
 - **Debian/Ubuntu** already ship `/etc/xymon/graphs.d/` and
   `/etc/xymon/xymonserver.d/` and wire them up: the init script writes
   one `include` line per `*.cfg` file into
-  `/var/run/xymon/xymonserver-include.cfg`, which `xymonserver.cfg`
-  includes at its end. Drop the file in and **restart** Xymon (that
-  list is regenerated at start, so a reload is not enough).
-  `rrddefinitions.d/` does not exist there — create it and add
-  `optional directory /etc/xymon/rrddefinitions.d` at the end of
-  `rrddefinitions.cfg` once.
+  `/var/run/xymon/graphs-include.cfg` resp.
+  `xymonserver-include.cfg`, and the stock `graphs.cfg` and
+  `xymonserver.cfg` include those at their end (Debian patch
+  `12_hobbitvars.patch`, `debian/init-common.sh`). Both loops only run
+  where `xymond` is installed, i.e. on a server. Drop the file in and
+  **restart** Xymon — that list is regenerated at start, so a reload is
+  not enough. `rrddefinitions.d/` does not exist there — create it and
+  add `optional directory /etc/xymon/rrddefinitions.d` at the end of
+  `rrddefinitions.cfg` once (the server package does the first half and
+  tells you about the second).
 - **Current upstream Xymon** ships every config file with a trailing
   `optional directory $XYMONHOME/etc/<name>.d`, so `graphs.d` and
   `rrddefinitions.d` work out of the box. Its drop-in directory for the
@@ -174,7 +207,8 @@ same mechanism works for every future extension in this repository.
 Package builds are driven by the top-level `Makefile`:
 
 ```sh
-make deb        # Build .deb (on Debian/Ubuntu, requires dpkg-deb)
+make deb        # Build client .deb (on Debian/Ubuntu, requires dpkg-deb)
+make deb-server # Build server .deb (Xymon server configuration)
 make rpm        # Build .rpm (on Rocky/EL, requires rpm-build)
 make freebsd    # Build FreeBSD .pkg (on FreeBSD, requires pkg(8))
 make opkg       # Build OpenWrt/TurrisOS .ipk (builds on any platform)

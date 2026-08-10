@@ -112,13 +112,26 @@ target platform.
     (`load_rrddefs()`) and `xymonserver.cfg` (`loadenv()`).
 - Add a `tasks.d` snippet for the extension under
   `packaging/common/tasks.d/<name>.cfg` so all three packages ship it.
-- The installed file list lives in exactly one place,
-  `packaging/common/stage.sh` — extend it whenever an extension is
-  added, renamed or gains new installed files, and check that all four
-  packagings (`packaging/deb`, `packaging/rpm`, `packaging/freebsd`,
-  `packaging/opkg`) still cover the change (conffiles lists, plist,
-  etc.). A change is not complete until all package definitions are
-  consistent.
+- The installed file list lives in exactly one place per package:
+  `packaging/common/stage.sh` for the **client** packages,
+  `packaging/common/stage-server.sh` for the **server** package
+  (`packaging/deb-server`, Debian/Ubuntu only so far). Extend them
+  whenever an extension is added, renamed or gains new installed files,
+  and check that all packagings still cover the change (`packaging/deb`,
+  `packaging/rpm`, `packaging/freebsd`, `packaging/opkg`,
+  `packaging/deb-server`: conffiles lists, plist, `%files`). A change
+  is not complete until all package definitions are consistent —
+  `tests/run.sh` pins this and fails on a mismatch.
+- On Debian/Ubuntu the Xymon **server and client share `/etc/xymon`**,
+  and the `xymon` package depends on `xymon-client`, so both of our
+  packages can end up on the same host. dpkg refuses two packages that
+  ship the same path: the client owns `<name>.cfg` and `tasks.d/`, the
+  server package only the `xymonserver.d/`, `graphs.d/` and
+  `rrddefinitions.d/` drop-ins. Never let the two lists intersect.
+- Maintainer scripts must not edit another package's conffile
+  (`xymonserver.cfg`, `graphs.cfg`, `rrddefinitions.cfg` belong to
+  `xymon`) — dpkg would prompt on its next upgrade. Detect and print
+  the line the admin has to add instead.
 - Version is maintained in one place (`VERSION` file at the repo root)
   and consumed by all package builds.
 

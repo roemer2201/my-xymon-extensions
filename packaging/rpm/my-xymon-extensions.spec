@@ -144,6 +144,25 @@ RRD graphs need a one-time setup on the Xymon SERVER (not here):
 EOF
 
 %changelog
+* Mon Aug 10 2026 roemer2201 <r.oliver@web.de> - 0.14.0-1
+- new package my-xymon-extensions-server (.deb only for now): installs
+  the server-side drop-in configuration of every extension into
+  /etc/xymon/xymonserver.d, graphs.d and rrddefinitions.d as
+  conffiles, plus the per-extension server READMEs. Depends on the
+  Debian "xymon" package; independent of the client package. Its file
+  list lives in packaging/common/stage-server.sh, the counterpart of
+  stage.sh. Debian specifics that shaped it: server and client share
+  /etc/xymon and "xymon" depends on "xymon-client", so both packages
+  can be installed on one host - the two file lists are kept disjoint
+  (the client owns <name>.cfg and tasks.d, the server package only the
+  three drop-in directories) and the test suite plus a CI step verify
+  that dpkg accepts them together. The package does not edit
+  xymonserver.cfg/graphs.cfg/rrddefinitions.cfg, which are conffiles of
+  the xymon package; its post-install detects which drop-in directory
+  is not read yet and prints the "optional directory" line to add
+  (normally only rrddefinitions.d, which Debian does not ship), and it
+  leaves restarting Xymon to the admin. No rpm content changes
+
 * Mon Aug 10 2026 roemer2201 <r.oliver@web.de> - 0.13.0-1
 - server side: ship every extension's Xymon server configuration as
   drop-in files instead of instructions to edit stock config files.
