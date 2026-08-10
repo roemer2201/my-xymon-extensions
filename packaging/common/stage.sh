@@ -65,7 +65,8 @@ if [ "$DOCDIR" != "-" ]; then
         "$DESTDIR$DOCDIR/fritzdsl/server/graphs.d" \
         "$DESTDIR$DOCDIR/fritzwan/server/graphs.d" \
         "$DESTDIR$DOCDIR/wifi/server/graphs.d" \
-        "$DESTDIR$DOCDIR/if_link/server/graphs.d" || exit 1
+        "$DESTDIR$DOCDIR/if_link/server/graphs.d" \
+        "$DESTDIR$DOCDIR/if_link/server/rrddefinitions.d" || exit 1
     inst 0644 README.md "$DESTDIR$DOCDIR/README.md" || exit 1
     for ext in temp la memory disk opkg; do
         mkdir -p "$DESTDIR$DOCDIR/$ext" || exit 1
@@ -87,6 +88,7 @@ if [ "$DOCDIR" != "-" ]; then
     inst 0644 extensions/if_link/README.md "$DESTDIR$DOCDIR/if_link/README.md" || exit 1
     inst 0644 extensions/if_link/server/README.md "$DESTDIR$DOCDIR/if_link/server/README.md" || exit 1
     inst 0644 extensions/if_link/server/graphs.d/if_link.cfg "$DESTDIR$DOCDIR/if_link/server/graphs.d/if_link.cfg" || exit 1
+    inst 0644 extensions/if_link/server/rrddefinitions.d/if_link.cfg "$DESTDIR$DOCDIR/if_link/server/rrddefinitions.d/if_link.cfg" || exit 1
 fi
 
 exit 0
