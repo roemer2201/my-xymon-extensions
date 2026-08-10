@@ -126,6 +126,18 @@ The "if_link" extension (link state changes per network interface)
 EOF
 
 %changelog
+* Mon Aug 10 2026 roemer2201 <r.oliver@web.de> - 0.11.2-1
+- smart: make the two DWPD graphs readable. A lifetime DWPD of 0.0034 is
+  a normal value, and with rrdtool's defaults the y-axis of the smartdwpd
+  and smartdwpdrecent graphs came out labelled "3.0 m" to "4.0 m" (milli)
+  and autoscaled to the data range, so a drift of three ten-thousandths
+  filled the whole graph and looked alarming. The two blocks in
+  server/graphs.d/smart.cfg now set -X 0 (fix the SI exponent, plain
+  decimals instead of an "m" prefix), -L 6 (room for labels like 0.004),
+  -l 0 (anchor at zero, so the height shows the true magnitude) and -Y
+  (alternative y-grid for the resulting narrow range). Graph definitions
+  only - no change to the extension or its metrics
+
 * Mon Aug 10 2026 roemer2201 <r.oliver@web.de> - 0.11.1-1
 - if_link: stop long-range graphs from diluting single link changes
   into fractions. The extension only ever sends whole numbers, but
