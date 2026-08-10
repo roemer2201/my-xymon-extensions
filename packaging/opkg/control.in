@@ -25,6 +25,10 @@ Description: Portable Xymon client extensions with standalone runner
  without AP radios); if_link - link state changes per network
  interface from the kernel's carrier counters, so even short flaps
  between two polls are counted (physical ports and DSA switch ports
- auto-detected, optional per-port thresholds); fritzdsl - AVM FRITZ!Box DSL line monitoring via
+ auto-detected, optional per-port thresholds); xymonext - what the
+ tests above cost the router: wall clock time, CPU time and bytes
+ sent per test, graphed per extension (the runner calls the
+ extensions through its wrapper; switch it off with
+ XYMONEXT_ENABLE="no"); fritzdsl - AVM FRITZ!Box DSL line monitoring via
  TR-064; fritzwan - AVM FRITZ!Box WAN throughput monitoring (both
  need the curl package and stay silent until configured).

@@ -43,6 +43,7 @@ my-xymon-extensions/
 | [fritzwan](extensions/fritzwan/) | `fritzwan` | AVM FRITZ!Box WAN throughput monitoring (curl): physical link state, average throughput, link capacity and utilization from the box's 64-bit UPnP counters (TR-064 fallback) — optional utilization thresholds and RRD graphs |
 | [if_link](extensions/if_link/) | `if_link` | Link state changes per network interface, counted from the kernel's `carrier_changes` counter — so even a flap that starts and ends between two polls is seen (a short down+up is two changes); physical ports and DSA switch ports are auto-detected, thresholds are opt-in, RRD graphs per port; Linux only |
 | [wifi](extensions/wifi/) | `wifi` | Wi-Fi access point metadata via iw/nl80211 plus ubus/hostapd and iwinfo on OpenWrt: client counts per SSID interface, channel utilization and noise per radio, throughput, client airtime and TX retry rates — informational only (green/clear), RRD graphs; for OpenWrt/TurrisOS APs via the standalone runner |
+| [xymonext](extensions/xymonext/) | `xymonext` | What the extensions above cost this host: wall clock time, CPU time of the whole process tree and bytes sent to the server, measured on every run and graphed per test — thresholds on the runtime catch a hanging test; wraps the other extensions instead of being scheduled itself |
 
 ## Design principles
 
@@ -59,6 +60,17 @@ my-xymon-extensions/
   status instead of failing.
 - **One extension = one column.** Each extension reports exactly one status
   column and ships with its own documentation.
+
+## Measuring the extensions themselves
+
+The [`xymonext`](extensions/xymonext/) extension is a wrapper rather than a
+scheduled test: the `tasks.d` snippets call
+`$XYMONCLIENTHOME/ext/xymonext.sh <name>` and the standalone runner does the
+same, so every extension is measured while it runs — wall clock time, CPU
+time of its whole process tree and the bytes it sends to the server. The
+measured extension runs completely unchanged and its exit code is passed
+through. Set `XYMONEXT_ENABLE="no"` in `xymonext.cfg` (or in
+`standalone.cfg`) to run the extensions directly again.
 
 ## Installing an extension manually
 

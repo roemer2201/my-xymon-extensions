@@ -8,6 +8,8 @@ www/xymon/client/ext/fritzdsl.sh
 www/xymon/client/ext/fritzwan.sh
 www/xymon/client/ext/wifi.sh
 www/xymon/client/ext/if_link.sh
+www/xymon/client/ext/xymonext.sh
+www/xymon/client/ext/xymonext-send.sh
 @sample www/xymon/client/etc/smart.cfg.sample
 @sample www/xymon/client/etc/temp.cfg.sample
 @sample www/xymon/client/etc/la.cfg.sample
@@ -28,6 +30,7 @@ www/xymon/client/ext/if_link.sh
 @sample www/xymon/client/etc/tasks.d/wifi.cfg.sample
 @sample www/xymon/client/etc/if_link.cfg.sample
 @sample www/xymon/client/etc/tasks.d/if_link.cfg.sample
+@sample www/xymon/client/etc/xymonext.cfg.sample
 share/doc/my-xymon-extensions/README.md
 share/doc/my-xymon-extensions/temp/README.md
 share/doc/my-xymon-extensions/la/README.md
@@ -50,3 +53,6 @@ share/doc/my-xymon-extensions/wifi/server/graphs.d/wifi.cfg
 share/doc/my-xymon-extensions/if_link/README.md
 share/doc/my-xymon-extensions/if_link/server/README.md
 share/doc/my-xymon-extensions/if_link/server/graphs.d/if_link.cfg
+share/doc/my-xymon-extensions/xymonext/README.md
+share/doc/my-xymon-extensions/xymonext/server/README.md
+share/doc/my-xymon-extensions/xymonext/server/graphs.d/xymonext.cfg

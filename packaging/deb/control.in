@@ -46,3 +46,9 @@ Description: Portable Xymon client extensions
     including short flaps between two polls, with optional per-port
     thresholds and RRD graphs; Linux-only, green until thresholds are
     configured.
+  * xymonext - what the extensions above cost this host: wall clock
+    time, CPU time and bytes sent to the server, measured on every
+    run and reported in one "xymonext" column with RRD graphs per
+    test and metric; the tasks.d snippets call the extensions
+    through its wrapper, measuring can be turned off in
+    xymonext.cfg.
