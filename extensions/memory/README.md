@@ -11,11 +11,11 @@ in one status column, plus an NCV line for RRD graphing.
 - **Note:** a full Xymon client already delivers a `memory` column of
   its own; the default column name here is `mem`, not `memory`,
   precisely to avoid fighting over that column when this extension
-  and a full client report to the same server. The shipped `tasks.d`
+  and a full client report to the same server. The shipped `clientlaunch.d`
   snippet is **disabled by default** anyway, since a full-client host
   doesn't need this extension. This extension is meant for clientless
   hosts (routers, appliances) driven by the standalone runner, which
-  runs every installed extension regardless of `tasks.d`.
+  runs every installed extension regardless of `clientlaunch.d`.
 
 ## Metric
 

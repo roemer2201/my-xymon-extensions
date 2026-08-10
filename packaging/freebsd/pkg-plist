@@ -16,20 +16,20 @@ www/xymon/client/ext/xymonext-send.sh
 @sample www/xymon/client/etc/memory.cfg.sample
 @sample www/xymon/client/etc/disk.cfg.sample
 @sample www/xymon/client/etc/opkg.cfg.sample
-@sample www/xymon/client/etc/tasks.d/smart.cfg.sample
-@sample www/xymon/client/etc/tasks.d/temp.cfg.sample
-@sample www/xymon/client/etc/tasks.d/la.cfg.sample
-@sample www/xymon/client/etc/tasks.d/memory.cfg.sample
-@sample www/xymon/client/etc/tasks.d/disk.cfg.sample
-@sample www/xymon/client/etc/tasks.d/opkg.cfg.sample
+@sample www/xymon/client/etc/clientlaunch.d/smart.cfg.sample
+@sample www/xymon/client/etc/clientlaunch.d/temp.cfg.sample
+@sample www/xymon/client/etc/clientlaunch.d/la.cfg.sample
+@sample www/xymon/client/etc/clientlaunch.d/memory.cfg.sample
+@sample www/xymon/client/etc/clientlaunch.d/disk.cfg.sample
+@sample www/xymon/client/etc/clientlaunch.d/opkg.cfg.sample
 @sample www/xymon/client/etc/fritzdsl.cfg.sample
-@sample www/xymon/client/etc/tasks.d/fritzdsl.cfg.sample
+@sample www/xymon/client/etc/clientlaunch.d/fritzdsl.cfg.sample
 @sample www/xymon/client/etc/fritzwan.cfg.sample
-@sample www/xymon/client/etc/tasks.d/fritzwan.cfg.sample
+@sample www/xymon/client/etc/clientlaunch.d/fritzwan.cfg.sample
 @sample www/xymon/client/etc/wifi.cfg.sample
-@sample www/xymon/client/etc/tasks.d/wifi.cfg.sample
+@sample www/xymon/client/etc/clientlaunch.d/wifi.cfg.sample
 @sample www/xymon/client/etc/if_link.cfg.sample
-@sample www/xymon/client/etc/tasks.d/if_link.cfg.sample
+@sample www/xymon/client/etc/clientlaunch.d/if_link.cfg.sample
 @sample www/xymon/client/etc/xymonext.cfg.sample
 share/doc/my-xymon-extensions/README.md
 share/doc/my-xymon-extensions/temp/README.md

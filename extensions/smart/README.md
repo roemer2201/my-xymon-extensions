@@ -240,8 +240,9 @@ smoothing — smoothing applied at collection time cannot be undone.
 
 1. Copy `smart.sh` to `$XYMONHOME/ext/smart.sh` (executable).
 2. Optional: copy `smart.cfg` to `$XYMONHOME/etc/smart.cfg` and adjust.
-3. Install the task snippet (see `packaging/common/tasks.d/smart.cfg`)
-   into the client's `tasks.d`/`clientlaunch.cfg`.
+3. Install the task snippet (see
+   `packaging/common/clientlaunch.d/smart.cfg`) into the client's
+   `clientlaunch.d`/`clientlaunch.cfg`.
 4. Grant privileges (below), then restart the Xymon client.
 
 The packages built from this repository do steps 1–3 automatically.

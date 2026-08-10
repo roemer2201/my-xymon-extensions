@@ -67,7 +67,7 @@ the rates appear from the second poll on.
    `fritz.box`. `chmod 600` the file.
 3. **Add the box to `hosts.cfg`** on the Xymon server (same entry the
    `fritzdsl` column uses, if both extensions are active).
-4. **Enable the task**: the shipped `tasks.d/fritzwan.cfg` snippet is
+4. **Enable the task**: the shipped `clientlaunch.d/fritzwan.cfg` snippet is
    `DISABLED` by default — remove that line after configuring, then
    restart the Xymon client on the polling host.
 5. **Server-side RRD/graph setup**: see [server/README.md](server/README.md).

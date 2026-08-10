@@ -110,8 +110,13 @@ target platform.
     documents it only for `hosts.cfg`/`alerts.cfg`. Confirmed in the
     sources for `graphs.cfg` (`load_gdefs()`), `rrddefinitions.cfg`
     (`load_rrddefs()`) and `xymonserver.cfg` (`loadenv()`).
-- Add a `tasks.d` snippet for the extension under
-  `packaging/common/tasks.d/<name>.cfg` so all three packages ship it.
+- Add a xymonlaunch snippet for the extension under
+  `packaging/common/clientlaunch.d/<name>.cfg` so all client packages
+  ship it. It is installed into the **client's** drop-in directory
+  `$XYMONHOME/etc/clientlaunch.d`, never into `tasks.d` — that one
+  belongs to the server's xymonlaunch, and on Debian the server's
+  `tasks.cfg` includes the client's list as well, so a snippet in
+  `tasks.d` can run twice on a combined host.
 - The installed file list lives in exactly one place per package:
   `packaging/common/stage.sh` for the **client** packages,
   `packaging/common/stage-server.sh` for the **server** package
@@ -125,7 +130,8 @@ target platform.
 - On Debian/Ubuntu the Xymon **server and client share `/etc/xymon`**,
   and the `xymon` package depends on `xymon-client`, so both of our
   packages can end up on the same host. dpkg refuses two packages that
-  ship the same path: the client owns `<name>.cfg` and `tasks.d/`, the
+  ship the same path: the client owns `<name>.cfg` and
+  `clientlaunch.d/`, the
   server package only the `xymonserver.d/`, `graphs.d/` and
   `rrddefinitions.d/` drop-ins. Never let the two lists intersect.
 - Maintainer scripts must not edit another package's conffile
@@ -139,7 +145,8 @@ target platform.
 
 ```sh
 make test       # shellcheck + unit tests — run this before every commit
-make deb        # build .deb  (requires Debian/Ubuntu tooling)
+make deb        # build client .deb  (requires Debian/Ubuntu tooling)
+make deb-server # build server .deb  (Xymon server drop-in config)
 make rpm        # build .rpm  (requires rpmbuild)
 make freebsd    # build .pkg  (requires FreeBSD pkg(8))
 make opkg       # build .ipk  (plain tar+gzip, builds anywhere)

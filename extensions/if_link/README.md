@@ -170,12 +170,12 @@ definition adds.
 
 ## Packaging notes
 
-- The `tasks.d` snippet ships **enabled**: the extension needs nothing
+- The `clientlaunch.d` snippet ships **enabled**: the extension needs nothing
   but `/sys/class/net`, which every Linux host has, and it stays green
   until thresholds are configured. On a server it watches the NICs
   (`eno1`, `enp3s0`, …), on a router the individual switch ports.
 - On FreeBSD the column is permanently `clear` (see
   [Why Linux only](#why-linux-only)) — comment the `[if_link]` block
-  in `tasks.d/if_link.cfg` out there if you would rather not see it.
+  in `clientlaunch.d/if_link.cfg` out there if you would rather not see it.
 - On OpenWrt/TurrisOS the extension is part of the default `TESTS`
   list of the standalone runner.

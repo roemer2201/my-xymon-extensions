@@ -64,7 +64,7 @@ as a "connection was re-established" note.
    `REPORTHOST` must match this hostname. The `fritzdsl` column
    appears on this host; `conn` gives you a basic ping check for free.
 4. **Enable the task**: the shipped
-   `tasks.d/fritzdsl.cfg` snippet is `DISABLED` by default — remove
+   `clientlaunch.d/fritzdsl.cfg` snippet is `DISABLED` by default — remove
    that line after configuring the credentials, then restart the
    Xymon client on the polling host.
 5. **Server-side RRD/graph setup**: see [server/README.md](server/README.md).

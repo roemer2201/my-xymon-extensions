@@ -24,7 +24,7 @@ mkdir -p "$STAGE" "$BUILD/out" || exit 1
 sh packaging/common/stage.sh "$STAGE" \
     /usr/local/www/xymon/client/ext \
     /usr/local/www/xymon/client/etc \
-    /usr/local/www/xymon/client/etc/tasks.d \
+    /usr/local/www/xymon/client/etc/clientlaunch.d \
     "/usr/local/share/doc/$PKG" \
     .sample || exit 1
 

@@ -2047,7 +2047,7 @@ PKGSTAGE="$TMP/pkgstage"
 DOCROOT=/usr/share/doc/my-xymon-extensions
 
 if (cd "$REPO" && sh packaging/common/stage.sh "$PKGSTAGE" \
-        /ext /etc /etc/tasks.d "$DOCROOT" >/dev/null); then
+        /ext /etc /etc/clientlaunch.d "$DOCROOT" >/dev/null); then
     echo "ok:   stage.sh runs"
 else
     echo "FAIL: stage.sh failed"
@@ -2142,8 +2142,38 @@ fi
 # and compare.
 CLIENTSTAGE="$TMP/pkgstage-deb"
 (cd "$REPO" && sh packaging/common/stage.sh "$CLIENTSTAGE" \
-    /usr/lib/xymon/client/ext /etc/xymon /etc/xymon/tasks.d - >/dev/null)
+    /usr/lib/xymon/client/ext /etc/xymon /etc/xymon/clientlaunch.d - >/dev/null)
 (cd "$CLIENTSTAGE" && find . -type f) | sed 's|^\.||' | sort > "$TMP/client-paths"
+
+# The launch snippets belong to the CLIENT's drop-in directory. tasks.d
+# is the server's (Debian's tasks.cfg reads it, and reads the client's
+# list too), so a snippet there runs twice on a combined host - that is
+# what this guards against.
+for snippet in smart temp la memory disk opkg fritzdsl fritzwan wifi if_link; do
+    grep -qx "/etc/xymon/clientlaunch.d/$snippet.cfg" "$TMP/client-paths" || {
+        echo "FAIL: $snippet snippet is not staged into clientlaunch.d"
+        FAIL=1
+    }
+done
+if grep -q "^/etc/xymon/tasks\.d/" "$TMP/client-paths"; then
+    echo "FAIL: client package still installs into the server's tasks.d"
+    FAIL=1
+else
+    echo "ok:   launch snippets go to clientlaunch.d, nothing into tasks.d"
+fi
+
+# The deb migrates the old tasks.d conffiles; all three maintainer
+# scripts must carry the same mv_conffile calls or dpkg leaves the file
+# behind (dpkg-maintscript-helper requires the call in each of them).
+for script in preinst postinst postrm; do
+    n=$(grep -c "mv_conffile" "$REPO/packaging/deb/$script" || true)
+    if [ "$n" -ge 1 ]; then
+        echo "ok:   deb $script migrates the tasks.d conffiles"
+    else
+        echo "FAIL: deb $script has no mv_conffile call"
+        FAIL=1
+    fi
+done
 (cd "$SRVSTAGE" && find . -type f) | sed 's|^\.||' | sort > "$TMP/server-paths"
 overlap=$(grep -Fxf "$TMP/client-paths" "$TMP/server-paths" || true)
 if [ -z "$overlap" ]; then

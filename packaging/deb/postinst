@@ -1,26 +1,44 @@
 #!/bin/sh
 set -e
 
+# Third half of the tasks.d -> clientlaunch.d conffile move; see preinst
+# for the why. dpkg-maintscript-helper needs the same call in preinst,
+# postinst and postrm.
+#
+# The version that last shipped the files in tasks.d. Never change this.
+PRIOR=0.14.0-1
+
+for snippet in smart temp la memory disk opkg fritzdsl fritzwan wifi if_link; do
+    dpkg-maintscript-helper mv_conffile \
+        "/etc/xymon/tasks.d/$snippet.cfg" \
+        "/etc/xymon/clientlaunch.d/$snippet.cfg" \
+        "$PRIOR" -- "$@"
+done
+
 case "${1:-}" in
     configure)
         cat <<'EOF'
 my-xymon-extensions: to activate the "smart" extension:
  1. Grant the xymon user access to smartctl - see
     /usr/share/doc/my-xymon-extensions/smart/sudoers.example
- 2. Make sure /etc/xymon/clientlaunch.cfg loads the tasks.d directory
-    (add this line once if it is missing):
-      directory /etc/xymon/tasks.d
- 3. Restart the client: service xymon-client restart
- The "temp" extension is active via tasks.d as well; "la", "memory"
- and "disk" ship disabled (see /etc/xymon/tasks.d) because a full
- Xymon client already reports this information itself.
+ 2. Restart the client: service xymon-client restart
+    (on a host that also runs the Xymon server: service xymon restart)
+ The snippets in /etc/xymon/clientlaunch.d/ need no further wiring on
+ Debian/Ubuntu: the init script writes one include line per *.cfg into
+ /var/run/xymon/clientlaunch-include.cfg at every start, and both
+ clientlaunch.cfg and the server's tasks.cfg read that file. Hence a
+ restart, not a reload.
+ The "temp" extension is active as well; "la", "memory" and "disk"
+ ship disabled (see /etc/xymon/clientlaunch.d) because a full Xymon
+ client already reports this information itself.
 The FRITZ!Box extensions "fritzdsl" and "fritzwan" ship disabled:
  configure /etc/xymon/fritzdsl.cfg resp. fritzwan.cfg, then remove
- the DISABLED line from the matching /etc/xymon/tasks.d/ snippet and
- restart the client on the polling host (normally the Xymon server).
+ the DISABLED line from the matching /etc/xymon/clientlaunch.d/
+ snippet and restart the client on the polling host (normally the
+ Xymon server).
 The "wifi" extension ships disabled too: enable it (remove the
- DISABLED line from /etc/xymon/tasks.d/wifi.cfg) only on a Linux
- access point with iw installed.
+ DISABLED line from /etc/xymon/clientlaunch.d/wifi.cfg) only on a
+ Linux access point with iw installed.
 The "if_link" extension (link state changes per network interface)
  is active out of the box and adds an "if_link" column. It stays
  green until you configure thresholds in /etc/xymon/if_link.cfg.
@@ -28,12 +46,26 @@ Every task runs through /usr/lib/xymon/client/ext/xymonext.sh, which
  measures the extension and adds an "xymonext" column with runtime,
  CPU time and traffic per test. Set XYMONEXT_ENABLE="no" in
  /etc/xymon/xymonext.cfg to run the extensions directly again.
-RRD graphs need a one-time setup on the Xymon SERVER (not here):
- ready-made drop-in files for its xymonserver.d, graphs.d and
- rrddefinitions.d directories ship in
- /usr/share/doc/my-xymon-extensions/<extension>/server/ - copy them
- over and restart Xymon there; see the README.md next to them.
+RRD graphs need a one-time setup on the Xymon SERVER: install the
+ my-xymon-extensions-server package there, or copy the drop-in files
+ from /usr/share/doc/my-xymon-extensions/<extension>/server/ by hand.
 EOF
+        # Up to 0.14.0-1 this package asked the admin to add a
+        # "directory /etc/xymon/tasks.d" line to clientlaunch.cfg. The
+        # snippets have moved, and on a server host that line makes the
+        # server's xymonlaunch load them a second time.
+        if [ -f /etc/xymon/clientlaunch.cfg ] &&
+           grep -Eq '^[[:space:]]*directory[[:space:]]+/etc/xymon/tasks\.d[[:space:]]*$' \
+                /etc/xymon/clientlaunch.cfg; then
+            cat <<'EOF'
+ NOTE: /etc/xymon/clientlaunch.cfg still contains
+         directory /etc/xymon/tasks.d
+ That line was needed by version 0.14.0 and older. The snippets now
+ live in /etc/xymon/clientlaunch.d/ and are included automatically -
+ remove the line. tasks.d belongs to the Xymon server; leaving the
+ line in makes a server host run these extensions twice.
+EOF
+        fi
         ;;
 esac
 

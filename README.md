@@ -26,7 +26,7 @@ my-xymon-extensions/
 │   ├── xymon-run.sh     # xymonlaunch replacement (env + scheduler glue)
 │   └── xymon-send.sh    # xymon(1) replacement (protocol sender)
 ├── packaging/
-│   ├── common/          # Shared staging logic + tasks.d snippets
+│   ├── common/          # Shared staging logic + clientlaunch.d snippets
 │   ├── deb/             # Debian/Ubuntu packaging
 │   ├── rpm/             # RPM spec for Rocky/EL
 │   ├── freebsd/         # FreeBSD pkg manifest + plist
@@ -103,7 +103,7 @@ It is independent of the client package: install it on the Xymon
 server, the client package on the monitored hosts, both together where
 the server also runs a client (which Debian does by default — `xymon`
 depends on `xymon-client`). They share `/etc/xymon` but no single file:
-the client owns `<name>.cfg` and `tasks.d/`, the server package only
+the client owns `<name>.cfg` and `clientlaunch.d/`, the server package only
 writes into the three drop-in directories above.
 
 The package never edits `xymonserver.cfg`, `graphs.cfg` or
@@ -166,7 +166,7 @@ already.
 ## Measuring the extensions themselves
 
 The [`xymonext`](extensions/xymonext/) extension is a wrapper rather than a
-scheduled test: the `tasks.d` snippets call
+scheduled test: the `clientlaunch.d` snippets call
 `$XYMONCLIENTHOME/ext/xymonext.sh <name>` and the standalone runner does the
 same, so every extension is measured while it runs — wall clock time, CPU
 time of its whole process tree and the bytes it sends to the server. The
@@ -178,8 +178,9 @@ through. Set `XYMONEXT_ENABLE="no"` in `xymonext.cfg` (or in
 
 1. Copy `extensions/<name>/<name>.sh` to `$XYMONHOME/ext/` on the client.
 2. Copy the configuration file (if any) to `$XYMONHOME/etc/`.
-3. Add a task section to `$XYMONHOME/etc/tasks.d/<name>.cfg` (or
-   `tasks.cfg`):
+3. Add a task section to `$XYMONHOME/etc/clientlaunch.d/<name>.cfg`
+   (or directly to `clientlaunch.cfg`) — **not** to `tasks.d`, which
+   is the drop-in directory of the *server's* xymonlaunch:
 
    ```
    [myextension]
@@ -216,7 +217,7 @@ make test       # Run shellcheck + unit tests
 ```
 
 Each package installs the extension scripts into the platform's Xymon
-client `ext/` directory and drops a matching `tasks.d` snippet, so an
+client `ext/` directory and drops a matching `clientlaunch.d` snippet, so an
 extension is active after installation without manual editing.
 
 ## Testing

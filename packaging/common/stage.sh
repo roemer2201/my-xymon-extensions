@@ -3,13 +3,17 @@
 # Shared by the deb, rpm and FreeBSD package builds so the file list
 # lives in exactly one place.
 #
-# usage: stage.sh DESTDIR EXTDIR ETCDIR TASKSDIR DOCDIR [CFGSUFFIX]
+# usage: stage.sh DESTDIR EXTDIR ETCDIR LAUNCHDIR DOCDIR [CFGSUFFIX]
 #
 #   DESTDIR    staging root (buildroot)
 #   EXTDIR     absolute path of the Xymon client ext/ directory
 #   ETCDIR     absolute path of the config directory
-#   TASKSDIR   absolute path of the xymonlaunch tasks.d directory,
-#              or "-" to skip the snippets (opkg: no xymonlaunch)
+#   LAUNCHDIR  absolute path of the xymonlaunch drop-in directory for
+#              CLIENT tasks - clientlaunch.d, not tasks.d: the latter
+#              belongs to the server's xymonlaunch (on Debian its
+#              tasks.cfg reads both, so a snippet in tasks.d runs twice
+#              on a host that is client and server). "-" skips the
+#              snippets (opkg: no xymonlaunch at all)
 #   DOCDIR     absolute path of the documentation directory,
 #              or "-" to skip the docs (opkg: flash space)
 #   CFGSUFFIX  optional suffix appended to config files
@@ -19,14 +23,14 @@
 set -u
 
 if [ $# -lt 5 ]; then
-    echo "usage: $0 DESTDIR EXTDIR ETCDIR TASKSDIR DOCDIR [CFGSUFFIX]" >&2
+    echo "usage: $0 DESTDIR EXTDIR ETCDIR LAUNCHDIR DOCDIR [CFGSUFFIX]" >&2
     exit 1
 fi
 
 DESTDIR=$1
 EXTDIR=$2
 ETCDIR=$3
-TASKSDIR=$4
+LAUNCHDIR=$4
 DOCDIR=$5
 SUF=${6:-}
 
@@ -37,13 +41,13 @@ inst() { # inst MODE SRC DST
 }
 
 mkdir -p "$DESTDIR$EXTDIR" "$DESTDIR$ETCDIR" || exit 1
-if [ "$TASKSDIR" != "-" ]; then
-    mkdir -p "$DESTDIR$TASKSDIR" || exit 1
+if [ "$LAUNCHDIR" != "-" ]; then
+    mkdir -p "$DESTDIR$LAUNCHDIR" || exit 1
 fi
 
 task() { # task NAME
-    [ "$TASKSDIR" = "-" ] && return 0
-    inst 0644 "packaging/common/tasks.d/$1.cfg" "$DESTDIR$TASKSDIR/$1.cfg$SUF"
+    [ "$LAUNCHDIR" = "-" ] && return 0
+    inst 0644 "packaging/common/clientlaunch.d/$1.cfg" "$DESTDIR$LAUNCHDIR/$1.cfg$SUF"
 }
 
 for ext in smart temp la memory disk opkg wifi if_link; do
@@ -61,7 +65,7 @@ inst 0644 extensions/fritzwan/fritzwan.cfg "$DESTDIR$ETCDIR/fritzwan.cfg$SUF" ||
 task fritzwan || exit 1
 
 # xymonext measures the other extensions and therefore has no task of
-# its own: the tasks.d snippets above call it with the extension to
+# its own: the clientlaunch.d snippets above call it with the extension to
 # run. Two scripts: the wrapper and the shim it puts in front of
 # $XYMON to count the bytes an extension sends.
 inst 0755 extensions/xymonext/xymonext.sh "$DESTDIR$EXTDIR/xymonext.sh" || exit 1

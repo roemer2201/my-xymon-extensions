@@ -12,7 +12,7 @@ for RRD graphing.
 - **Requires:** opkg; root when `OPKG_UPDATE=auto` (the default —
   `opkg update` writes the package lists directory), plus working
   outbound access to the configured package feeds.
-- **Note:** the shipped `tasks.d` snippet is **disabled by default**:
+- **Note:** the shipped `clientlaunch.d` snippet is **disabled by default**:
   hosts with a full Xymon client (deb/rpm/FreeBSD) have no opkg and
   the column would sit at `clear` forever. On OpenWrt/TurrisOS the
   standalone runner picks the extension up through the `TESTS` line

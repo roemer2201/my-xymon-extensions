@@ -124,7 +124,8 @@ Run logs go to `$XYMONTMP` (default `/tmp`, a RAM disk on OpenWrt) as
 - The FRITZ!Box pollers `fritzdsl`/`fritzwan` are installed but not in
   the default `TESTS` list: they are remote pollers that query a
   FRITZ!Box over the network, a job that normally belongs on the
-  Xymon server (via the deb/rpm package and its tasks.d snippets).
+  Xymon server (via the deb/rpm package and its clientlaunch.d
+  snippets).
   Run them from the router only when the server cannot reach the box
   itself — configure `/etc/xymon-standalone/fritzdsl.cfg` (resp.
   `fritzwan.cfg`) and add them to `TESTS`.

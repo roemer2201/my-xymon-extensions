@@ -13,7 +13,7 @@
 #
 # Written for clientless hosts driven by the standalone runner
 # (OpenWrt/TurrisOS): a full Xymon client already builds the "disk"
-# column from its own df report, so the shipped tasks.d snippet is
+# column from its own df report, so the shipped launch snippet is
 # disabled by default - never enable both on one host.
 #
 # Configuration: environment variables and/or $XYMONHOME/etc/disk.cfg

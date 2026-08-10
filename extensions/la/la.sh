@@ -12,7 +12,7 @@
 #
 # Written for clientless hosts driven by the standalone runner
 # (OpenWrt/TurrisOS): a full Xymon client already delivers the same
-# information as its "cpu" column, so the shipped tasks.d snippet is
+# information as its "cpu" column, so the shipped launch snippet is
 # disabled by default.
 #
 # Configuration: environment variables and/or $XYMONHOME/etc/la.cfg

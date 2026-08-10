@@ -10,10 +10,10 @@ and NCV lines for RRD graphing.
   `clear` where neither source exists.
 - **Requires:** nothing — BusyBox userland is enough.
 - **Note:** a full Xymon client already delivers the same information
-  as its `cpu` column, so the shipped `tasks.d` snippet is **disabled
+  as its `cpu` column, so the shipped `clientlaunch.d` snippet is **disabled
   by default**. This extension is meant for clientless hosts (routers,
   appliances) driven by the standalone runner, which runs every
-  installed extension regardless of `tasks.d`.
+  installed extension regardless of `clientlaunch.d`.
 
 ## Thresholds and colors
 

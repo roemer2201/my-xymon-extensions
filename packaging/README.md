@@ -23,13 +23,13 @@ files into an entirely different tree.
 
 ## Install layout per platform
 
-| | ext script | config (`smart.cfg`, `tasks.d/`) | docs |
+| | ext script | config (`smart.cfg`, `clientlaunch.d/`) | docs |
 |---|---|---|---|
 | deb | `/usr/lib/xymon/client/ext/` | `/etc/xymon/` (conffiles; reachable as `$XYMONCLIENTHOME/etc` via Debian's symlink) | `/usr/share/doc/my-xymon-extensions/` |
 | deb-server | — (no client files) | `/etc/xymon/{xymonserver,graphs,rrddefinitions}.d/` (conffiles) | `/usr/share/doc/my-xymon-extensions-server/` |
 | rpm | `/usr/lib64/xymon/client/ext/` | `/usr/lib64/xymon/client/etc/` (`%config(noreplace)`) | `/usr/share/doc/my-xymon-extensions/` |
 | FreeBSD | `/usr/local/www/xymon/client/ext/` | `/usr/local/www/xymon/client/etc/` (`@sample`) | `/usr/local/share/doc/my-xymon-extensions/` |
-| opkg | `/usr/lib/xymon-standalone/ext/` | `/etc/xymon-standalone/` (conffiles; incl. `standalone.cfg`, no `tasks.d/` — no xymonlaunch; `/usr/lib/xymon-standalone/etc` is a symlink to it) | none (flash space) |
+| opkg | `/usr/lib/xymon-standalone/ext/` | `/etc/xymon-standalone/` (conffiles; incl. `standalone.cfg`, no launch snippets — no xymonlaunch; `/usr/lib/xymon-standalone/etc` is a symlink to it) | none (flash space) |
 
 The opkg package targets hosts **without** a Xymon client
 (OpenWrt/TurrisOS): it additionally ships the standalone runner
@@ -51,10 +51,29 @@ owned by the xymon-client package). After installing, once per host:
 
 1. Install the sudoers rule (see `smart/sudoers.example` in the docs
    directory).
-2. Ensure `clientlaunch.cfg` contains a `directory` include for the
-   `tasks.d` directory shown in the table above, e.g. on Debian:
-   `directory /etc/xymon/tasks.d`
-3. Restart the Xymon client.
+2. Ensure `clientlaunch.cfg` reads the `clientlaunch.d` directory
+   shown in the table above, e.g. `directory
+   $XYMONHOME/etc/clientlaunch.d`. On Debian/Ubuntu this is already
+   the case: the init script writes one `include` line per `*.cfg`
+   into `/var/run/xymon/clientlaunch-include.cfg`, which both
+   `clientlaunch.cfg` and the server's `tasks.cfg` read.
+3. Restart the Xymon client (a restart, not a reload — on
+   Debian/Ubuntu that include list is regenerated at start).
+
+Never put these snippets into `tasks.d`: that is the drop-in directory
+of the **server's** xymonlaunch. Up to 0.14.0 this repository did, and
+on a host that is both server and client the extensions could end up
+running twice. The deb migrates the files with
+`dpkg-maintscript-helper mv_conffile` (called from `preinst`,
+`postinst` and `postrm`, as that helper requires), so a snippet you
+edited — an enabled `fritzdsl`, say — arrives at the new path with your
+changes intact; dpkg then asks about it with its usual conffile prompt,
+because your version differs from the shipped one. The post-install
+also points out a leftover `directory /etc/xymon/tasks.d` line in
+`clientlaunch.cfg`, which older versions of this package asked you to
+add and which must go. rpm and FreeBSD have no such migration: an
+edited old snippet is left behind as `.rpmsave` resp. as an untouched
+file in `tasks.d` and can simply be deleted.
 
 The post-install output of the deb/rpm packages repeats these steps
 with the platform's concrete paths.
@@ -84,7 +103,8 @@ server both of our packages are a realistic combination. dpkg refuses
 to install two packages that ship the same path, so the two file lists
 must stay disjoint:
 
-- client: `/etc/xymon/<name>.cfg` and `/etc/xymon/tasks.d/<name>.cfg`
+- client: `/etc/xymon/<name>.cfg` and
+  `/etc/xymon/clientlaunch.d/<name>.cfg`
 - server: only the three drop-in directories above
 
 `tests/run.sh` stages both with the Debian paths and fails if a single
@@ -131,5 +151,6 @@ these files and that `freebsd/pkg-plist` lists exactly the staged set.
   platform-specific paths.
 - `common/stage-server.sh` — the same for the **server** package
   (currently only `deb-server`).
-- `common/tasks.d/*.cfg` — xymonlaunch task snippets shipped by all
-  three packages (one per extension).
+- `common/clientlaunch.d/*.cfg` — xymonlaunch task snippets shipped by
+  all client packages (one per extension), installed into the client's
+  `clientlaunch.d` drop-in directory.
