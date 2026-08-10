@@ -150,6 +150,40 @@ EOF
   metric, thresholds on the wall clock time to catch a hanging test;
   the tasks.d snippets and the standalone runner call the extensions
   through the wrapper, which can be switched off in xymonext.cfg
+
+* Mon Aug 10 2026 roemer2201 <r.oliver@web.de> - 0.11.2-1
+- smart: make the two DWPD graphs readable. A lifetime DWPD of 0.0034 is
+  a normal value, and with rrdtool's defaults the y-axis of the smartdwpd
+  and smartdwpdrecent graphs came out labelled "3.0 m" to "4.0 m" (milli)
+  and autoscaled to the data range, so a drift of three ten-thousandths
+  filled the whole graph and looked alarming. The two blocks in
+  server/graphs.d/smart.cfg now set -X 0 (fix the SI exponent, plain
+  decimals instead of an "m" prefix), -L 6 (room for labels like 0.004),
+  -l 0 (anchor at zero, so the height shows the true magnitude) and -Y
+  (alternative y-grid for the resulting narrow range). Graph definitions
+  only - no change to the extension or its metrics
+
+* Mon Aug 10 2026 roemer2201 <r.oliver@web.de> - 0.11.1-1
+- if_link: stop long-range graphs from diluting single link changes
+  into fractions. The extension only ever sends whole numbers, but
+  Xymon creates RRD files with AVERAGE archives only, so a graph longer
+  than 48 hours divides a flap by the consolidation factor of the view:
+  a measured 2-change flap was drawn as 0.39 over 5 days, 0.20 over 12
+  days and 0.07 over 40 days. New server-side archive definition
+  (server/rrddefinitions.d/if_link.cfg) adds MAX archives next to
+  Xymon's default AVERAGE ones, and the graph now draws its line from
+  MAX - same visible height in every time range - plus an exact
+  "(total)" event count for the shown window, integrated from the
+  AVERAGE archive. Note that the per-slot values stay fractional and
+  cannot be made whole: RRDtool aligns its 5-minute grid to the epoch,
+  so a poll at a fixed offset inside the grid has every value split
+  across two slots (2 changes -> 1.33 + 0.67 at an offset of 100 s).
+  The dataset type therefore stays GAUGE - ABSOLUTE would store a rate
+  per second and make the raw values less readable without fixing this.
+  Existing installations have to drop their if_link RRD files once,
+  since rrddefinitions.cfg is only consulted when a file is created;
+  the client script is unchanged
+
 * Sun Aug 09 2026 roemer2201 <r.oliver@web.de> - 0.11.0-1
 - if_link: new extension - network interface link state changes from
   the kernel's carrier_changes counter (fallback: carrier_up_count +

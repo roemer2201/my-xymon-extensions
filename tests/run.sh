@@ -34,6 +34,41 @@ expect_not() {
     fi
 }
 
+expect_rate() {
+    # expect_rate <output> <metric-name> <expected> <label>
+    # Asserts that an NCV line "<metric-name> : <value>" exists and that
+    # <value> is within 3 % of <expected>.
+    #
+    # Use this instead of expect() for every metric an extension derives
+    # by dividing through the elapsed time. Those divide by the gap
+    # between the timestamp a test writes into the state file and the
+    # script's own date(1) call - two separate date(1) calls in two
+    # processes, so under load they land one or more seconds apart. With
+    # a 300 s fixture one single second already moves 800.0 kbit/s to
+    # 797.3 and 10.0 % airtime to 9.9, which made exact assertions flake
+    # on loaded CI runners. 3 % absorbs a skew of up to ~9 s and still
+    # catches a wrong scale factor or a miscomputed delta, which are off
+    # by much more. Counter differences that are not divided by time
+    # (if_link) stay on plain expect().
+    er_line=$(printf '%s\n' "$1" | grep -E "^$2 : " | head -1)
+    if [ -z "$er_line" ]; then
+        echo "FAIL: $4 (no \"$2\" line at all)"
+        FAIL=1
+        return
+    fi
+    er_val=${er_line#* : }
+    if awk -v v="$er_val" -v e="$3" 'BEGIN {
+            if (e == 0 || v !~ /^[0-9]+(\.[0-9]+)?$/) exit 1
+            d = (v > e) ? v - e : e - v
+            exit !(d / e <= 0.03)
+        }'; then
+        echo "ok:   $4"
+    else
+        echo "FAIL: $4 ($2 is $er_val, expected about $3)"
+        FAIL=1
+    fi
+}
+
 ncv_view() {
     # ncv_view <status-message> -> the part of the message that the
     # Xymon server's NCV parser (xymond_rrd) actually looks at: the
@@ -1188,23 +1223,23 @@ T0=$(($(date +%s) - 300))
 } > "$TMP/wifi.testhost.state"
 # shellcheck disable=SC2086
 out=$($TESTSH "$REPO/extensions/wifi/wifi.sh")
-expect "$out" '^rxkbps_phy0_ap0 : 800\.0$' \
+expect_rate "$out" rxkbps_phy0_ap0 800.0 \
     "rx throughput from the sysfs byte counter delta"
-expect "$out" '^txkbps_phy0_ap0 : 80\.0$' \
+expect_rate "$out" txkbps_phy0_ap0 80.0 \
     "tx throughput from the sysfs byte counter delta"
-expect "$out" '^airrx_phy0_ap0 : 10\.0$' \
+expect_rate "$out" airrx_phy0_ap0 10.0 \
     "rx airtime percent from the summed hostapd airtime delta"
-expect "$out" '^airtx_phy0_ap0 : 5\.0$' \
+expect_rate "$out" airtx_phy0_ap0 5.0 \
     "tx airtime percent from the summed hostapd airtime delta"
-expect "$out" '^retries_phy0_ap0 : 0\.01$' \
+expect_rate "$out" retries_phy0_ap0 0.01 \
     "tx retry rate from the station dump delta"
-expect "$out" '^failed_phy0_ap0 : 0\.10$' \
+expect_rate "$out" failed_phy0_ap0 0.10 \
     "tx failure rate from the station dump delta"
 expect "$out" '^busy_phy0 : 20\.0$' \
     "channel busy percent from the survey delta"
 expect "$out" '^rxpct_phy0 : 1\.0$'  "channel receive percent"
 expect "$out" '^txpct_phy0 : 10\.0$' "channel transmit percent"
-expect "$out" 'rx=800\.0 tx=80\.0 kbit/s' \
+expect "$out" 'rx=[0-9]+\.[0-9] tx=[0-9]+\.[0-9] kbit/s' \
     "status shows the throughput (key=value style)"
 
 # Counter reset (reboot): every previous counter is larger than the
@@ -1305,7 +1340,7 @@ expect "$out" 'clients=5 \[iwinfo\]' \
     "status names iwinfo as the client source"
 expect_not "$out" '^air(rx|tx)_' \
     "no airtime metrics without hostapd"
-expect "$out" '^rxkbps_phy0_ap0 : 800\.0$' \
+expect_rate "$out" rxkbps_phy0_ap0 800.0 \
     "sysfs throughput unaffected by the missing ubus"
 
 # Interface whitelist

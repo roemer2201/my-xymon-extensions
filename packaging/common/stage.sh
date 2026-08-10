@@ -74,6 +74,7 @@ if [ "$DOCDIR" != "-" ]; then
         "$DESTDIR$DOCDIR/fritzwan/server/graphs.d" \
         "$DESTDIR$DOCDIR/wifi/server/graphs.d" \
         "$DESTDIR$DOCDIR/if_link/server/graphs.d" \
+        "$DESTDIR$DOCDIR/if_link/server/rrddefinitions.d" \
         "$DESTDIR$DOCDIR/xymonext/server/graphs.d" || exit 1
     inst 0644 README.md "$DESTDIR$DOCDIR/README.md" || exit 1
     for ext in temp la memory disk opkg; do
@@ -96,6 +97,7 @@ if [ "$DOCDIR" != "-" ]; then
     inst 0644 extensions/if_link/README.md "$DESTDIR$DOCDIR/if_link/README.md" || exit 1
     inst 0644 extensions/if_link/server/README.md "$DESTDIR$DOCDIR/if_link/server/README.md" || exit 1
     inst 0644 extensions/if_link/server/graphs.d/if_link.cfg "$DESTDIR$DOCDIR/if_link/server/graphs.d/if_link.cfg" || exit 1
+    inst 0644 extensions/if_link/server/rrddefinitions.d/if_link.cfg "$DESTDIR$DOCDIR/if_link/server/rrddefinitions.d/if_link.cfg" || exit 1
     inst 0644 extensions/xymonext/README.md "$DESTDIR$DOCDIR/xymonext/README.md" || exit 1
     inst 0644 extensions/xymonext/server/README.md "$DESTDIR$DOCDIR/xymonext/server/README.md" || exit 1
     inst 0644 extensions/xymonext/server/graphs.d/xymonext.cfg "$DESTDIR$DOCDIR/xymonext/server/graphs.d/xymonext.cfg" || exit 1

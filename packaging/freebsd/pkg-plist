@@ -53,6 +53,7 @@ share/doc/my-xymon-extensions/wifi/server/graphs.d/wifi.cfg
 share/doc/my-xymon-extensions/if_link/README.md
 share/doc/my-xymon-extensions/if_link/server/README.md
 share/doc/my-xymon-extensions/if_link/server/graphs.d/if_link.cfg
+share/doc/my-xymon-extensions/if_link/server/rrddefinitions.d/if_link.cfg
 share/doc/my-xymon-extensions/xymonext/README.md
 share/doc/my-xymon-extensions/xymonext/server/README.md
 share/doc/my-xymon-extensions/xymonext/server/graphs.d/xymonext.cfg
