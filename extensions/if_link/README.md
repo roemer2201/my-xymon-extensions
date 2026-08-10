@@ -46,6 +46,13 @@ Because the metric is "changes since the previous poll", it is only
 comparable across time when the poll interval is constant — keep the
 `INTERVAL` (or the cron schedule of the standalone runner) stable.
 
+The extension always sends whole numbers, but the values **stored** in
+the RRD are fractional: RRDtool splits every value across two slots of
+its epoch-aligned 5-minute grid, and Xymon's default archives dilute a
+flap further over longer time ranges. The server setup deals with the
+second part — see
+[Fractional values in the graph](#fractional-values-in-the-graph).
+
 The cumulative counter, the current link state, speed/duplex and the
 bridge an interface belongs to are shown in the status text only. That
 whole block is fenced with `<!-- ncv_skipstart -->` /
@@ -107,6 +114,34 @@ Remember the factor two: one short outage is two changes, so `2` means
   count correctly; a port stuck at `total=0` while the cable is
   clearly flapping is a driver limitation, not an extension bug.
 
+## Fractional values in the graph
+
+A graph showing `0.4` link changes is not a bug in this extension — the
+`data` message only ever contains integers. RRDtool produces the
+fractions, in two independent ways:
+
+- **Step normalization**: RRDtool aligns its 5-minute grid to the epoch,
+  not to the poll times, so a poll sitting at a fixed offset inside that
+  grid has every value split across two slots — a flap of 2 becomes
+  1.33 + 0.67 at an offset of 100 s. Regular polling does not help; this
+  is a constant phase offset, not jitter, and no dataset type avoids it.
+- **Archive consolidation**: Xymon's default archives consolidate with
+  AVERAGE, so a graph longer than 48 hours divides the flap by the
+  consolidation factor of the view — the stored 1.33 is drawn as 0.39
+  over 5 days and 0.07 over 40 days.
+
+The first one is inherent to RRDtool and cannot be turned off. The
+second is what the server setup shipped here fixes:
+`server/rrddefinitions.d/if_link.cfg` adds MAX archives alongside the
+default AVERAGE ones and the graph draws from MAX, so a flap keeps the
+same visible height in every time range. For an exact number the graph
+prints `(total)`, the per-poll counts integrated back into an event
+count over the shown window.
+
+Both are explained in detail, with measured figures, in
+[`server/README.md`](server/README.md) — including the one-time removal
+of existing RRD files that the new archives require.
+
 ## Why Linux only
 
 No other platform this repository supports keeps a kernel-side link
@@ -125,9 +160,13 @@ wins. Defaults work out of the box.
 
 ## Graphing (Xymon server setup)
 
-See [`server/README.md`](server/README.md) — split-NCV setup plus the
-graph definition in
-[`server/graphs.d/if_link.cfg`](server/graphs.d/if_link.cfg).
+See [`server/README.md`](server/README.md) — split-NCV setup, the RRD
+archive definition in
+[`server/rrddefinitions.d/if_link.cfg`](server/rrddefinitions.d/if_link.cfg)
+and the graph definition in
+[`server/graphs.d/if_link.cfg`](server/graphs.d/if_link.cfg). The two
+belong together: the graph draws from the MAX archives that the archive
+definition adds.
 
 ## Packaging notes
 
