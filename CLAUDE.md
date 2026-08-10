@@ -92,6 +92,24 @@ target platform.
     read from `$XYMONHOME/etc/<name>.cfg` with sane built-in defaults so
     the extension works without a config file
   - `README.md` — purpose, column name, thresholds, platform notes
+  - `server/` — everything the **Xymon server** needs, if the extension
+    produces RRD graphs. Never tell users to edit a stock config file:
+    ship ready-made drop-in files, one per Xymon config file, all named
+    `<name>.cfg`:
+    - `server/xymonserver.d/<name>.cfg` — `TEST2RRD`, `NCV_*`/
+      `SPLITNCV_*`, `GRAPHS`/`GRAPHS_<column>` (append with `NAME+=`,
+      leading comma, and note that this requires the file to be read
+      after the stock settings)
+    - `server/graphs.d/<name>.cfg` — the `[graphname]` definitions
+    - `server/rrddefinitions.d/<name>.cfg` — RRA archives, rarely needed
+    - `server/README.md` — how to install them, verify, and alert
+
+    This works because Xymon reads *every* config file through the same
+    reader (`stackfgets()`, `lib/stackio.c`), which understands
+    `include`, `directory` and the `optional` prefix — the manual
+    documents it only for `hosts.cfg`/`alerts.cfg`. Confirmed in the
+    sources for `graphs.cfg` (`load_gdefs()`), `rrddefinitions.cfg`
+    (`load_rrddefs()`) and `xymonserver.cfg` (`loadenv()`).
 - Add a `tasks.d` snippet for the extension under
   `packaging/common/tasks.d/<name>.cfg` so all three packages ship it.
 - The installed file list lives in exactly one place,

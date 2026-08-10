@@ -2033,6 +2033,66 @@ else
     echo "ok:   unknown extension in TESTS reports an error"
 fi
 
+# ----------------------------------------------------------------------
+echo "--- packaging ---"
+
+# The server-side drop-in files (server/xymonserver.d, server/graphs.d,
+# server/rrddefinitions.d) are shipped as documentation. Two things can
+# drift apart silently, so pin both: stage.sh must install every one of
+# them, and the FreeBSD pkg-plist must list exactly what stage.sh
+# installs - pkg(8) fails the build on a plist/stage mismatch, but only
+# on FreeBSD, i.e. long after the change was made.
+
+PKGSTAGE="$TMP/pkgstage"
+DOCROOT=/usr/share/doc/my-xymon-extensions
+
+if (cd "$REPO" && sh packaging/common/stage.sh "$PKGSTAGE" \
+        /ext /etc /etc/tasks.d "$DOCROOT" >/dev/null); then
+    echo "ok:   stage.sh runs"
+else
+    echo "FAIL: stage.sh failed"
+    FAIL=1
+fi
+
+# Every extension with a server/ directory ships a README and the
+# xymonserver.d snippet, and every one of its files is staged.
+for srvdir in "$REPO"/extensions/*/server; do
+    [ -d "$srvdir" ] || continue
+    ext=$(basename "$(dirname "$srvdir")")
+    for want in "README.md" "xymonserver.d/$ext.cfg"; do
+        if [ -f "$srvdir/$want" ]; then
+            echo "ok:   $ext ships server/$want"
+        else
+            echo "FAIL: $ext has no server/$want"
+            FAIL=1
+        fi
+    done
+done
+
+(cd "$REPO" && find extensions -type f) | grep '/server/' \
+    | sed 's|^extensions/||' | sort > "$TMP/server-files"
+while read -r rel; do
+    if [ -f "$PKGSTAGE$DOCROOT/$rel" ]; then
+        echo "ok:   stage.sh installs $rel"
+    else
+        echo "FAIL: stage.sh does not install extensions/$rel"
+        FAIL=1
+    fi
+done < "$TMP/server-files"
+
+# stage.sh <-> pkg-plist, both directions.
+(cd "$PKGSTAGE$DOCROOT" && find . -type f) | sed 's|^\./||' | sort > "$TMP/staged-docs"
+grep "^share/doc/my-xymon-extensions/" "$REPO/packaging/freebsd/pkg-plist" \
+    | sed 's|^share/doc/my-xymon-extensions/||' | sort > "$TMP/plist-docs"
+if cmp -s "$TMP/staged-docs" "$TMP/plist-docs"; then
+    echo "ok:   pkg-plist lists exactly the staged documentation files"
+else
+    echo "FAIL: pkg-plist and stage.sh disagree about the documentation files"
+    echo "      only staged:    $(grep -Fxv -f "$TMP/plist-docs" "$TMP/staged-docs" | tr '\n' ' ')"
+    echo "      only in plist:  $(grep -Fxv -f "$TMP/staged-docs" "$TMP/plist-docs" | tr '\n' ' ')"
+    FAIL=1
+fi
+
 echo ""
 if [ "$FAIL" -eq 0 ]; then
     echo "All tests passed."

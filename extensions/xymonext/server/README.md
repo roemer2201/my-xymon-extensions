@@ -10,23 +10,27 @@ Note that each message updates only the RRDs of that one test — every
 extension has its own `INTERVAL`, and each curve is written at the
 rhythm of its own test.
 
-## 1. xymonserver.cfg
+Both steps are **drop-in files**: nothing in a stock Xymon config file
+has to be edited. See
+[Server-side setup: drop-in directories](../../../README.md#server-side-setup-drop-in-directories)
+in the top-level README for how those directories are wired up on your
+platform (Debian/Ubuntu ship them ready to use).
+
+## 1. xymonserver.d/xymonext.cfg
+
+Copy the snippet shipped next to this README into the server's
+drop-in directory:
+
+```sh
+cp xymonserver.d/xymonext.cfg /etc/xymon/xymonserver.d/
+```
 
 All metrics are plain gauges (each value describes a single run, not a
-counter). Append:
+counter):
 
 ```
 TEST2RRD+=",xymonext=ncv"
 SPLITNCV_xymonext="*:GAUGE"
-```
-
-Note the leading comma: `+=` concatenates verbatim and does not
-insert a separator.
-
-To make the graphs appear on the trends column and on the `xymonext`
-status page, also extend:
-
-```
 GRAPHS+=",xymonextwall,xymonextcpu,xymonextbytes"
 GRAPHS_xymonext="xymonextwall,xymonextcpu,xymonextbytes"
 ```
@@ -35,23 +39,19 @@ Split-NCV keeps underscores and does not truncate dataset names, so
 `wall_if_link` and friends arrive intact — that is why this extension
 uses split-NCV and not plain NCV.
 
-## 2. graphs.cfg
+## 2. graphs.d/xymonext.cfg
 
-Include the graph definitions shipped in this directory
-(`graphs.d/xymonext.cfg`):
+Copy the graph definitions shipped next to this README:
 
+```sh
+cp graphs.d/xymonext.cfg /etc/xymon/graphs.d/
 ```
-include /etc/xymon/graphs.d/xymonext.cfg
-```
-
-or append the contents of `graphs.d/xymonext.cfg` to your
-`graphs.cfg`.
 
 ## 3. Restart / verify
 
-Restart the Xymon server (or `xymon @ "rotate"` plus a xymond_rrd
-restart). After the first run of each measured extension, check that
-RRD files appear:
+Restart the Xymon server (a restart, not a reload — on Debian/Ubuntu
+the list of included drop-in files is regenerated at start). After the
+first run of each measured extension, check that RRD files appear:
 
 ```
 ls $XYMONVAR/rrd/<host>/xymonext,*

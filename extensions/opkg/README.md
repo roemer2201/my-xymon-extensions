@@ -78,31 +78,12 @@ updates : 3
 critical : 1
 ```
 
-In `xymonserver.cfg`:
-
-```
-TEST2RRD+=",opkg=ncv"
-NCV_opkg="updates:GAUGE,critical:GAUGE"
-GRAPHS+=",opkgupd"
-GRAPHS_opkg="opkgupd"
-```
-
-and add a graph definition to `graphs.cfg`:
-
-```
-[opkgupd]
-    TITLE Pending package updates
-    YAXIS Packages
-    DEF:updates=opkg.rrd:updates:AVERAGE
-    DEF:critical=opkg.rrd:critical:AVERAGE
-    LINE2:updates#0000FF:updates available
-    LINE2:critical#FF0000:security-relevant
-    GPRINT:updates:LAST: %5.0lf (cur)
-    GPRINT:updates:MAX: %5.0lf (max)\n
-```
-
-Restart the Xymon server side (`xymond_rrd`) and check that `opkg.rrd`
-appears under `$XYMONVAR/rrd/<host>/` after the next report.
+Plain NCV on the server turns them into one `opkg.rrd` per host with
+two datasets. The needed configuration is shipped as ready-made
+drop-in files in [`server/`](server/) — copy
+`server/xymonserver.d/opkg.cfg` into the server's `xymonserver.d/` and
+`server/graphs.d/opkg.cfg` into its `graphs.d/`, then restart Xymon.
+See [server/README.md](server/README.md).
 
 ## OpenWrt / TurrisOS
 

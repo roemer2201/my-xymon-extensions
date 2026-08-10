@@ -28,6 +28,11 @@ Every task runs through /usr/lib/xymon/client/ext/xymonext.sh, which
  measures the extension and adds an "xymonext" column with runtime,
  CPU time and traffic per test. Set XYMONEXT_ENABLE="no" in
  /etc/xymon/xymonext.cfg to run the extensions directly again.
+RRD graphs need a one-time setup on the Xymon SERVER (not here):
+ ready-made drop-in files for its xymonserver.d, graphs.d and
+ rrddefinitions.d directories ship in
+ /usr/share/doc/my-xymon-extensions/<extension>/server/ - copy them
+ over and restart Xymon there; see the README.md next to them.
 EOF
         ;;
 esac

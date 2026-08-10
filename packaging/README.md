@@ -52,6 +52,27 @@ owned by the xymon-client package). After installing, once per host:
 The post-install output of the deb/rpm packages repeats these steps
 with the platform's concrete paths.
 
+## Server-side drop-in files
+
+The packages are **client** packages, but every extension that produces
+RRD graphs also needs a few lines on the Xymon **server**. Those ship
+as documentation, ready to copy:
+
+```
+<docdir>/<extension>/server/README.md
+<docdir>/<extension>/server/xymonserver.d/<extension>.cfg
+<docdir>/<extension>/server/graphs.d/<extension>.cfg
+<docdir>/<extension>/server/rrddefinitions.d/<extension>.cfg   (if_link only)
+```
+
+Each file goes into the Xymon server's directory of the same name (see
+the top-level README, section "Server-side setup: drop-in directories")
+— no stock Xymon config file has to be edited. The opkg package ships
+no docs at all; take the files from the repository there.
+
+`tests/run.sh` checks that `common/stage.sh` installs every one of
+these files and that `freebsd/pkg-plist` lists exactly the staged set.
+
 ## Common files
 
 - `common/stage.sh` — single source of truth for what gets installed

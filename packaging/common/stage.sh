@@ -69,38 +69,33 @@ inst 0755 extensions/xymonext/xymonext-send.sh "$DESTDIR$EXTDIR/xymonext-send.sh
 inst 0644 extensions/xymonext/xymonext.cfg "$DESTDIR$ETCDIR/xymonext.cfg$SUF" || exit 1
 
 if [ "$DOCDIR" != "-" ]; then
-    mkdir -p "$DESTDIR$DOCDIR/smart/server/graphs.d" \
-        "$DESTDIR$DOCDIR/fritzdsl/server/graphs.d" \
-        "$DESTDIR$DOCDIR/fritzwan/server/graphs.d" \
-        "$DESTDIR$DOCDIR/wifi/server/graphs.d" \
-        "$DESTDIR$DOCDIR/if_link/server/graphs.d" \
-        "$DESTDIR$DOCDIR/if_link/server/rrddefinitions.d" \
-        "$DESTDIR$DOCDIR/xymonext/server/graphs.d" || exit 1
+    mkdir -p "$DESTDIR$DOCDIR" || exit 1
     inst 0644 README.md "$DESTDIR$DOCDIR/README.md" || exit 1
-    for ext in temp la memory disk opkg; do
+
+    # Client-side documentation: one README per extension.
+    for ext in smart temp la memory disk opkg fritzdsl fritzwan wifi \
+        if_link xymonext; do
         mkdir -p "$DESTDIR$DOCDIR/$ext" || exit 1
         inst 0644 "extensions/$ext/README.md" "$DESTDIR$DOCDIR/$ext/README.md" || exit 1
     done
-    inst 0644 extensions/smart/README.md "$DESTDIR$DOCDIR/smart/README.md" || exit 1
     inst 0644 extensions/smart/sudoers.example "$DESTDIR$DOCDIR/smart/sudoers.example" || exit 1
-    inst 0644 extensions/smart/server/README.md "$DESTDIR$DOCDIR/smart/server/README.md" || exit 1
-    inst 0644 extensions/smart/server/graphs.d/smart.cfg "$DESTDIR$DOCDIR/smart/server/graphs.d/smart.cfg" || exit 1
-    inst 0644 extensions/fritzdsl/README.md "$DESTDIR$DOCDIR/fritzdsl/README.md" || exit 1
-    inst 0644 extensions/fritzdsl/server/README.md "$DESTDIR$DOCDIR/fritzdsl/server/README.md" || exit 1
-    inst 0644 extensions/fritzdsl/server/graphs.d/fritzdsl.cfg "$DESTDIR$DOCDIR/fritzdsl/server/graphs.d/fritzdsl.cfg" || exit 1
-    inst 0644 extensions/fritzwan/README.md "$DESTDIR$DOCDIR/fritzwan/README.md" || exit 1
-    inst 0644 extensions/fritzwan/server/README.md "$DESTDIR$DOCDIR/fritzwan/server/README.md" || exit 1
-    inst 0644 extensions/fritzwan/server/graphs.d/fritzwan.cfg "$DESTDIR$DOCDIR/fritzwan/server/graphs.d/fritzwan.cfg" || exit 1
-    inst 0644 extensions/wifi/README.md "$DESTDIR$DOCDIR/wifi/README.md" || exit 1
-    inst 0644 extensions/wifi/server/README.md "$DESTDIR$DOCDIR/wifi/server/README.md" || exit 1
-    inst 0644 extensions/wifi/server/graphs.d/wifi.cfg "$DESTDIR$DOCDIR/wifi/server/graphs.d/wifi.cfg" || exit 1
-    inst 0644 extensions/if_link/README.md "$DESTDIR$DOCDIR/if_link/README.md" || exit 1
-    inst 0644 extensions/if_link/server/README.md "$DESTDIR$DOCDIR/if_link/server/README.md" || exit 1
-    inst 0644 extensions/if_link/server/graphs.d/if_link.cfg "$DESTDIR$DOCDIR/if_link/server/graphs.d/if_link.cfg" || exit 1
-    inst 0644 extensions/if_link/server/rrddefinitions.d/if_link.cfg "$DESTDIR$DOCDIR/if_link/server/rrddefinitions.d/if_link.cfg" || exit 1
-    inst 0644 extensions/xymonext/README.md "$DESTDIR$DOCDIR/xymonext/README.md" || exit 1
-    inst 0644 extensions/xymonext/server/README.md "$DESTDIR$DOCDIR/xymonext/server/README.md" || exit 1
-    inst 0644 extensions/xymonext/server/graphs.d/xymonext.cfg "$DESTDIR$DOCDIR/xymonext/server/graphs.d/xymonext.cfg" || exit 1
+
+    # Server-side documentation: the README plus the ready-made drop-in
+    # files for the Xymon server's xymonserver.d, graphs.d and (rarely)
+    # rrddefinitions.d directories. Every extension with RRD graphs has
+    # them; "disk" uses the server's built-in handler and has none.
+    for ext in smart temp la memory opkg fritzdsl fritzwan wifi \
+        if_link xymonext; do
+        mkdir -p "$DESTDIR$DOCDIR/$ext/server" || exit 1
+        inst 0644 "extensions/$ext/server/README.md" \
+            "$DESTDIR$DOCDIR/$ext/server/README.md" || exit 1
+        for dropin in xymonserver.d graphs.d rrddefinitions.d; do
+            [ -f "extensions/$ext/server/$dropin/$ext.cfg" ] || continue
+            mkdir -p "$DESTDIR$DOCDIR/$ext/server/$dropin" || exit 1
+            inst 0644 "extensions/$ext/server/$dropin/$ext.cfg" \
+                "$DESTDIR$DOCDIR/$ext/server/$dropin/$ext.cfg" || exit 1
+        done
+    done
 fi
 
 exit 0

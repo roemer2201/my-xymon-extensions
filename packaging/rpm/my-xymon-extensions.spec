@@ -136,9 +136,32 @@ Every task now runs through %{xymonhome}/ext/xymonext.sh, which
  measures the extension and adds an "xymonext" column with runtime,
  CPU time and traffic per test. Set XYMONEXT_ENABLE="no" in
  %{xymonhome}/etc/xymonext.cfg to run the extensions directly again.
+RRD graphs need a one-time setup on the Xymon SERVER (not here):
+ ready-made drop-in files for its xymonserver.d, graphs.d and
+ rrddefinitions.d directories ship in
+ %{_docdir}/%{name}/<extension>/server/ - copy them over and restart
+ Xymon there; see the README.md next to them.
 EOF
 
 %changelog
+* Mon Aug 10 2026 roemer2201 <r.oliver@web.de> - 0.13.0-1
+- server side: ship every extension's Xymon server configuration as
+  drop-in files instead of instructions to edit stock config files.
+  Xymon reads all of its config files through one reader
+  (lib/stackio.c), so "include", "directory" and "optional" work in
+  every one of them - verified in the sources for graphs.cfg
+  (load_gdefs, web/showgraph.c), rrddefinitions.cfg (load_rrddefs,
+  xymond/xymond_rrd.c) and xymonserver.cfg (loadenv, lib/environ.c),
+  none of which is documented in the manual. The TEST2RRD/NCV/GRAPHS
+  settings of every extension now live in
+  server/xymonserver.d/<name>.cfg, matching the existing
+  server/graphs.d and server/rrddefinitions.d layout; temp, la, memory
+  and opkg gained a server/ directory (their settings were prose in
+  the client README before). Documentation only on the client side -
+  no extension script changed. New consistency test: stage.sh installs
+  every server-side file and the FreeBSD pkg-plist lists exactly the
+  staged set
+
 * Mon Aug 10 2026 roemer2201 <r.oliver@web.de> - 0.12.0-1
 - xymonext: new extension - measures what the client extensions cost
   the host. A wrapper runs each extension unchanged and records its

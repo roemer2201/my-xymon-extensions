@@ -16,7 +16,12 @@ my-xymon-extensions/
 │   └── <name>/
 │       ├── <name>.sh    # The extension script (POSIX sh)
 │       ├── <name>.cfg   # Default configuration (optional)
-│       └── README.md    # What it monitors, columns, thresholds
+│       ├── README.md    # What it monitors, columns, thresholds
+│       └── server/      # Xymon SERVER side (only where RRD graphs exist)
+│           ├── README.md
+│           ├── xymonserver.d/<name>.cfg      # TEST2RRD/NCV/GRAPHS
+│           ├── graphs.d/<name>.cfg           # graph definitions
+│           └── rrddefinitions.d/<name>.cfg   # RRA archives (rarely)
 ├── standalone/          # Run extensions WITHOUT a Xymon client
 │   ├── xymon-run.sh     # xymonlaunch replacement (env + scheduler glue)
 │   └── xymon-send.sh    # xymon(1) replacement (protocol sender)
@@ -44,6 +49,70 @@ my-xymon-extensions/
 | [if_link](extensions/if_link/) | `if_link` | Link state changes per network interface, counted from the kernel's `carrier_changes` counter — so even a flap that starts and ends between two polls is seen (a short down+up is two changes); physical ports and DSA switch ports are auto-detected, thresholds are opt-in, RRD graphs per port; Linux only |
 | [wifi](extensions/wifi/) | `wifi` | Wi-Fi access point metadata via iw/nl80211 plus ubus/hostapd and iwinfo on OpenWrt: client counts per SSID interface, channel utilization and noise per radio, throughput, client airtime and TX retry rates — informational only (green/clear), RRD graphs; for OpenWrt/TurrisOS APs via the standalone runner |
 | [xymonext](extensions/xymonext/) | `xymonext` | What the extensions above cost this host: wall clock time, CPU time of the whole process tree and bytes sent to the server, measured on every run and graphed per test — thresholds on the runtime catch a hanging test; wraps the other extensions instead of being scheduled itself |
+
+## Server-side setup: drop-in directories
+
+Extensions that produce RRD graphs need a few lines of configuration on
+the **Xymon server**. This repository never asks you to edit a stock
+config file for that: every extension that needs server-side settings
+ships them as ready-made drop-in files under
+`extensions/<name>/server/`, one per Xymon config file.
+
+| Drop-in file | goes into | contains |
+|---|---|---|
+| `server/xymonserver.d/<name>.cfg` | `xymonserver.d/` | `TEST2RRD`, `NCV_*`/`SPLITNCV_*`, `GRAPHS*` |
+| `server/graphs.d/<name>.cfg` | `graphs.d/` | the `[graphname]` graph definitions |
+| `server/rrddefinitions.d/<name>.cfg` | `rrddefinitions.d/` | RRA archive layout (only `if_link` so far) |
+
+### Why this works
+
+Xymon reads **all** of its configuration files through one and the same
+reader (`stackfgets()` in `lib/stackio.c`), which understands three
+directives in every file it reads:
+
+```
+include /path/to/file
+directory /path/to/dir        # every file in it, in alphabetical order
+optional include|directory …  # no warning if it does not exist
+```
+
+The manual documents this only for `hosts.cfg` and `alerts.cfg`, but it
+is a property of the reader, not of those files. Verified in the Xymon
+sources for the three files used here:
+
+| Config file | loaded by | uses the shared reader |
+|---|---|---|
+| `graphs.cfg` | `load_gdefs()`, `web/showgraph.c` | yes (`stackfopen`/`stackfgets`) |
+| `rrddefinitions.cfg` | `load_rrddefs()`, `xymond/xymond_rrd.c` | yes |
+| `xymonserver.cfg` | `loadenv()`, `lib/environ.c` | yes |
+
+### Wiring it up on your server
+
+- **Debian/Ubuntu** already ship `/etc/xymon/graphs.d/` and
+  `/etc/xymon/xymonserver.d/` and wire them up: the init script writes
+  one `include` line per `*.cfg` file into
+  `/var/run/xymon/xymonserver-include.cfg`, which `xymonserver.cfg`
+  includes at its end. Drop the file in and **restart** Xymon (that
+  list is regenerated at start, so a reload is not enough).
+  `rrddefinitions.d/` does not exist there — create it and add
+  `optional directory /etc/xymon/rrddefinitions.d` at the end of
+  `rrddefinitions.cfg` once.
+- **Current upstream Xymon** ships every config file with a trailing
+  `optional directory $XYMONHOME/etc/<name>.d`, so `graphs.d` and
+  `rrddefinitions.d` work out of the box. Its drop-in directory for the
+  server config is named `xymonserver.cfg.d`, not `xymonserver.d` —
+  either put the file there or add
+  `optional directory $XYMONHOME/etc/xymonserver.d` to
+  `xymonserver.cfg`.
+- **Anything else** (source installs, EL/FreeBSD packages): create the
+  directory and add one line at the **end** of the matching config file,
+  e.g. `optional directory $XYMONHOME/etc/xymonserver.d`. A single
+  `include $XYMONHOME/etc/xymonserver.d/<name>.cfg` per file works too.
+
+The **end** matters for `xymonserver.cfg`: the snippets extend the
+stock settings with `NAME+="…"`, which appends verbatim (hence the
+leading comma in every value) and requires the variable to be defined
+already.
 
 ## Design principles
 

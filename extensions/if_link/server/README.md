@@ -5,71 +5,90 @@ interface (`changes_lan4 : 2`, …). The Xymon server turns those into
 RRD files and graphs via **split-NCV**. This is a one-time setup on
 the Xymon server host.
 
+All three config steps are **drop-in files**: nothing in a stock Xymon
+config file has to be edited. See
+[Server-side setup: drop-in directories](../../../README.md#server-side-setup-drop-in-directories)
+in the top-level README for how those directories are wired up on your
+platform — note that `rrddefinitions.d/` (step 2) is the one directory
+Debian/Ubuntu do **not** ship, so there it has to be created and
+declared once.
+
 The archive definition (step 2) has to be in place before the RRD files
 are created, so on an installation that already graphs `if_link` the
-existing files have to go once — step 4. The graph definition itself is
+existing files have to go once — step 5. The graph definition itself is
 safe to install at any point: without MAX archives rrdtool silently
 falls back to AVERAGE, so it just keeps showing the old, diluted
 picture until the files have been recreated.
 
-## 1. xymonserver.cfg
+## 1. xymonserver.d/if_link.cfg
+
+Copy the snippet shipped next to this README into the server's
+drop-in directory:
+
+```sh
+cp xymonserver.d/if_link.cfg /etc/xymon/xymonserver.d/
+```
 
 The metric is a plain gauge (the extension computes the delta itself,
-so no COUNTER/DERIVE handling is needed). Append:
+so no COUNTER/DERIVE handling is needed):
 
 ```
 TEST2RRD+=",if_link=ncv"
 SPLITNCV_if_link="*:GAUGE"
-```
-
-Note the leading comma: `+=` concatenates verbatim and does not
-insert a separator.
-
-To make the graph appear on the trends column and on the `if_link`
-status page, also extend:
-
-```
 GRAPHS+=",iflink"
 GRAPHS_if_link="iflink"
 ```
 
-## 2. rrddefinitions.cfg
+## 2. rrddefinitions.d/if_link.cfg
 
-Include the archive definition shipped in this directory
-(`rrddefinitions.d/if_link.cfg`):
+Copy the archive definition shipped next to this README:
+
+```sh
+cp rrddefinitions.d/if_link.cfg /etc/xymon/rrddefinitions.d/
+```
+
+On Debian/Ubuntu that directory does not exist yet — create it and add
+one line at the end of `/etc/xymon/rrddefinitions.cfg`:
 
 ```
-include /etc/xymon/rrddefinitions.d/if_link.cfg
+optional directory /etc/xymon/rrddefinitions.d
 ```
-
-or append its contents to your `rrddefinitions.cfg`.
 
 It keeps Xymon's default AVERAGE archives and adds a matching set of
 **MAX** archives. Without them a flap is diluted in every graph longer
 than 48 hours until it is invisible — see
 [Why the graph showed 0.4](#why-the-graph-showed-04).
 
+The section is keyed `[if_link]`, i.e. by the **column** name, not by
+the RRD filename: `xymond/do_rrd.c` looks the RRA definition up with
+the test name it was called with (`create_and_update_rrd(…, testname,
+…)` → `get_rrd_definition(testname)`), so it applies to all
+`if_link,changes_<if>.rrd` files created by split-NCV.
+
 > Xymon 4.2 had a `TRACKMAX` setting in `xymonserver.cfg` for this.
 > It was **dropped in 4.3** — `rrddefinitions.cfg` replaces it.
 
-## 3. graphs.cfg
+## 3. graphs.d/if_link.cfg
 
-Include the graph definition shipped in this directory
-(`graphs.d/if_link.cfg`):
+Copy the graph definition shipped next to this README:
 
+```sh
+cp graphs.d/if_link.cfg /etc/xymon/graphs.d/
 ```
-include /etc/xymon/graphs.d/if_link.cfg
-```
-
-or append the contents of `graphs.d/if_link.cfg` to your `graphs.cfg`.
 
 The definition draws its line from the MAX archive and prints the exact
 number of changes in the shown window as `(total)`, integrated from the
-AVERAGE archive. Installing it before step 4 does no harm: rrdtool falls
+AVERAGE archive. Installing it before step 5 does no harm: rrdtool falls
 back to the AVERAGE archive when a file has no MAX archive, so the graph
 renders either way.
 
-## 4. Existing installations: recreate the RRD files
+## 4. Restart
+
+Restart the Xymon server — a restart, not a reload: on Debian/Ubuntu
+the list of included drop-in files under `xymonserver.d/` is
+regenerated at start.
+
+## 5. Existing installations: recreate the RRD files
 
 `rrddefinitions.cfg` is only consulted when an RRD file is **created**.
 Files that already exist keep the archives they were born with, so an
@@ -95,7 +114,7 @@ The files are recreated with the next `data` message from each client,
 i.e. within one poll interval — the clients keep counting across this,
 their state files are untouched.
 
-## 5. Verify
+## 6. Verify
 
 Check that the RRD files exist and — the point of step 2 — that they
 carry MAX archives:
@@ -109,15 +128,10 @@ One RRD file per monitored interface; the number varies with the host's
 ports, which is expected — the FNPATTERN in `graphs.d/if_link.cfg`
 picks up whatever exists.
 
-The `grep` must print four `cf = "MAX"` lines. **If it prints nothing**,
-the `[if_link]` section did not apply to these files. `rrddefinitions.cfg`
-sections are keyed by the column name, which is what `[if_link]` is —
-but the split-NCV files are named `if_link,changes_<if>.rrd`, and this
-repository has not verified against the Xymon sources which of the two
-forms the lookup uses for `SPLITNCV_*` columns. If the section is
-ignored, add the four `RRA:MAX` lines to the `[default]` section of
-`rrddefinitions.cfg` instead (they then apply to newly created RRDs of
-every column, which is harmless but not minimal) and redo step 4.
+The `grep` must print four `cf = "MAX"` lines. If it prints nothing,
+the file predates step 2 (redo step 5) or the drop-in directory is not
+read by `rrddefinitions.cfg` yet (step 2, second half — check the
+xymond_rrd log for a warning about the directory).
 
 ## Why the graph showed 0.4
 

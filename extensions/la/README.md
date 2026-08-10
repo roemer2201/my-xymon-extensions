@@ -47,35 +47,15 @@ la5 : 1.20
 la15 : 0.30
 ```
 
-In `xymonserver.cfg` (or a local include) append:
+Plain NCV on the server turns them into one `la.rrd` per host with
+three datasets. The needed configuration is shipped as ready-made
+drop-in files in [`server/`](server/) — copy
+`server/xymonserver.d/la.cfg` into the server's `xymonserver.d/` and
+`server/graphs.d/la.cfg` into its `graphs.d/`, then restart Xymon.
+See [server/README.md](server/README.md).
 
-```
-TEST2RRD+=",la=ncv"
-NCV_la="la1:GAUGE,la5:GAUGE,la15:GAUGE"
-GRAPHS+=",laext"
-GRAPHS_la="laext"
-```
-
-Note the leading comma — `+=` concatenates verbatim. This creates one
-`la.rrd` per host with the three datasets. The stock `[la]` graph in
-`graphs.cfg` expects a different dataset layout (the one produced from
-full-client reports), so define a separate graph:
-
-```
-[laext]
-    TITLE Load average
-    YAXIS Load
-    DEF:la1=la.rrd:la1:AVERAGE
-    DEF:la5=la.rrd:la5:AVERAGE
-    DEF:la15=la.rrd:la15:AVERAGE
-    LINE1:la1#00CC00:1 min
-    LINE2:la5#0000FF:5 min
-    LINE1:la15#FF0000:15 min
-    GPRINT:la5:LAST: %5.2lf (cur 5 min)\n
-```
-
-Restart the Xymon server side (`xymond_rrd`) and check that `la.rrd`
-appears under `$XYMONVAR/rrd/<host>/` after the next report.
+The graph is called `laext`, not `la`: the stock `[la]` graph expects
+the dataset layout produced from full-client reports.
 
 ## OpenWrt / TurrisOS
 
