@@ -12,7 +12,7 @@
 # (OpenWrt/TurrisOS): a full Xymon client already delivers a "memory"
 # column of its own, so the default column name here is "mem" - this
 # avoids a collision on any server that also has full clients, and
-# the shipped tasks.d snippet is disabled by default anyway, since
+# the shipped launch snippet is disabled by default anyway, since
 # running both would be redundant.
 #
 # Needs a Linux /proc/meminfo; other platforms report "clear".

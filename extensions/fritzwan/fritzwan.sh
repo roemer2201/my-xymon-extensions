@@ -21,7 +21,7 @@
 # The poller runs on the Xymon server itself (or any host that can
 # reach the box) - no software is installed on the FRITZ!Box.
 # Configuration: $XYMONHOME/etc/fritzwan.cfg. Without configuration
-# the extension exits silently (the shipped tasks.d snippet is
+# the extension exits silently (the shipped launch snippet is
 # additionally DISABLED by default).
 
 set -u

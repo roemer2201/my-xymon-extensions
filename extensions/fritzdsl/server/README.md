@@ -5,21 +5,30 @@ metric (`margin_down : 6.5`, `crc : 56`, …). The Xymon server turns
 those into RRD files and graphs via **split-NCV**. This is a one-time
 setup on the Xymon server host.
 
-## 1. xymonserver.cfg
+Both steps are **drop-in files**: nothing in a stock Xymon config file
+has to be edited. See
+[Server-side setup: drop-in directories](../../../README.md#server-side-setup-drop-in-directories)
+in the top-level README for how those directories are wired up on your
+platform (Debian/Ubuntu ship them ready to use).
 
-Append the `fritzdsl` test to `TEST2RRD` and define a split-NCV rule
-(in `xymonserver.cfg`, usually `/etc/xymon/` on Debian/Ubuntu,
-`$XYMONHOME/etc/` elsewhere). Xymon's config files support appending
-with `NAME+="value"`, so just add these lines at the end of the file
-(or in a local include):
+## 1. xymonserver.d/fritzdsl.cfg
+
+Copy the snippet shipped next to this README into the server's
+drop-in directory:
+
+```sh
+cp xymonserver.d/fritzdsl.cfg /etc/xymon/xymonserver.d/
+```
+
+It appends the `fritzdsl` test to `TEST2RRD`, defines the split-NCV
+rule and registers the graphs:
 
 ```
 TEST2RRD+=",fritzdsl=ncv"
-SPLITNCV_fritzdsl="crc:DERIVE,fec:DERIVE,hec:DERIVE,es:DERIVE,ses:DERIVE,retrain:DERIVE,*:GAUGE"
+SPLITNCV_fritzdsl="crc:DERIVE,fec:DERIVE,…,*:GAUGE"
+GRAPHS+=",fritzdslrate,fritzdslmargin,…"
+GRAPHS_fritzdsl="fritzdslrate,fritzdslmargin,fritzdslerrors"
 ```
-
-Note the leading comma: `+=` concatenates verbatim and does not
-insert a separator.
 
 `SPLITNCV_fritzdsl` (as opposed to `NCV_fritzdsl`) makes xymond_rrd
 create **one RRD file per variable**, named `fritzdsl,<name>.rrd`,
@@ -28,31 +37,22 @@ each containing a single dataset named `lambda`. This avoids NCV's
 counters are stored as DERIVE, so their graphs show error *rates*;
 everything else (rates, margins, attenuation, uptime) is a GAUGE.
 
-To make the graphs appear on the trends column and on the `fritzdsl`
-status page, also extend:
+`GRAPHS_fritzdsl` is the selection shown on the status page itself —
+edit the copied file to pick the ones you care about.
 
+## 2. graphs.d/fritzdsl.cfg
+
+Copy the graph definitions shipped next to this README:
+
+```sh
+cp graphs.d/fritzdsl.cfg /etc/xymon/graphs.d/
 ```
-GRAPHS+=",fritzdslrate,fritzdslmargin,fritzdslatten,fritzdslerrors,fritzdslsecs,fritzdsluptime"
-GRAPHS_fritzdsl="fritzdslrate,fritzdslmargin,fritzdslerrors"
-```
-
-(`GRAPHS_fritzdsl` is the selection shown on the status page itself —
-pick the ones you care about.)
-
-## 2. graphs.cfg
-
-Include the graph definitions shipped in this directory:
-
-```
-include /etc/xymon/graphs.d/fritzdsl.cfg
-```
-
-or append the contents of `graphs.d/fritzdsl.cfg` to your `graphs.cfg`.
 
 ## 3. Restart / verify
 
-Restart the Xymon server (or `xymon @ "rotate"` plus a xymond_rrd
-restart). After the next poll, check that RRD files appear:
+Restart the Xymon server (a restart, not a reload — on Debian/Ubuntu
+the list of included drop-in files is regenerated at start). After the
+next poll, check that RRD files appear:
 
 ```
 ls $XYMONVAR/rrd/<fritzbox-host>/fritzdsl,*

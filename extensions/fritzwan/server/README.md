@@ -5,42 +5,46 @@ metric (`bps_down : 20000000`, `util_up : 5.0`, …). The Xymon server
 turns those into RRD files and graphs via **split-NCV**. This is a
 one-time setup on the Xymon server host.
 
-## 1. xymonserver.cfg
+Both steps are **drop-in files**: nothing in a stock Xymon config file
+has to be edited. See
+[Server-side setup: drop-in directories](../../../README.md#server-side-setup-drop-in-directories)
+in the top-level README for how those directories are wired up on your
+platform (Debian/Ubuntu ship them ready to use).
+
+## 1. xymonserver.d/fritzwan.cfg
+
+Copy the snippet shipped next to this README into the server's
+drop-in directory:
+
+```sh
+cp xymonserver.d/fritzwan.cfg /etc/xymon/xymonserver.d/
+```
 
 All fritzwan metrics are plain gauges (the extension computes the
-throughput itself, so no COUNTER/DERIVE handling is needed). Append:
+throughput itself, so no COUNTER/DERIVE handling is needed), so the
+file is short:
 
 ```
 TEST2RRD+=",fritzwan=ncv"
 SPLITNCV_fritzwan="*:GAUGE"
-```
-
-Note the leading comma: `+=` concatenates verbatim and does not
-insert a separator.
-
-To make the graphs appear on the trends column and on the `fritzwan`
-status page, also extend:
-
-```
 GRAPHS+=",fritzwanbps,fritzwanutil"
 GRAPHS_fritzwan="fritzwanbps,fritzwanutil"
 ```
 
-## 2. graphs.cfg
+## 2. graphs.d/fritzwan.cfg
 
-Include the graph definitions shipped in this directory:
+Copy the graph definitions shipped next to this README:
 
+```sh
+cp graphs.d/fritzwan.cfg /etc/xymon/graphs.d/
 ```
-include /etc/xymon/graphs.d/fritzwan.cfg
-```
-
-or append the contents of `graphs.d/fritzwan.cfg` to your `graphs.cfg`.
 
 ## 3. Restart / verify
 
-Restart the Xymon server (or `xymon @ "rotate"` plus a xymond_rrd
-restart). After the second poll (the first one only primes the rate
-calculation), check that RRD files appear:
+Restart the Xymon server (a restart, not a reload — on Debian/Ubuntu
+the list of included drop-in files is regenerated at start). After the
+second poll (the first one only primes the rate calculation), check
+that RRD files appear:
 
 ```
 ls $XYMONVAR/rrd/<fritzbox-host>/fritzwan,*

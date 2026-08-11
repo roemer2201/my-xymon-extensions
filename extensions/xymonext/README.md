@@ -26,7 +26,7 @@ the name of the extension to run.
 xymonext.sh smart        # runs $XYMONHOME/ext/smart.sh and measures it
 ```
 
-The tasks.d snippets shipped with the packages already do that
+The clientlaunch.d snippets shipped with the packages already do that
 (`CMD $XYMONCLIENTHOME/ext/xymonext.sh smart`), and the standalone
 runner `xymon-run.sh` calls the wrapper on its own when it is
 installed. The measured extension runs completely unchanged: same

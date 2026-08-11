@@ -93,7 +93,7 @@ graph definitions in [`server/graphs.d/wifi.cfg`](server/graphs.d/wifi.cfg).
 
 ## Packaging notes
 
-- The `tasks.d` snippet ships **disabled**: deb/rpm/FreeBSD targets
+- The `clientlaunch.d` snippet ships **disabled**: deb/rpm/FreeBSD targets
   are rarely access points. Enable it on a Linux AP with a full Xymon
   client, or — on OpenWrt/TurrisOS — run the extension through the
   standalone runner (it is part of the default `TESTS` list there).

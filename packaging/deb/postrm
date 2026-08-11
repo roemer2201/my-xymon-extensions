@@ -1,0 +1,17 @@
+#!/bin/sh
+# Second half of the tasks.d -> clientlaunch.d conffile move; see
+# preinst for the why. dpkg-maintscript-helper needs the same call in
+# preinst, postinst and postrm.
+set -e
+
+# The version that last shipped the files in tasks.d. Never change this.
+PRIOR=0.14.0-1
+
+for snippet in smart temp la memory disk opkg fritzdsl fritzwan wifi if_link; do
+    dpkg-maintscript-helper mv_conffile \
+        "/etc/xymon/tasks.d/$snippet.cfg" \
+        "/etc/xymon/clientlaunch.d/$snippet.cfg" \
+        "$PRIOR" -- "$@"
+done
+
+exit 0

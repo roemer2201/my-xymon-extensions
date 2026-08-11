@@ -2033,6 +2033,193 @@ else
     echo "ok:   unknown extension in TESTS reports an error"
 fi
 
+# ----------------------------------------------------------------------
+echo "--- packaging ---"
+
+# The server-side drop-in files (server/xymonserver.d, server/graphs.d,
+# server/rrddefinitions.d) are shipped as documentation. Two things can
+# drift apart silently, so pin both: stage.sh must install every one of
+# them, and the FreeBSD pkg-plist must list exactly what stage.sh
+# installs - pkg(8) fails the build on a plist/stage mismatch, but only
+# on FreeBSD, i.e. long after the change was made.
+
+PKGSTAGE="$TMP/pkgstage"
+DOCROOT=/usr/share/doc/my-xymon-extensions
+
+if (cd "$REPO" && sh packaging/common/stage.sh "$PKGSTAGE" \
+        /ext /etc /etc/clientlaunch.d "$DOCROOT" >/dev/null); then
+    echo "ok:   stage.sh runs"
+else
+    echo "FAIL: stage.sh failed"
+    FAIL=1
+fi
+
+# Every extension with a server/ directory ships a README and the
+# xymonserver.d snippet, and every one of its files is staged.
+for srvdir in "$REPO"/extensions/*/server; do
+    [ -d "$srvdir" ] || continue
+    ext=$(basename "$(dirname "$srvdir")")
+    for want in "README.md" "xymonserver.d/$ext.cfg"; do
+        if [ -f "$srvdir/$want" ]; then
+            echo "ok:   $ext ships server/$want"
+        else
+            echo "FAIL: $ext has no server/$want"
+            FAIL=1
+        fi
+    done
+done
+
+(cd "$REPO" && find extensions -type f) | grep '/server/' \
+    | sed 's|^extensions/||' | sort > "$TMP/server-files"
+while read -r rel; do
+    if [ -f "$PKGSTAGE$DOCROOT/$rel" ]; then
+        echo "ok:   stage.sh installs $rel"
+    else
+        echo "FAIL: stage.sh does not install extensions/$rel"
+        FAIL=1
+    fi
+done < "$TMP/server-files"
+
+# stage.sh <-> pkg-plist, both directions.
+(cd "$PKGSTAGE$DOCROOT" && find . -type f) | sed 's|^\./||' | sort > "$TMP/staged-docs"
+grep "^share/doc/my-xymon-extensions/" "$REPO/packaging/freebsd/pkg-plist" \
+    | sed 's|^share/doc/my-xymon-extensions/||' | sort > "$TMP/plist-docs"
+if cmp -s "$TMP/staged-docs" "$TMP/plist-docs"; then
+    echo "ok:   pkg-plist lists exactly the staged documentation files"
+else
+    echo "FAIL: pkg-plist and stage.sh disagree about the documentation files"
+    echo "      only staged:    $(grep -Fxv -f "$TMP/plist-docs" "$TMP/staged-docs" | tr '\n' ' ')"
+    echo "      only in plist:  $(grep -Fxv -f "$TMP/staged-docs" "$TMP/plist-docs" | tr '\n' ' ')"
+    FAIL=1
+fi
+
+# --- the server package ------------------------------------------------
+# Same idea for stage-server.sh: it must install every drop-in file, and
+# the deb conffiles list must name exactly the installed config files.
+
+SRVSTAGE="$TMP/srvstage"
+SRVETC=/etc/xymon
+SRVDOC=/usr/share/doc/my-xymon-extensions-server
+
+if (cd "$REPO" && sh packaging/common/stage-server.sh "$SRVSTAGE" \
+        "$SRVETC" "$SRVDOC" >/dev/null); then
+    echo "ok:   stage-server.sh runs"
+else
+    echo "FAIL: stage-server.sh failed"
+    FAIL=1
+fi
+
+# Every drop-in file in the repo must be installed into the drop-in
+# directory of the same name. (The server READMEs are documentation and
+# are checked through the conffiles comparison below, not here.)
+grep '/server/.*\.d/' "$TMP/server-files" | while read -r rel; do
+    # rel = <ext>/server/<dropin>/<ext>.cfg -> <dropin>/<ext>.cfg
+    dropin=${rel#*/server/}
+    if [ -f "$SRVSTAGE$SRVETC/$dropin" ]; then
+        echo "ok:   stage-server.sh installs $SRVETC/$dropin"
+    else
+        echo "FAIL: stage-server.sh does not install $SRVETC/$dropin"
+        echo "$rel" >> "$TMP/srv-missing"
+    fi
+done
+[ -f "$TMP/srv-missing" ] && FAIL=1
+
+(cd "$SRVSTAGE" && find . -type f) | sed 's|^\.||' | grep "^$SRVETC/" \
+    | sort > "$TMP/srv-etc"
+sort < "$REPO/packaging/deb-server/conffiles" > "$TMP/srv-conffiles"
+if cmp -s "$TMP/srv-etc" "$TMP/srv-conffiles"; then
+    echo "ok:   deb-server conffiles lists exactly the installed config files"
+else
+    echo "FAIL: deb-server conffiles and stage-server.sh disagree"
+    echo "      only staged:      $(grep -Fxv -f "$TMP/srv-conffiles" "$TMP/srv-etc" | tr '\n' ' ')"
+    echo "      only in conffiles:$(grep -Fxv -f "$TMP/srv-etc" "$TMP/srv-conffiles" | tr '\n' ' ')"
+    FAIL=1
+fi
+
+# On Debian/Ubuntu the client and the server both keep their config in
+# /etc/xymon, so the two packages must not claim the same path - dpkg
+# refuses to install packages that do. Stage both with the Debian paths
+# and compare.
+CLIENTSTAGE="$TMP/pkgstage-deb"
+(cd "$REPO" && sh packaging/common/stage.sh "$CLIENTSTAGE" \
+    /usr/lib/xymon/client/ext /etc/xymon /etc/xymon/clientlaunch.d - >/dev/null)
+(cd "$CLIENTSTAGE" && find . -type f) | sed 's|^\.||' | sort > "$TMP/client-paths"
+
+# The launch snippets belong to the CLIENT's drop-in directory. tasks.d
+# is the server's (Debian's tasks.cfg reads it, and reads the client's
+# list too), so a snippet there runs twice on a combined host - that is
+# what this guards against.
+for snippet in smart temp la memory disk opkg fritzdsl fritzwan wifi if_link; do
+    grep -qx "/etc/xymon/clientlaunch.d/$snippet.cfg" "$TMP/client-paths" || {
+        echo "FAIL: $snippet snippet is not staged into clientlaunch.d"
+        FAIL=1
+    }
+done
+if grep -q "^/etc/xymon/tasks\.d/" "$TMP/client-paths"; then
+    echo "FAIL: client package still installs into the server's tasks.d"
+    FAIL=1
+else
+    echo "ok:   launch snippets go to clientlaunch.d, nothing into tasks.d"
+fi
+
+# The deb migrates the old tasks.d conffiles; all three maintainer
+# scripts must carry the same mv_conffile calls or dpkg leaves the file
+# behind (dpkg-maintscript-helper requires the call in each of them).
+for script in preinst postinst postrm; do
+    n=$(grep -c "mv_conffile" "$REPO/packaging/deb/$script" || true)
+    if [ "$n" -ge 1 ]; then
+        echo "ok:   deb $script migrates the tasks.d conffiles"
+    else
+        echo "FAIL: deb $script has no mv_conffile call"
+        FAIL=1
+    fi
+done
+(cd "$SRVSTAGE" && find . -type f) | sed 's|^\.||' | sort > "$TMP/server-paths"
+overlap=$(grep -Fxf "$TMP/client-paths" "$TMP/server-paths" || true)
+if [ -z "$overlap" ]; then
+    echo "ok:   client and server package share no file path in /etc/xymon"
+else
+    echo "FAIL: client and server package both ship: $(echo "$overlap" | tr '\n' ' ')"
+    FAIL=1
+fi
+
+# The server package does not edit the stock Xymon configs; its
+# post-install tells the admin which drop-in directory is not read yet.
+# Debian wires up xymonserver.d and graphs.d (via the include files its
+# init script regenerates in /var/run/xymon), but ships no
+# rrddefinitions.d - so exactly one TODO is the expected outcome there.
+SRVPOSTINST="$REPO/packaging/deb-server/postinst"
+
+XYMONETC="$TMP/xymonetc-debian"
+mkdir -p "$XYMONETC"
+printf 'TEST2RRD="x"\ninclude /var/run/xymon/xymonserver-include.cfg\n' \
+    > "$XYMONETC/xymonserver.cfg"
+printf '[la]\ninclude /var/run/xymon/graphs-include.cfg\n' > "$XYMONETC/graphs.cfg"
+printf '[default]\n\tRRA:AVERAGE:0.5:1:576\n' > "$XYMONETC/rrddefinitions.cfg"
+out=$(XYMONETCDIR="$XYMONETC" $TESTSH "$SRVPOSTINST" configure)
+expect "$out" 'ok: +xymonserver\.cfg reads' "postinst: Debian xymonserver.d wiring detected"
+expect "$out" 'ok: +graphs\.cfg reads' "postinst: Debian graphs.d wiring detected"
+expect "$out" 'TODO: +rrddefinitions\.cfg does not read' \
+    "postinst: missing rrddefinitions.d reported"
+expect "$out" 'optional directory .*/rrddefinitions\.d' \
+    "postinst: prints the line to add for rrddefinitions.d"
+expect "$out" 'service xymon restart' "postinst: asks for a restart"
+
+# A Xymon that reads none of the three: three TODOs, no crash.
+XYMONETC="$TMP/xymonetc-bare"
+mkdir -p "$XYMONETC"
+printf 'TEST2RRD="x"\n' > "$XYMONETC/xymonserver.cfg"
+out=$(XYMONETCDIR="$XYMONETC" $TESTSH "$SRVPOSTINST" configure)
+expect "$out" 'TODO: +xymonserver\.cfg does not read' \
+    "postinst: unwired xymonserver.d reported"
+expect "$out" 'TODO: +graphs\.cfg does not read' \
+    "postinst: missing graphs.cfg reported"
+expect_not "$out" ' ok: ' "postinst: nothing reported as wired up"
+
+# Any other dpkg action must be a no-op.
+out=$(XYMONETCDIR="$TMP/xymonetc-bare" $TESTSH "$SRVPOSTINST" abort-upgrade 1.0)
+expect_not "$out" '.' "postinst: silent for actions other than configure"
+
 echo ""
 if [ "$FAIL" -eq 0 ]; then
     echo "All tests passed."

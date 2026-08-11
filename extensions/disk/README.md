@@ -14,10 +14,10 @@ stock per-filesystem RRD graphs work with **zero server-side setup**.
 - **Requires:** nothing — BusyBox userland is enough.
 - **Note:** a full Xymon client builds the `disk` column from its own
   df report, and this extension writes into **exactly that column** —
-  so the shipped `tasks.d` snippet is **disabled by default**. It is
+  so the shipped `clientlaunch.d` snippet is **disabled by default**. It is
   meant for clientless hosts (routers, appliances) driven by the
   standalone runner, which runs every installed extension regardless
-  of `tasks.d`. Never enable both on one host without changing
+  of `clientlaunch.d`. Never enable both on one host without changing
   `DISK_COLUMN`.
 
 ## Filtering

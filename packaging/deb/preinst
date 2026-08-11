@@ -1,0 +1,28 @@
+#!/bin/sh
+# Move the xymonlaunch snippets from /etc/xymon/tasks.d (where versions
+# up to 0.14.0-1 put them) to /etc/xymon/clientlaunch.d.
+#
+# Why: tasks.d is the drop-in directory of the SERVER's xymonlaunch
+# (Debian's tasks.cfg includes it via tasks-include.cfg), clientlaunch.d
+# is the client's (clientlaunch.cfg via clientlaunch-include.cfg). On a
+# host running server and client, Debian starts one xymonlaunch with
+# tasks.cfg - and that includes clientlaunch-include.cfg as well, so a
+# snippet in tasks.d that the admin also wired into clientlaunch.cfg was
+# loaded twice.
+#
+# dpkg-maintscript-helper mv_conffile carries local modifications over
+# (an enabled fritzdsl snippet keeps its DISABLED line removed) and must
+# be called from preinst, postinst and postrm alike.
+set -e
+
+# The version that last shipped the files in tasks.d. Never change this.
+PRIOR=0.14.0-1
+
+for snippet in smart temp la memory disk opkg fritzdsl fritzwan wifi if_link; do
+    dpkg-maintscript-helper mv_conffile \
+        "/etc/xymon/tasks.d/$snippet.cfg" \
+        "/etc/xymon/clientlaunch.d/$snippet.cfg" \
+        "$PRIOR" -- "$@"
+done
+
+exit 0

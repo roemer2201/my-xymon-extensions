@@ -6,22 +6,30 @@ The Xymon server turns those into RRD files and graphs via
 **split-NCV**. This is a one-time setup on the Xymon server host
 (which may run any OS — these are plain Xymon config changes).
 
-## 1. xymonserver.cfg
+Both steps are **drop-in files**: nothing in a stock Xymon config file
+has to be edited. See
+[Server-side setup: drop-in directories](../../../README.md#server-side-setup-drop-in-directories)
+in the top-level README for how those directories are wired up on your
+platform (Debian/Ubuntu ship them ready to use).
 
-Append the `smart` test to `TEST2RRD` and define a split-NCV rule
-(in `xymonserver.cfg`, usually `/etc/xymon/` on Debian/Ubuntu,
-`$XYMONHOME/etc/` elsewhere). Xymon's config files support appending
-to an already-defined variable with `NAME+="value"`, so there is no
-need to edit the existing `TEST2RRD` line — just add these lines at
-the end of the file (or in a local include):
+## 1. xymonserver.d/smart.cfg
+
+Copy the snippet shipped next to this README into the server's
+drop-in directory:
+
+```sh
+cp xymonserver.d/smart.cfg /etc/xymon/xymonserver.d/
+```
+
+It appends the `smart` test to `TEST2RRD`, defines the split-NCV rule
+and registers the graphs:
 
 ```
 TEST2RRD+=",smart=ncv"
 SPLITNCV_smart="*:GAUGE"
+GRAPHS+=",smarttemp,smartwear,…"
+GRAPHS_smart="smarttemp,smartwear,smartrealloc,smartpending,smartcrc"
 ```
-
-Note the leading comma: `+=` concatenates verbatim and does not
-insert a separator.
 
 `SPLITNCV_smart` (as opposed to `NCV_smart`) makes xymond_rrd create
 **one RRD file per variable**, named `smart,<disk>_<metric>.rrd`, each
@@ -29,16 +37,8 @@ containing a single dataset named `lambda`. That is what allows an
 arbitrary, per-host varying number of disks. See `man xymond_rrd`
 (section NCV) if your Xymon version behaves differently.
 
-To make the graphs appear on the trends column and on the `smart`
-status page, also extend:
-
-```
-GRAPHS+=",smarttemp,smartwear,smartspare,smartrealloc,smartpending,smartuncorr,smartcrc,smartmediaerr,smarthours,smartwritten,smartread,smartdwpd,smartdwpdrecent"
-GRAPHS_smart="smarttemp,smartwear,smartrealloc,smartpending,smartcrc"
-```
-
-(`GRAPHS_smart` is the selection shown on the status page itself —
-pick the ones you care about.)
+`GRAPHS_smart` is the selection shown on the `smart` status page
+itself — edit the copied file to pick the ones you care about.
 
 `smartdwpd` and `smartdwpdrecent` show disk writes per day. Note that
 `dwpdrecent` needs some history before it can report anything: a freshly
@@ -47,20 +47,19 @@ by a reboot) starts sending it after `DWPD_WARMUP_HOURS` (default 6),
 initially averaged over a shorter span that grows into the full
 `DWPD_WINDOW_HOURS`. The client-side README explains the trade-off.
 
-## 2. graphs.cfg
+## 2. graphs.d/smart.cfg
 
-Include the graph definitions shipped in this directory:
+Copy the graph definitions shipped next to this README:
 
+```sh
+cp graphs.d/smart.cfg /etc/xymon/graphs.d/
 ```
-include /etc/xymon/graphs.d/smart.cfg
-```
-
-or append the contents of `graphs.d/smart.cfg` to your `graphs.cfg`.
 
 ## 3. Restart / verify
 
-Restart the Xymon server (or `xymon @ "rotate"` plus a xymond_rrd
-restart). After the next client report, check that RRD files appear:
+Restart the Xymon server (a restart, not a reload — on Debian/Ubuntu
+the list of included drop-in files is regenerated at start). After the
+next client report, check that RRD files appear:
 
 ```
 ls $XYMONVAR/rrd/<clienthost>/smart,*

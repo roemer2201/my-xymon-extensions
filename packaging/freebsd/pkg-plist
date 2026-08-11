@@ -16,44 +16,62 @@ www/xymon/client/ext/xymonext-send.sh
 @sample www/xymon/client/etc/memory.cfg.sample
 @sample www/xymon/client/etc/disk.cfg.sample
 @sample www/xymon/client/etc/opkg.cfg.sample
-@sample www/xymon/client/etc/tasks.d/smart.cfg.sample
-@sample www/xymon/client/etc/tasks.d/temp.cfg.sample
-@sample www/xymon/client/etc/tasks.d/la.cfg.sample
-@sample www/xymon/client/etc/tasks.d/memory.cfg.sample
-@sample www/xymon/client/etc/tasks.d/disk.cfg.sample
-@sample www/xymon/client/etc/tasks.d/opkg.cfg.sample
+@sample www/xymon/client/etc/clientlaunch.d/smart.cfg.sample
+@sample www/xymon/client/etc/clientlaunch.d/temp.cfg.sample
+@sample www/xymon/client/etc/clientlaunch.d/la.cfg.sample
+@sample www/xymon/client/etc/clientlaunch.d/memory.cfg.sample
+@sample www/xymon/client/etc/clientlaunch.d/disk.cfg.sample
+@sample www/xymon/client/etc/clientlaunch.d/opkg.cfg.sample
 @sample www/xymon/client/etc/fritzdsl.cfg.sample
-@sample www/xymon/client/etc/tasks.d/fritzdsl.cfg.sample
+@sample www/xymon/client/etc/clientlaunch.d/fritzdsl.cfg.sample
 @sample www/xymon/client/etc/fritzwan.cfg.sample
-@sample www/xymon/client/etc/tasks.d/fritzwan.cfg.sample
+@sample www/xymon/client/etc/clientlaunch.d/fritzwan.cfg.sample
 @sample www/xymon/client/etc/wifi.cfg.sample
-@sample www/xymon/client/etc/tasks.d/wifi.cfg.sample
+@sample www/xymon/client/etc/clientlaunch.d/wifi.cfg.sample
 @sample www/xymon/client/etc/if_link.cfg.sample
-@sample www/xymon/client/etc/tasks.d/if_link.cfg.sample
+@sample www/xymon/client/etc/clientlaunch.d/if_link.cfg.sample
 @sample www/xymon/client/etc/xymonext.cfg.sample
 share/doc/my-xymon-extensions/README.md
 share/doc/my-xymon-extensions/temp/README.md
+share/doc/my-xymon-extensions/temp/server/README.md
+share/doc/my-xymon-extensions/temp/server/graphs.d/temp.cfg
+share/doc/my-xymon-extensions/temp/server/xymonserver.d/temp.cfg
 share/doc/my-xymon-extensions/la/README.md
+share/doc/my-xymon-extensions/la/server/README.md
+share/doc/my-xymon-extensions/la/server/graphs.d/la.cfg
+share/doc/my-xymon-extensions/la/server/xymonserver.d/la.cfg
 share/doc/my-xymon-extensions/memory/README.md
+share/doc/my-xymon-extensions/memory/server/README.md
+share/doc/my-xymon-extensions/memory/server/graphs.d/memory.cfg
+share/doc/my-xymon-extensions/memory/server/xymonserver.d/memory.cfg
 share/doc/my-xymon-extensions/disk/README.md
 share/doc/my-xymon-extensions/opkg/README.md
+share/doc/my-xymon-extensions/opkg/server/README.md
+share/doc/my-xymon-extensions/opkg/server/graphs.d/opkg.cfg
+share/doc/my-xymon-extensions/opkg/server/xymonserver.d/opkg.cfg
 share/doc/my-xymon-extensions/smart/README.md
 share/doc/my-xymon-extensions/smart/sudoers.example
 share/doc/my-xymon-extensions/smart/server/README.md
 share/doc/my-xymon-extensions/smart/server/graphs.d/smart.cfg
+share/doc/my-xymon-extensions/smart/server/xymonserver.d/smart.cfg
 share/doc/my-xymon-extensions/fritzdsl/README.md
 share/doc/my-xymon-extensions/fritzdsl/server/README.md
 share/doc/my-xymon-extensions/fritzdsl/server/graphs.d/fritzdsl.cfg
+share/doc/my-xymon-extensions/fritzdsl/server/xymonserver.d/fritzdsl.cfg
 share/doc/my-xymon-extensions/fritzwan/README.md
 share/doc/my-xymon-extensions/fritzwan/server/README.md
 share/doc/my-xymon-extensions/fritzwan/server/graphs.d/fritzwan.cfg
+share/doc/my-xymon-extensions/fritzwan/server/xymonserver.d/fritzwan.cfg
 share/doc/my-xymon-extensions/wifi/README.md
 share/doc/my-xymon-extensions/wifi/server/README.md
 share/doc/my-xymon-extensions/wifi/server/graphs.d/wifi.cfg
+share/doc/my-xymon-extensions/wifi/server/xymonserver.d/wifi.cfg
 share/doc/my-xymon-extensions/if_link/README.md
 share/doc/my-xymon-extensions/if_link/server/README.md
 share/doc/my-xymon-extensions/if_link/server/graphs.d/if_link.cfg
 share/doc/my-xymon-extensions/if_link/server/rrddefinitions.d/if_link.cfg
+share/doc/my-xymon-extensions/if_link/server/xymonserver.d/if_link.cfg
 share/doc/my-xymon-extensions/xymonext/README.md
 share/doc/my-xymon-extensions/xymonext/server/README.md
 share/doc/my-xymon-extensions/xymonext/server/graphs.d/xymonext.cfg
+share/doc/my-xymon-extensions/xymonext/server/xymonserver.d/xymonext.cfg

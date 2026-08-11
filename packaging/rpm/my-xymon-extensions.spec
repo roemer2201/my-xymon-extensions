@@ -62,9 +62,9 @@ Included extensions:
 * xymonext - what the extensions above cost this host: wall clock
   time, CPU time and the number of bytes each test sends to the
   Xymon server, measured on every run and reported in one
-  "xymonext" column with RRD graphs per test. The tasks.d snippets
-  call the extensions through its wrapper; measuring can be turned
-  off in xymonext.cfg.
+  "xymonext" column with RRD graphs per test. The clientlaunch.d
+  snippets call the extensions through its wrapper; measuring can be
+  turned off in xymonext.cfg.
 
 %prep
 %setup -q
@@ -73,7 +73,7 @@ Included extensions:
 sh packaging/common/stage.sh "%{buildroot}" \
     "%{xymonhome}/ext" \
     "%{xymonhome}/etc" \
-    "%{xymonhome}/etc/tasks.d" \
+    "%{xymonhome}/etc/clientlaunch.d" \
     "%{_docdir}/%{name}"
 
 %files
@@ -89,25 +89,25 @@ sh packaging/common/stage.sh "%{buildroot}" \
 %config(noreplace) %{xymonhome}/etc/memory.cfg
 %config(noreplace) %{xymonhome}/etc/disk.cfg
 %config(noreplace) %{xymonhome}/etc/opkg.cfg
-%dir %{xymonhome}/etc/tasks.d
-%config(noreplace) %{xymonhome}/etc/tasks.d/smart.cfg
-%config(noreplace) %{xymonhome}/etc/tasks.d/temp.cfg
-%config(noreplace) %{xymonhome}/etc/tasks.d/la.cfg
-%config(noreplace) %{xymonhome}/etc/tasks.d/memory.cfg
-%config(noreplace) %{xymonhome}/etc/tasks.d/disk.cfg
-%config(noreplace) %{xymonhome}/etc/tasks.d/opkg.cfg
+%dir %{xymonhome}/etc/clientlaunch.d
+%config(noreplace) %{xymonhome}/etc/clientlaunch.d/smart.cfg
+%config(noreplace) %{xymonhome}/etc/clientlaunch.d/temp.cfg
+%config(noreplace) %{xymonhome}/etc/clientlaunch.d/la.cfg
+%config(noreplace) %{xymonhome}/etc/clientlaunch.d/memory.cfg
+%config(noreplace) %{xymonhome}/etc/clientlaunch.d/disk.cfg
+%config(noreplace) %{xymonhome}/etc/clientlaunch.d/opkg.cfg
 %{xymonhome}/ext/fritzdsl.sh
 %config(noreplace) %{xymonhome}/etc/fritzdsl.cfg
-%config(noreplace) %{xymonhome}/etc/tasks.d/fritzdsl.cfg
+%config(noreplace) %{xymonhome}/etc/clientlaunch.d/fritzdsl.cfg
 %{xymonhome}/ext/fritzwan.sh
 %config(noreplace) %{xymonhome}/etc/fritzwan.cfg
-%config(noreplace) %{xymonhome}/etc/tasks.d/fritzwan.cfg
+%config(noreplace) %{xymonhome}/etc/clientlaunch.d/fritzwan.cfg
 %{xymonhome}/ext/wifi.sh
 %config(noreplace) %{xymonhome}/etc/wifi.cfg
-%config(noreplace) %{xymonhome}/etc/tasks.d/wifi.cfg
+%config(noreplace) %{xymonhome}/etc/clientlaunch.d/wifi.cfg
 %{xymonhome}/ext/if_link.sh
 %config(noreplace) %{xymonhome}/etc/if_link.cfg
-%config(noreplace) %{xymonhome}/etc/tasks.d/if_link.cfg
+%config(noreplace) %{xymonhome}/etc/clientlaunch.d/if_link.cfg
 %{xymonhome}/ext/xymonext.sh
 %{xymonhome}/ext/xymonext-send.sh
 %config(noreplace) %{xymonhome}/etc/xymonext.cfg
@@ -118,17 +118,24 @@ cat <<'EOF'
 my-xymon-extensions: to activate the "smart" extension:
  1. Grant the xymon user access to smartctl - see
     %{_docdir}/%{name}/smart/sudoers.example
- 2. Make sure clientlaunch.cfg loads the tasks.d directory
+ 2. Make sure clientlaunch.cfg loads the client drop-in directory
     (add this line once if it is missing):
-      directory %{xymonhome}/etc/tasks.d
+      directory %{xymonhome}/etc/clientlaunch.d
+    NOTE: up to version 0.14.0 the snippets went to etc/tasks.d and
+    that is what the line said. tasks.d belongs to the SERVER's
+    xymonlaunch (tasks.cfg) - on a host that is server and client,
+    a snippet there is picked up by both launchers and the extension
+    runs twice. Point the line at clientlaunch.d and delete any
+    leftovers in etc/tasks.d (rpm keeps edited ones as .rpmsave).
  3. Restart the Xymon client service.
 The FRITZ!Box extensions "fritzdsl" and "fritzwan" ship disabled:
  configure %{xymonhome}/etc/fritzdsl.cfg resp. fritzwan.cfg, then
- remove the DISABLED line from the matching tasks.d snippet and
- restart the client on the polling host (normally the Xymon server).
+ remove the DISABLED line from the matching clientlaunch.d snippet
+ and restart the client on the polling host (normally the Xymon
+ server).
 The "wifi" extension ships disabled too: enable it (remove the
- DISABLED line from the tasks.d snippet) only on a Linux access
- point with iw installed.
+ DISABLED line from the clientlaunch.d snippet) only on a Linux
+ access point with iw installed.
 The "if_link" extension (link state changes per network interface)
  is active out of the box and adds an "if_link" column. It stays
  green until you configure thresholds in %{xymonhome}/etc/if_link.cfg.
@@ -136,9 +143,74 @@ Every task now runs through %{xymonhome}/ext/xymonext.sh, which
  measures the extension and adds an "xymonext" column with runtime,
  CPU time and traffic per test. Set XYMONEXT_ENABLE="no" in
  %{xymonhome}/etc/xymonext.cfg to run the extensions directly again.
+RRD graphs need a one-time setup on the Xymon SERVER (not here):
+ ready-made drop-in files for its xymonserver.d, graphs.d and
+ rrddefinitions.d directories ship in
+ %{_docdir}/%{name}/<extension>/server/ - copy them over and restart
+ Xymon there; see the README.md next to them.
 EOF
 
 %changelog
+* Mon Aug 10 2026 roemer2201 <r.oliver@web.de> - 0.15.0-1
+- packaging: the xymonlaunch snippets move from the Xymon server's
+  drop-in directory tasks.d to the client's clientlaunch.d, where they
+  belong. tasks.d is read by the SERVER's xymonlaunch (its tasks.cfg),
+  clientlaunch.d by the client's - and on Debian the server's tasks.cfg
+  includes the client's list as well, while the client's init exits
+  when xymond is installed, so exactly one xymonlaunch runs per host.
+  Consequence of the old location: on a host that is server and client,
+  a snippet in tasks.d was picked up by the server's launcher, and once
+  more through the "directory /etc/xymon/tasks.d" line the package used
+  to ask admins to add to clientlaunch.cfg - the extension ran twice.
+  In the new location nothing has to be added on Debian/Ubuntu at all,
+  since the init script generates the include list for clientlaunch.d
+  itself. The deb migrates existing files with dpkg-maintscript-helper
+  mv_conffile (preinst/postinst/postrm), keeping local modifications,
+  and its post-install points out a leftover tasks.d line in
+  clientlaunch.cfg. On rpm an edited old snippet under etc/tasks.d is
+  left behind as .rpmsave and can be deleted; the new files are at
+  etc/clientlaunch.d. The snippet sources moved to
+  packaging/common/clientlaunch.d/ accordingly; no extension script
+  changed
+
+* Mon Aug 10 2026 roemer2201 <r.oliver@web.de> - 0.14.0-1
+- new package my-xymon-extensions-server (.deb only for now): installs
+  the server-side drop-in configuration of every extension into
+  /etc/xymon/xymonserver.d, graphs.d and rrddefinitions.d as
+  conffiles, plus the per-extension server READMEs. Depends on the
+  Debian "xymon" package; independent of the client package. Its file
+  list lives in packaging/common/stage-server.sh, the counterpart of
+  stage.sh. Debian specifics that shaped it: server and client share
+  /etc/xymon and "xymon" depends on "xymon-client", so both packages
+  can be installed on one host - the two file lists are kept disjoint
+  (the client owns <name>.cfg and its launch snippets, the server
+  package only the
+  three drop-in directories) and the test suite plus a CI step verify
+  that dpkg accepts them together. The package does not edit
+  xymonserver.cfg/graphs.cfg/rrddefinitions.cfg, which are conffiles of
+  the xymon package; its post-install detects which drop-in directory
+  is not read yet and prints the "optional directory" line to add
+  (normally only rrddefinitions.d, which Debian does not ship), and it
+  leaves restarting Xymon to the admin. No rpm content changes
+
+* Mon Aug 10 2026 roemer2201 <r.oliver@web.de> - 0.13.0-1
+- server side: ship every extension's Xymon server configuration as
+  drop-in files instead of instructions to edit stock config files.
+  Xymon reads all of its config files through one reader
+  (lib/stackio.c), so "include", "directory" and "optional" work in
+  every one of them - verified in the sources for graphs.cfg
+  (load_gdefs, web/showgraph.c), rrddefinitions.cfg (load_rrddefs,
+  xymond/xymond_rrd.c) and xymonserver.cfg (loadenv, lib/environ.c),
+  none of which is documented in the manual. The TEST2RRD/NCV/GRAPHS
+  settings of every extension now live in
+  server/xymonserver.d/<name>.cfg, matching the existing
+  server/graphs.d and server/rrddefinitions.d layout; temp, la, memory
+  and opkg gained a server/ directory (their settings were prose in
+  the client README before). Documentation only on the client side -
+  no extension script changed. New consistency test: stage.sh installs
+  every server-side file and the FreeBSD pkg-plist lists exactly the
+  staged set
+
 * Mon Aug 10 2026 roemer2201 <r.oliver@web.de> - 0.12.0-1
 - xymonext: new extension - measures what the client extensions cost
   the host. A wrapper runs each extension unchanged and records its
@@ -148,7 +220,7 @@ EOF
   server (a shim in front of $XYMON). One "xymonext" column carrying
   the table of all measured tests, split-NCV RRD graphs per test and
   metric, thresholds on the wall clock time to catch a hanging test;
-  the tasks.d snippets and the standalone runner call the extensions
+  the task snippets and the standalone runner call the extensions
   through the wrapper, which can be switched off in xymonext.cfg
 
 * Mon Aug 10 2026 roemer2201 <r.oliver@web.de> - 0.11.2-1

@@ -117,46 +117,14 @@ may already have collected junk RRD files from those display lines
 updated after the upgrade and can simply be deleted from
 `$XYMONVAR/rrd/<host>/`.
 
-Because the number of sensors varies per host, use **split-NCV** (one
-RRD file per sensor) on the server. In `xymonserver.cfg` (or a local
-include) append:
-
-```
-TEST2RRD+=",temp=ncv"
-SPLITNCV_temp="*:GAUGE"
-GRAPHS+=",temp"
-GRAPHS_temp="temp"
-```
-
-Note the leading comma — `+=` concatenates verbatim. If your stock
-`TEST2RRD` already contains a `temp` entry (some setups map it to the
-`temperature` module), replace that entry instead of appending. `temp`
-does not collide with Xymon's own stock `[temperature]` graph (a
-different name), so the plain name is fine here — no need for a
-separate `tempext`/`temperature` alias.
-
-Then add a graph definition to `graphs.cfg`. Split-NCV always stores
-the value in a dataset called `lambda`, regardless of test name — if
-you already have a `[temp]` section from an older/unrelated setup,
-just fix its `DEF` line to read from `lambda` instead of adding a new
-section:
-
-```
-[temp]
-    FNPATTERN temp,(.*).rrd
-    TITLE Temperature sensors
-    YAXIS Celsius
-    DEF:temp@RRDIDX@=@RRDFN@:lambda:AVERAGE
-    LINE2:temp@RRDIDX@#@COLOR@:@RRDPARAM@
-    GPRINT:temp@RRDIDX@:LAST: \: %4.1lf (cur)
-    GPRINT:temp@RRDIDX@:MAX: \: %4.1lf (max)
-    GPRINT:temp@RRDIDX@:MIN: \: %4.1lf (min)
-    GPRINT:temp@RRDIDX@:AVERAGE: \: %4.1lf (avg)\n
-```
-
-Restart the Xymon server side (`xymond_rrd`) and check that files
-named `temp,<sensor>.rrd` appear under `$XYMONVAR/rrd/<host>/` after
-the next report.
+Because the number of sensors varies per host, the server side uses
+**split-NCV** (one RRD file per sensor). The needed configuration is
+shipped as ready-made drop-in files in
+[`server/`](server/) — copy `server/xymonserver.d/temp.cfg` into the
+server's `xymonserver.d/` and `server/graphs.d/temp.cfg` into its
+`graphs.d/`, then restart Xymon. See
+[server/README.md](server/README.md) for the details (and the caveat
+about a stock `TEST2RRD` that already maps `temp`).
 
 ## OpenWrt / TurrisOS
 

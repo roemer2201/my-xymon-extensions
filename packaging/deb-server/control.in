@@ -1,0 +1,36 @@
+Package: my-xymon-extensions-server
+Version: @VERSION@-1
+Section: net
+Priority: optional
+Architecture: all
+Depends: xymon
+Suggests: my-xymon-extensions
+Maintainer: roemer2201 <r.oliver@web.de>
+Homepage: https://github.com/roemer2201/my-xymon-extensions
+Description: Xymon server configuration for my-xymon-extensions
+ Server-side configuration for the extensions in the
+ my-xymon-extensions package: the settings that turn their status and
+ data messages into RRD files and trend graphs.
+ .
+ This package belongs on the Xymon SERVER, the client package belongs
+ on the monitored hosts. The two are independent - a server collecting
+ data from clients elsewhere needs only this one.
+ .
+ Everything is installed as drop-in files, so no stock Xymon
+ configuration file is modified:
+  * /etc/xymon/xymonserver.d/ - TEST2RRD, NCV_*/SPLITNCV_* and GRAPHS
+    settings per extension (read via graphs-include.cfg/
+    xymonserver-include.cfg, which Debian's init script regenerates
+    at every start).
+  * /etc/xymon/graphs.d/ - the graph definitions.
+  * /etc/xymon/rrddefinitions.d/ - RRA archive layout; needed by the
+    if_link extension so that single link changes stay visible in
+    long-range graphs. Debian does not ship this drop-in directory,
+    so one "optional directory" line has to be added to
+    rrddefinitions.cfg once - the post-install output says so if it
+    is missing.
+ .
+ Covered extensions: smart, temp, la, memory, opkg, fritzdsl,
+ fritzwan, wifi, if_link and xymonext. The disk extension needs no
+ server-side configuration - it reports into the standard disk column,
+ which the server parses itself.

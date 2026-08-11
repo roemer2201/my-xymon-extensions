@@ -9,7 +9,7 @@ all: test
 test: shellcheck unittest
 
 shellcheck:
-	shellcheck --shell=sh extensions/*/*.sh standalone/*.sh tests/run.sh tests/smart/fakesmartctl tests/smart/fakemmc tests/fritzdsl/fakecurl tests/fritzwan/fakecurl tests/disk/fakedf tests/opkg/fakeopkg tests/wifi/fakeiw tests/wifi/fakeubus tests/wifi/fakeiwinfo packaging/*/*.sh
+	shellcheck --shell=sh extensions/*/*.sh standalone/*.sh tests/run.sh tests/smart/fakesmartctl tests/smart/fakemmc tests/fritzdsl/fakecurl tests/fritzwan/fakecurl tests/disk/fakedf tests/opkg/fakeopkg tests/wifi/fakeiw tests/wifi/fakeubus tests/wifi/fakeiwinfo packaging/*/*.sh packaging/deb/postinst packaging/deb-server/postinst packaging/opkg/postinst
 
 unittest:
 	sh tests/run.sh
@@ -18,6 +18,11 @@ unittest:
 # and packaging/README.md). Output lands in build/.
 deb:
 	sh packaging/deb/build.sh
+
+# The server-side counterpart: drop-in configuration for the Xymon
+# server (currently .deb only).
+deb-server:
+	sh packaging/deb-server/build.sh
 
 rpm:
 	sh packaging/rpm/build.sh
@@ -32,4 +37,4 @@ opkg:
 clean:
 	rm -rf build
 
-.PHONY: all test shellcheck unittest deb rpm freebsd opkg clean
+.PHONY: all test shellcheck unittest deb deb-server rpm freebsd opkg clean

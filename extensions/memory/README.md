@@ -11,11 +11,11 @@ in one status column, plus an NCV line for RRD graphing.
 - **Note:** a full Xymon client already delivers a `memory` column of
   its own; the default column name here is `mem`, not `memory`,
   precisely to avoid fighting over that column when this extension
-  and a full client report to the same server. The shipped `tasks.d`
+  and a full client report to the same server. The shipped `clientlaunch.d`
   snippet is **disabled by default** anyway, since a full-client host
   doesn't need this extension. This extension is meant for clientless
   hosts (routers, appliances) driven by the standalone runner, which
-  runs every installed extension regardless of `tasks.d`.
+  runs every installed extension regardless of `clientlaunch.d`.
 
 ## Metric
 
@@ -54,45 +54,20 @@ HTML comment (the NCV parser still sees it):
 used : 42.5
 ```
 
-**Caveat:** the stock `TEST2RRD` in `xymonserver.cfg` already contains
-a `memory` entry that maps the column to the built-in parser for
-full-client reports — that parser cannot read this extension's output.
-Because this extension's default column is `mem`, not `memory`, the
-common case needs no edit to that existing entry — just append a
-fresh one:
+Plain NCV on the server turns it into one `mem.rrd` per host. The
+needed configuration is shipped as ready-made drop-in files in
+[`server/`](server/) — copy `server/xymonserver.d/memory.cfg` into the
+server's `xymonserver.d/` and `server/graphs.d/memory.cfg` into its
+`graphs.d/`, then restart Xymon. See
+[server/README.md](server/README.md).
 
-1. Default (column `mem`): append a fresh `TEST2RRD` entry (see
-   below) — nothing to change in the existing `memory` entry.
-2. If you set `MEM_COLUMN="memory"` on a host that never runs a full
-   client, edit the existing `TEST2RRD` value instead and change the
-   `memory` entry to `memory=ncv` (do **not** just append — the first
-   match wins), keeping the stock column name.
-
-Then (assuming the default column name `mem`, option 1):
-
-```
-TEST2RRD+=",mem=ncv"
-NCV_mem="used:GAUGE"
-GRAPHS+=",memused"
-GRAPHS_mem="memused"
-```
-
-and add a graph definition to `graphs.cfg`:
-
-```
-[memused]
-    TITLE Memory used
-    YAXIS Percent
-    DEF:used=mem.rrd:used:AVERAGE
-    LINE2:used#0000FF:memory used
-    GPRINT:used:LAST: %5.1lf%% (cur)
-    GPRINT:used:MAX: %5.1lf%% (max)\n
-```
-
-Restart the Xymon server side (`xymond_rrd`) and check that `mem.rrd`
-appears under `$XYMONVAR/rrd/<host>/` after the next report. (With
-option 2, use `memory`/`memory.rrd`/`GRAPHS_memory` throughout
-instead.)
+**Caveat:** the stock `TEST2RRD` already contains a `memory` entry that
+maps that column to the built-in parser for full-client reports, which
+cannot read this extension's output. With the default column name
+`mem` that entry is not in the way and the drop-in file works as
+shipped; if you set `MEM_COLUMN="memory"`, the existing entry has to
+be changed to `memory=ncv` instead (the first match wins). The server
+README spells both cases out.
 
 ## OpenWrt / TurrisOS
 

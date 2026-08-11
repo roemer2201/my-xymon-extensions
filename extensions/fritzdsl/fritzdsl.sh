@@ -16,7 +16,7 @@
 # reach the box) - no software is installed on the FRITZ!Box.
 # Configuration: $XYMONHOME/etc/fritzdsl.cfg. Credentials are
 # required; without them the extension exits silently, so it is
-# harmless when installed but not configured (the shipped tasks.d
+# harmless when installed but not configured (the shipped launch
 # snippet is additionally DISABLED by default).
 
 set -u
