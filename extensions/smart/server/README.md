@@ -28,7 +28,7 @@ and registers the graphs:
 TEST2RRD+=",smart=ncv"
 SPLITNCV_smart="*:GAUGE"
 GRAPHS+=",smarttemp,smartwear,…"
-GRAPHS_smart="smarttemp,smartwear,smartrealloc,smartpending,smartcrc"
+GRAPHS_smart="smarttemp,smartwear,smartspare,…,smartdwpd,smartdwpdrecent"
 ```
 
 `SPLITNCV_smart` (as opposed to `NCV_smart`) makes xymond_rrd create
@@ -37,8 +37,27 @@ containing a single dataset named `lambda`. That is what allows an
 arbitrary, per-host varying number of disks. See `man xymond_rrd`
 (section NCV) if your Xymon version behaves differently.
 
-`GRAPHS_smart` is the selection shown on the `smart` status page
-itself — edit the copied file to pick the ones you care about.
+`GRAPHS_smart` lists the graphs drawn on the `smart` status page, and
+that page is the **only** place they appear — so the shipped file lists
+all of them. Edit the copied file to drop the ones you do not care
+about, but be aware that a graph removed there is gone from the web
+interface entirely: the trends page cannot show these graphs.
+
+The reason is in `lib/xymonrrd.c`, `find_xymon_graph()`. The trends page
+walks the host's RRD directory and looks up a graph for each file by
+comparing the **graph name** with the beginning of the *file* name (the
+next character has to be `.`, `,` or end-of-string). `FNPATTERN` is not
+consulted at that point. `smarttemp` is therefore not a match for
+`smart,sda_temp.rrd` — only a single graph named `smart` would be, and
+one graph cannot cover thirteen metrics with different units. The status
+page takes the other route: `GRAPHS_smart` is read in `lib/htmllog.c`
+and each name is passed to `showgraph.sh` verbatim, which looks the name
+up in `graphs.cfg` and *does* use `FNPATTERN`.
+
+A graph whose RRD files do not exist on a given host — `smartspare` on a
+host without NVMe, `smartrealloc` on a host with nothing but NVMe — is
+drawn as an empty frame (title and axes, no data), not as a broken
+image, because `showgraph.sh` still emits a valid PNG.
 
 `smartdwpd` and `smartdwpdrecent` show disk writes per day. Note that
 `dwpdrecent` needs some history before it can report anything: a freshly
