@@ -12,13 +12,13 @@ has to be edited. See
 in the top-level README for how those directories are wired up on your
 platform (Debian/Ubuntu ship them ready to use).
 
-## 1. xymonserver.d/smart.cfg
+## 1. xymonserver.d/my-xymon-extensions-smart.cfg
 
 Copy the snippet shipped next to this README into the server's
 drop-in directory:
 
 ```sh
-cp xymonserver.d/smart.cfg /etc/xymon/xymonserver.d/
+cp xymonserver.d/my-xymon-extensions-smart.cfg /etc/xymon/xymonserver.d/
 ```
 
 It appends the `smart` test to `TEST2RRD`, defines the split-NCV rule
@@ -47,12 +47,12 @@ by a reboot) starts sending it after `DWPD_WARMUP_HOURS` (default 6),
 initially averaged over a shorter span that grows into the full
 `DWPD_WINDOW_HOURS`. The client-side README explains the trade-off.
 
-## 2. graphs.d/smart.cfg
+## 2. graphs.d/my-xymon-extensions-smart.cfg
 
 Copy the graph definitions shipped next to this README:
 
 ```sh
-cp graphs.d/smart.cfg /etc/xymon/graphs.d/
+cp graphs.d/my-xymon-extensions-smart.cfg /etc/xymon/graphs.d/
 ```
 
 ## 3. Restart / verify

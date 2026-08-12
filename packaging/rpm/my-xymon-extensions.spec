@@ -90,24 +90,24 @@ sh packaging/common/stage.sh "%{buildroot}" \
 %config(noreplace) %{xymonhome}/etc/disk.cfg
 %config(noreplace) %{xymonhome}/etc/opkg.cfg
 %dir %{xymonhome}/etc/clientlaunch.d
-%config(noreplace) %{xymonhome}/etc/clientlaunch.d/smart.cfg
-%config(noreplace) %{xymonhome}/etc/clientlaunch.d/temp.cfg
-%config(noreplace) %{xymonhome}/etc/clientlaunch.d/la.cfg
-%config(noreplace) %{xymonhome}/etc/clientlaunch.d/memory.cfg
-%config(noreplace) %{xymonhome}/etc/clientlaunch.d/disk.cfg
-%config(noreplace) %{xymonhome}/etc/clientlaunch.d/opkg.cfg
+%config(noreplace) %{xymonhome}/etc/clientlaunch.d/my-xymon-extensions-smart.cfg
+%config(noreplace) %{xymonhome}/etc/clientlaunch.d/my-xymon-extensions-temp.cfg
+%config(noreplace) %{xymonhome}/etc/clientlaunch.d/my-xymon-extensions-la.cfg
+%config(noreplace) %{xymonhome}/etc/clientlaunch.d/my-xymon-extensions-memory.cfg
+%config(noreplace) %{xymonhome}/etc/clientlaunch.d/my-xymon-extensions-disk.cfg
+%config(noreplace) %{xymonhome}/etc/clientlaunch.d/my-xymon-extensions-opkg.cfg
 %{xymonhome}/ext/fritzdsl.sh
 %config(noreplace) %{xymonhome}/etc/fritzdsl.cfg
-%config(noreplace) %{xymonhome}/etc/clientlaunch.d/fritzdsl.cfg
+%config(noreplace) %{xymonhome}/etc/clientlaunch.d/my-xymon-extensions-fritzdsl.cfg
 %{xymonhome}/ext/fritzwan.sh
 %config(noreplace) %{xymonhome}/etc/fritzwan.cfg
-%config(noreplace) %{xymonhome}/etc/clientlaunch.d/fritzwan.cfg
+%config(noreplace) %{xymonhome}/etc/clientlaunch.d/my-xymon-extensions-fritzwan.cfg
 %{xymonhome}/ext/wifi.sh
 %config(noreplace) %{xymonhome}/etc/wifi.cfg
-%config(noreplace) %{xymonhome}/etc/clientlaunch.d/wifi.cfg
+%config(noreplace) %{xymonhome}/etc/clientlaunch.d/my-xymon-extensions-wifi.cfg
 %{xymonhome}/ext/if_link.sh
 %config(noreplace) %{xymonhome}/etc/if_link.cfg
-%config(noreplace) %{xymonhome}/etc/clientlaunch.d/if_link.cfg
+%config(noreplace) %{xymonhome}/etc/clientlaunch.d/my-xymon-extensions-if_link.cfg
 %{xymonhome}/ext/xymonext.sh
 %{xymonhome}/ext/xymonext-send.sh
 %config(noreplace) %{xymonhome}/etc/xymonext.cfg
@@ -151,6 +151,33 @@ RRD graphs need a one-time setup on the Xymon SERVER (not here):
 EOF
 
 %changelog
+* Mon Aug 10 2026 roemer2201 <r.oliver@web.de> - 0.16.0-1
+- packaging: every file installed into one of Xymon's shared drop-in
+  directories is now named my-xymon-extensions-<extension>.cfg. Those
+  directories belong to no single package: hobbit-plugins ships a
+  temp.cfg in clientlaunch.d, graphs.d and xymonserver.d, so installing
+  the server package on a host with hobbit-plugins failed outright
+  ("trying to overwrite /etc/xymon/graphs.d/temp.cfg, which is also in
+  package hobbit-plugins"), and the client package would have hit the
+  same wall in clientlaunch.d
+- temp: the graph section is renamed [temp] -> [tempext] and
+  GRAPHS/GRAPHS_temp follow. hobbit-plugins defines a [temp] graph of
+  its own reading a dataset named "temp" where split-NCV writes
+  "lambda"; with two sections of one name the file parsed last wins
+  silently, so the two definitions had to stop sharing a name (same
+  reason la uses [laext]). Its xymonserver.d entry TEST2RRD=,temp also
+  competes with ours: TEST2RRD is first-match-wins and their "temp"
+  maps the column to an RRD module xymond_rrd does not have - i.e. no
+  RRD at all - so ours has to be read first, which the file name now
+  guarantees (drop-ins are read alphabetically). Both packages can be
+  installed side by side again; the server package's post-install says
+  what to do when hobbit-plugins' temp plugin is actually in use
+- the deb packages migrate the old file names with
+  dpkg-maintscript-helper mv_conffile, chained after the 0.15.0 move
+  out of tasks.d, so local modifications survive both hops. New test:
+  nothing may be installed into a shared drop-in directory without the
+  package prefix
+
 * Mon Aug 10 2026 roemer2201 <r.oliver@web.de> - 0.15.0-1
 - packaging: the xymonlaunch snippets move from the Xymon server's
   drop-in directory tasks.d to the client's clientlaunch.d, where they

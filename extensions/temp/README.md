@@ -120,8 +120,8 @@ updated after the upgrade and can simply be deleted from
 Because the number of sensors varies per host, the server side uses
 **split-NCV** (one RRD file per sensor). The needed configuration is
 shipped as ready-made drop-in files in
-[`server/`](server/) — copy `server/xymonserver.d/temp.cfg` into the
-server's `xymonserver.d/` and `server/graphs.d/temp.cfg` into its
+[`server/`](server/) — copy `server/xymonserver.d/my-xymon-extensions-temp.cfg` into the
+server's `xymonserver.d/` and `server/graphs.d/my-xymon-extensions-temp.cfg` into its
 `graphs.d/`, then restart Xymon. See
 [server/README.md](server/README.md) for the details (and the caveat
 about a stock `TEST2RRD` that already maps `temp`).

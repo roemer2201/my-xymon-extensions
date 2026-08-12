@@ -18,13 +18,13 @@ has to be edited. See
 in the top-level README for how those directories are wired up on your
 platform (Debian/Ubuntu ship them ready to use).
 
-## 1. xymonserver.d/opkg.cfg
+## 1. xymonserver.d/my-xymon-extensions-opkg.cfg
 
 Copy the snippet shipped next to this README into the server's
 drop-in directory:
 
 ```sh
-cp xymonserver.d/opkg.cfg /etc/xymon/xymonserver.d/
+cp xymonserver.d/my-xymon-extensions-opkg.cfg /etc/xymon/xymonserver.d/
 ```
 
 ```
@@ -34,12 +34,12 @@ GRAPHS+=",opkgupd"
 GRAPHS_opkg="opkgupd"
 ```
 
-## 2. graphs.d/opkg.cfg
+## 2. graphs.d/my-xymon-extensions-opkg.cfg
 
 Copy the graph definition shipped next to this README:
 
 ```sh
-cp graphs.d/opkg.cfg /etc/xymon/graphs.d/
+cp graphs.d/my-xymon-extensions-opkg.cfg /etc/xymon/graphs.d/
 ```
 
 ## 3. Restart / verify

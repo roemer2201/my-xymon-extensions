@@ -40,14 +40,22 @@ inst() { # inst MODE SRC DST
     cp "$2" "$3" && chmod "$1" "$3"
 }
 
+# Prefix of every file installed into a drop-in directory shared with
+# other packages. Never drop it - see the task() comment below.
+PREFIX=my-xymon-extensions-
+
 mkdir -p "$DESTDIR$EXTDIR" "$DESTDIR$ETCDIR" || exit 1
 if [ "$LAUNCHDIR" != "-" ]; then
     mkdir -p "$DESTDIR$LAUNCHDIR" || exit 1
 fi
 
+# The installed file names carry the package name: clientlaunch.d is a
+# shared drop-in directory. hobbit-plugins, for one, ships a temp.cfg
+# of its own there, and dpkg refuses two packages claiming one path.
 task() { # task NAME
     [ "$LAUNCHDIR" = "-" ] && return 0
-    inst 0644 "packaging/common/clientlaunch.d/$1.cfg" "$DESTDIR$LAUNCHDIR/$1.cfg$SUF"
+    inst 0644 "packaging/common/clientlaunch.d/$PREFIX$1.cfg" \
+        "$DESTDIR$LAUNCHDIR/$PREFIX$1.cfg$SUF"
 }
 
 for ext in smart temp la memory disk opkg wifi if_link; do
@@ -94,10 +102,10 @@ if [ "$DOCDIR" != "-" ]; then
         inst 0644 "extensions/$ext/server/README.md" \
             "$DESTDIR$DOCDIR/$ext/server/README.md" || exit 1
         for dropin in xymonserver.d graphs.d rrddefinitions.d; do
-            [ -f "extensions/$ext/server/$dropin/$ext.cfg" ] || continue
+            [ -f "extensions/$ext/server/$dropin/$PREFIX$ext.cfg" ] || continue
             mkdir -p "$DESTDIR$DOCDIR/$ext/server/$dropin" || exit 1
-            inst 0644 "extensions/$ext/server/$dropin/$ext.cfg" \
-                "$DESTDIR$DOCDIR/$ext/server/$dropin/$ext.cfg" || exit 1
+            inst 0644 "extensions/$ext/server/$dropin/$PREFIX$ext.cfg" \
+                "$DESTDIR$DOCDIR/$ext/server/$dropin/$PREFIX$ext.cfg" || exit 1
         done
     done
 fi

@@ -2059,7 +2059,7 @@ fi
 for srvdir in "$REPO"/extensions/*/server; do
     [ -d "$srvdir" ] || continue
     ext=$(basename "$(dirname "$srvdir")")
-    for want in "README.md" "xymonserver.d/$ext.cfg"; do
+    for want in "README.md" "xymonserver.d/my-xymon-extensions-$ext.cfg"; do
         if [ -f "$srvdir/$want" ]; then
             echo "ok:   $ext ships server/$want"
         else
@@ -2150,8 +2150,9 @@ CLIENTSTAGE="$TMP/pkgstage-deb"
 # list too), so a snippet there runs twice on a combined host - that is
 # what this guards against.
 for snippet in smart temp la memory disk opkg fritzdsl fritzwan wifi if_link; do
-    grep -qx "/etc/xymon/clientlaunch.d/$snippet.cfg" "$TMP/client-paths" || {
-        echo "FAIL: $snippet snippet is not staged into clientlaunch.d"
+    grep -qx "/etc/xymon/clientlaunch.d/my-xymon-extensions-$snippet.cfg" \
+        "$TMP/client-paths" || {
+        echo "FAIL: $snippet snippet is not staged as clientlaunch.d/my-xymon-extensions-$snippet.cfg"
         FAIL=1
     }
 done
@@ -2160,6 +2161,21 @@ if grep -q "^/etc/xymon/tasks\.d/" "$TMP/client-paths"; then
     FAIL=1
 else
     echo "ok:   launch snippets go to clientlaunch.d, nothing into tasks.d"
+fi
+
+# Everything either package installs into one of Xymon's shared drop-in
+# directories must carry the package name. Those directories belong to
+# no one package: hobbit-plugins ships temp.cfg in clientlaunch.d,
+# graphs.d and xymonserver.d, and dpkg refuses to install two packages
+# that claim the same path (which is exactly how this rule was found).
+cat "$TMP/client-paths" "$TMP/server-paths" > "$TMP/all-paths"
+unprefixed=$(grep -E '^/etc/xymon/[a-z]+\.d/' "$TMP/all-paths" \
+    | grep -v '/my-xymon-extensions-' || true)
+if [ -z "$unprefixed" ]; then
+    echo "ok:   every file in a shared drop-in directory carries the package name"
+else
+    echo "FAIL: unprefixed files in shared drop-in directories: $(echo "$unprefixed" | tr '\n' ' ')"
+    FAIL=1
 fi
 
 # The deb migrates the old tasks.d conffiles; all three maintainer

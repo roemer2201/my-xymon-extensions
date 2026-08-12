@@ -11,13 +11,13 @@ has to be edited. See
 in the top-level README for how those directories are wired up on your
 platform (Debian/Ubuntu ship them ready to use).
 
-## 1. xymonserver.d/fritzwan.cfg
+## 1. xymonserver.d/my-xymon-extensions-fritzwan.cfg
 
 Copy the snippet shipped next to this README into the server's
 drop-in directory:
 
 ```sh
-cp xymonserver.d/fritzwan.cfg /etc/xymon/xymonserver.d/
+cp xymonserver.d/my-xymon-extensions-fritzwan.cfg /etc/xymon/xymonserver.d/
 ```
 
 All fritzwan metrics are plain gauges (the extension computes the
@@ -31,12 +31,12 @@ GRAPHS+=",fritzwanbps,fritzwanutil"
 GRAPHS_fritzwan="fritzwanbps,fritzwanutil"
 ```
 
-## 2. graphs.d/fritzwan.cfg
+## 2. graphs.d/my-xymon-extensions-fritzwan.cfg
 
 Copy the graph definitions shipped next to this README:
 
 ```sh
-cp graphs.d/fritzwan.cfg /etc/xymon/graphs.d/
+cp graphs.d/my-xymon-extensions-fritzwan.cfg /etc/xymon/graphs.d/
 ```
 
 ## 3. Restart / verify

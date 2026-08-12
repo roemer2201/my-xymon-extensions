@@ -81,8 +81,8 @@ critical : 1
 Plain NCV on the server turns them into one `opkg.rrd` per host with
 two datasets. The needed configuration is shipped as ready-made
 drop-in files in [`server/`](server/) — copy
-`server/xymonserver.d/opkg.cfg` into the server's `xymonserver.d/` and
-`server/graphs.d/opkg.cfg` into its `graphs.d/`, then restart Xymon.
+`server/xymonserver.d/my-xymon-extensions-opkg.cfg` into the server's `xymonserver.d/` and
+`server/graphs.d/my-xymon-extensions-opkg.cfg` into its `graphs.d/`, then restart Xymon.
 See [server/README.md](server/README.md).
 
 ## OpenWrt / TurrisOS

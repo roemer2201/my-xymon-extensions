@@ -20,13 +20,13 @@ safe to install at any point: without MAX archives rrdtool silently
 falls back to AVERAGE, so it just keeps showing the old, diluted
 picture until the files have been recreated.
 
-## 1. xymonserver.d/if_link.cfg
+## 1. xymonserver.d/my-xymon-extensions-if_link.cfg
 
 Copy the snippet shipped next to this README into the server's
 drop-in directory:
 
 ```sh
-cp xymonserver.d/if_link.cfg /etc/xymon/xymonserver.d/
+cp xymonserver.d/my-xymon-extensions-if_link.cfg /etc/xymon/xymonserver.d/
 ```
 
 The metric is a plain gauge (the extension computes the delta itself,
@@ -39,12 +39,12 @@ GRAPHS+=",iflink"
 GRAPHS_if_link="iflink"
 ```
 
-## 2. rrddefinitions.d/if_link.cfg
+## 2. rrddefinitions.d/my-xymon-extensions-if_link.cfg
 
 Copy the archive definition shipped next to this README:
 
 ```sh
-cp rrddefinitions.d/if_link.cfg /etc/xymon/rrddefinitions.d/
+cp rrddefinitions.d/my-xymon-extensions-if_link.cfg /etc/xymon/rrddefinitions.d/
 ```
 
 On Debian/Ubuntu that directory does not exist yet — create it and add
@@ -68,12 +68,12 @@ the test name it was called with (`create_and_update_rrd(…, testname,
 > Xymon 4.2 had a `TRACKMAX` setting in `xymonserver.cfg` for this.
 > It was **dropped in 4.3** — `rrddefinitions.cfg` replaces it.
 
-## 3. graphs.d/if_link.cfg
+## 3. graphs.d/my-xymon-extensions-if_link.cfg
 
 Copy the graph definition shipped next to this README:
 
 ```sh
-cp graphs.d/if_link.cfg /etc/xymon/graphs.d/
+cp graphs.d/my-xymon-extensions-if_link.cfg /etc/xymon/graphs.d/
 ```
 
 The definition draws its line from the MAX archive and prints the exact
@@ -125,7 +125,7 @@ rrdtool info $XYMONVAR/rrd/<host>/if_link,changes_eth0.rrd | grep 'cf = "MAX"'
 ```
 
 One RRD file per monitored interface; the number varies with the host's
-ports, which is expected — the FNPATTERN in `graphs.d/if_link.cfg`
+ports, which is expected — the FNPATTERN in `graphs.d/my-xymon-extensions-if_link.cfg`
 picks up whatever exists.
 
 The `grep` must print four `cf = "MAX"` lines. If it prints nothing,

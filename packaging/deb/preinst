@@ -1,28 +1,38 @@
 #!/bin/sh
-# Move the xymonlaunch snippets from /etc/xymon/tasks.d (where versions
-# up to 0.14.0-1 put them) to /etc/xymon/clientlaunch.d.
-#
-# Why: tasks.d is the drop-in directory of the SERVER's xymonlaunch
-# (Debian's tasks.cfg includes it via tasks-include.cfg), clientlaunch.d
-# is the client's (clientlaunch.cfg via clientlaunch-include.cfg). On a
-# host running server and client, Debian starts one xymonlaunch with
-# tasks.cfg - and that includes clientlaunch-include.cfg as well, so a
-# snippet in tasks.d that the admin also wired into clientlaunch.cfg was
-# loaded twice.
-#
-# dpkg-maintscript-helper mv_conffile carries local modifications over
-# (an enabled fritzdsl snippet keeps its DISABLED line removed) and must
-# be called from preinst, postinst and postrm alike.
+# Carry the xymonlaunch snippets over from the paths older versions of
+# this package used; see migrate_conffiles() below for the history.
 set -e
 
-# The version that last shipped the files in tasks.d. Never change this.
-PRIOR=0.14.0-1
+# Conffile moves this package has been through. dpkg-maintscript-helper
+# must see the same calls in preinst, postinst and postrm, so the list
+# lives here and is sourced by all three.
+#
+#  0.14.0-1  snippets sat in the SERVER's drop-in directory tasks.d
+#  0.15.0-1  moved to the client's clientlaunch.d, still named <ext>.cfg
+#  0.16.0-1  renamed to my-xymon-extensions-<ext>.cfg, because
+#            clientlaunch.d is shared: hobbit-plugins ships a temp.cfg
+#            there too, and dpkg refuses two packages claiming one path
+#
+# Chained moves are fine: on an upgrade from 0.14.0 the first call moves
+# tasks.d/x.cfg to clientlaunch.d/x.cfg and the second one renames it.
+migrate_conffiles() {
+    # Only dpkg may drive this: the helper needs DPKG_MAINTSCRIPT_* in
+    # the environment, and "supports" is the canonical availability
+    # check. Outside dpkg (test suite, manual run) this is a no-op.
+    [ -n "${DPKG_MAINTSCRIPT_NAME:-}" ] || return 0
+    dpkg-maintscript-helper supports mv_conffile >/dev/null 2>&1 || return 0
+    for snippet in smart temp la memory disk opkg fritzdsl fritzwan wifi if_link; do
+        dpkg-maintscript-helper mv_conffile \
+            "/etc/xymon/tasks.d/$snippet.cfg" \
+            "/etc/xymon/clientlaunch.d/$snippet.cfg" \
+            0.14.0-1 -- "$@"
+        dpkg-maintscript-helper mv_conffile \
+            "/etc/xymon/clientlaunch.d/$snippet.cfg" \
+            "/etc/xymon/clientlaunch.d/my-xymon-extensions-$snippet.cfg" \
+            0.15.0-1 -- "$@"
+    done
+}
 
-for snippet in smart temp la memory disk opkg fritzdsl fritzwan wifi if_link; do
-    dpkg-maintscript-helper mv_conffile \
-        "/etc/xymon/tasks.d/$snippet.cfg" \
-        "/etc/xymon/clientlaunch.d/$snippet.cfg" \
-        "$PRIOR" -- "$@"
-done
+migrate_conffiles "$@"
 
 exit 0

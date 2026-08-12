@@ -1,4 +1,5 @@
 #!/bin/sh
+set -e
 # Post-install for the server package: report whether the three
 # drop-in directories this package writes into are actually read by
 # the stock Xymon configuration, and how to fix it if not.
@@ -8,7 +9,37 @@
 # editing another package's conffile makes dpkg prompt on its next
 # upgrade. It also does not restart Xymon by itself - this is a
 # monitoring server, the admin picks the moment.
-set -e
+# Conffile rename this package has been through: up to 0.15.0-1 the
+# drop-ins were installed under their bare extension name, which
+# collides with other packages in these shared directories -
+# hobbit-plugins ships graphs.d/temp.cfg and xymonserver.d/temp.cfg,
+# and dpkg refuses two packages that claim the same path. Since 0.16.0
+# every file carries the package name.
+#
+# dpkg-maintscript-helper must see the same calls in preinst, postinst
+# and postrm; it only touches files registered as conffiles of THIS
+# package, so another package's temp.cfg is never affected.
+migrate_conffiles() {
+    # Only dpkg may drive this: the helper needs DPKG_MAINTSCRIPT_* in
+    # the environment, and "supports" is the canonical availability
+    # check. Outside dpkg (test suite, manual run) this is a no-op.
+    [ -n "${DPKG_MAINTSCRIPT_NAME:-}" ] || return 0
+    dpkg-maintscript-helper supports mv_conffile >/dev/null 2>&1 || return 0
+    for ext in smart temp la memory opkg fritzdsl fritzwan wifi if_link xymonext; do
+        for dropin in xymonserver.d graphs.d; do
+            dpkg-maintscript-helper mv_conffile \
+                "/etc/xymon/$dropin/$ext.cfg" \
+                "/etc/xymon/$dropin/my-xymon-extensions-$ext.cfg" \
+                0.15.0-1 -- "$@"
+        done
+    done
+    dpkg-maintscript-helper mv_conffile \
+        "/etc/xymon/rrddefinitions.d/if_link.cfg" \
+        "/etc/xymon/rrddefinitions.d/my-xymon-extensions-if_link.cfg" \
+        0.15.0-1 -- "$@"
+}
+
+migrate_conffiles "$@"
 
 # The Xymon configuration directory. The override exists so the test
 # suite can point the check at a fixture; dpkg always runs this script
@@ -65,6 +96,25 @@ case "${1:-}" in
             todo=1
         fi
 
+        # hobbit-plugins ships its own temp drop-ins for a temperature
+        # plugin of its own. Both cannot own the "temp" column.
+        if [ -s "$ETC/xymonserver.d/temp.cfg" ] || [ -s "$ETC/graphs.d/temp.cfg" ]; then
+            cat <<EOF
+ NOTE: hobbit-plugins (or something else) also ships temp drop-ins:
+       $ETC/xymonserver.d/temp.cfg, $ETC/graphs.d/temp.cfg
+       Both define the "temp" column, and only one can have it:
+        - TEST2RRD is first-match-wins, and their entry maps temp to an
+          RRD module that does not exist, i.e. no graphs at all. Our
+          file wins only because it is read first (drop-ins are read in
+          alphabetical order and my-xymon-extensions- sorts earlier).
+        - Our graph is named [tempext] so their [temp] section cannot
+          override it, but theirs still shows an empty graph on the
+          trends page.
+       If you do not use hobbit-plugins' temp plugin, empty those two
+       files. If you do, give this extension another column name
+       (TEMP_COLUMN on its clients) instead of relying on the order.
+EOF
+        fi
         echo " Then restart the Xymon server:  service xymon restart"
         echo " (a restart, not a reload: the include lists in"
         echo " /var/run/xymon/ are regenerated at start)"
