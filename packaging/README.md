@@ -107,6 +107,15 @@ must stay disjoint:
   `/etc/xymon/clientlaunch.d/<name>.cfg`
 - server: only the three drop-in directories above
 
+The same applies to **other** packages: `clientlaunch.d`, `graphs.d`,
+`xymonserver.d` and `rrddefinitions.d` belong to no one package.
+Debian's `hobbit-plugins` ships a `temp.cfg` in three of them, so
+neither package installs those three paths — the `temp` configuration
+ships as documentation and is put in place by hand (see
+`extensions/temp/server/README.md`). `tests/run.sh` fails if one of
+those paths ever reappears in a package, and checks that the files are
+still shipped as documentation.
+
 `tests/run.sh` stages both with the Debian paths and fails if a single
 path appears in both; the CI job additionally installs both packages
 with dpkg and compares the file lists it recorded.

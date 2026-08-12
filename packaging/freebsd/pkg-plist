@@ -17,7 +17,6 @@ www/xymon/client/ext/xymonext-send.sh
 @sample www/xymon/client/etc/disk.cfg.sample
 @sample www/xymon/client/etc/opkg.cfg.sample
 @sample www/xymon/client/etc/clientlaunch.d/smart.cfg.sample
-@sample www/xymon/client/etc/clientlaunch.d/temp.cfg.sample
 @sample www/xymon/client/etc/clientlaunch.d/la.cfg.sample
 @sample www/xymon/client/etc/clientlaunch.d/memory.cfg.sample
 @sample www/xymon/client/etc/clientlaunch.d/disk.cfg.sample
@@ -33,6 +32,7 @@ www/xymon/client/ext/xymonext-send.sh
 @sample www/xymon/client/etc/xymonext.cfg.sample
 share/doc/my-xymon-extensions/README.md
 share/doc/my-xymon-extensions/temp/README.md
+share/doc/my-xymon-extensions/temp/clientlaunch.d/temp.cfg
 share/doc/my-xymon-extensions/temp/server/README.md
 share/doc/my-xymon-extensions/temp/server/graphs.d/temp.cfg
 share/doc/my-xymon-extensions/temp/server/xymonserver.d/temp.cfg

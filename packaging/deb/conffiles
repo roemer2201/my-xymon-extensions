@@ -5,7 +5,6 @@
 /etc/xymon/disk.cfg
 /etc/xymon/opkg.cfg
 /etc/xymon/clientlaunch.d/smart.cfg
-/etc/xymon/clientlaunch.d/temp.cfg
 /etc/xymon/clientlaunch.d/la.cfg
 /etc/xymon/clientlaunch.d/memory.cfg
 /etc/xymon/clientlaunch.d/disk.cfg

@@ -64,6 +64,14 @@ ships them as ready-made drop-in files under
 | `server/graphs.d/<name>.cfg` | `graphs.d/` | the `[graphname]` graph definitions |
 | `server/rrddefinitions.d/<name>.cfg` | `rrddefinitions.d/` | RRA archive layout (only `if_link` so far) |
 
+These directories are shared with other packages. Debian's
+`hobbit-plugins` ships a `temp.cfg` in `graphs.d`, `xymonserver.d`
+**and** `clientlaunch.d`, and dpkg refuses to install two packages that
+claim the same path — so the packages here deliberately do **not**
+install the three `temp` files. They are shipped as documentation and
+put in place by hand; see
+[extensions/temp/server/README.md](extensions/temp/server/README.md).
+
 ### Why this works
 
 Xymon reads **all** of its configuration files through one and the same
@@ -103,8 +111,8 @@ It is independent of the client package: install it on the Xymon
 server, the client package on the monitored hosts, both together where
 the server also runs a client (which Debian does by default — `xymon`
 depends on `xymon-client`). They share `/etc/xymon` but no single file:
-the client owns `<name>.cfg` and `clientlaunch.d/`, the server package only
-writes into the three drop-in directories above.
+the client owns `<name>.cfg` and its `clientlaunch.d` snippets, the
+server package only writes into the three drop-in directories above.
 
 The package never edits `xymonserver.cfg`, `graphs.cfg` or
 `rrddefinitions.cfg` — those are conffiles of the `xymon` package, and

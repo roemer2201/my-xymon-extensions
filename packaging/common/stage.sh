@@ -40,6 +40,14 @@ inst() { # inst MODE SRC DST
     cp "$2" "$3" && chmod "$1" "$3"
 }
 
+# Extensions whose xymonlaunch snippet is NOT installed, because the
+# file name is already taken in the shared clientlaunch.d directory:
+# hobbit-plugins ships a temp.cfg of its own there, and dpkg refuses
+# two packages that claim the same path. The snippet is still shipped
+# as documentation - see the doc section at the end of this file and
+# extensions/temp/README.md.
+SKIP_SNIPPETS="temp"
+
 mkdir -p "$DESTDIR$EXTDIR" "$DESTDIR$ETCDIR" || exit 1
 if [ "$LAUNCHDIR" != "-" ]; then
     mkdir -p "$DESTDIR$LAUNCHDIR" || exit 1
@@ -47,7 +55,11 @@ fi
 
 task() { # task NAME
     [ "$LAUNCHDIR" = "-" ] && return 0
-    inst 0644 "packaging/common/clientlaunch.d/$1.cfg" "$DESTDIR$LAUNCHDIR/$1.cfg$SUF"
+    for skip in $SKIP_SNIPPETS; do
+        [ "$1" = "$skip" ] && return 0
+    done
+    inst 0644 "packaging/common/clientlaunch.d/$1.cfg" \
+        "$DESTDIR$LAUNCHDIR/$1.cfg$SUF"
 }
 
 for ext in smart temp la memory disk opkg wifi if_link; do
@@ -83,6 +95,14 @@ if [ "$DOCDIR" != "-" ]; then
         inst 0644 "extensions/$ext/README.md" "$DESTDIR$DOCDIR/$ext/README.md" || exit 1
     done
     inst 0644 extensions/smart/sudoers.example "$DESTDIR$DOCDIR/smart/sudoers.example" || exit 1
+
+    # The launch snippets that are not installed (see SKIP_SNIPPETS)
+    # ship here instead, so they can be put in place by hand.
+    for ext in $SKIP_SNIPPETS; do
+        mkdir -p "$DESTDIR$DOCDIR/$ext/clientlaunch.d" || exit 1
+        inst 0644 "packaging/common/clientlaunch.d/$ext.cfg" \
+            "$DESTDIR$DOCDIR/$ext/clientlaunch.d/$ext.cfg" || exit 1
+    done
 
     # Server-side documentation: the README plus the ready-made drop-in
     # files for the Xymon server's xymonserver.d, graphs.d and (rarely)

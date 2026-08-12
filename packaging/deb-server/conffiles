@@ -1,5 +1,4 @@
 /etc/xymon/xymonserver.d/smart.cfg
-/etc/xymon/xymonserver.d/temp.cfg
 /etc/xymon/xymonserver.d/la.cfg
 /etc/xymon/xymonserver.d/memory.cfg
 /etc/xymon/xymonserver.d/opkg.cfg
@@ -9,7 +8,6 @@
 /etc/xymon/xymonserver.d/if_link.cfg
 /etc/xymon/xymonserver.d/xymonext.cfg
 /etc/xymon/graphs.d/smart.cfg
-/etc/xymon/graphs.d/temp.cfg
 /etc/xymon/graphs.d/la.cfg
 /etc/xymon/graphs.d/memory.cfg
 /etc/xymon/graphs.d/opkg.cfg

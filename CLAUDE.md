@@ -96,12 +96,12 @@ target platform.
     produces RRD graphs. Never tell users to edit a stock config file:
     ship ready-made drop-in files, one per Xymon config file, all named
     `<name>.cfg`:
-    - `server/xymonserver.d/<name>.cfg` — `TEST2RRD`, `NCV_*`/
-      `SPLITNCV_*`, `GRAPHS`/`GRAPHS_<column>` (append with `NAME+=`,
-      leading comma, and note that this requires the file to be read
-      after the stock settings)
-    - `server/graphs.d/<name>.cfg` — the `[graphname]` definitions
-    - `server/rrddefinitions.d/<name>.cfg` — RRA archives, rarely needed
+    - `server/xymonserver.d/…` — `TEST2RRD`, `NCV_*`/`SPLITNCV_*`,
+      `GRAPHS`/`GRAPHS_<column>` (append with `NAME+=`, leading comma,
+      and note that this requires the file to be read after the stock
+      settings)
+    - `server/graphs.d/…` — the `[graphname]` definitions
+    - `server/rrddefinitions.d/…` — RRA archives, rarely needed
     - `server/README.md` — how to install them, verify, and alert
 
     This works because Xymon reads *every* config file through the same
@@ -127,6 +127,19 @@ target platform.
   `packaging/deb-server`: conffiles lists, plist, `%files`). A change
   is not complete until all package definitions are consistent —
   `tests/run.sh` pins this and fails on a mismatch.
+- Xymon's drop-in directories (`clientlaunch.d`, `graphs.d`,
+  `xymonserver.d`, `rrddefinitions.d`) are shared with other packages,
+  and dpkg refuses two packages claiming one path. Debian's
+  `hobbit-plugins` ships `temp.cfg` in three of them, so **no package
+  here installs those paths**: the `temp` drop-ins ship as
+  documentation and are copied in by hand (`SKIP_SNIPPETS` in
+  `stage.sh`, `SKIP_EXTENSIONS` in `stage-server.sh`). Before adding a
+  new drop-in, check `dpkg -S /etc/xymon/<dir>/<name>.cfg` on a Debian
+  server. `tests/run.sh` pins the known-taken paths.
+- Read order matters where two packages configure one column: the
+  first `TEST2RRD` entry wins (prepend with
+  `TEST2RRD="x=ncv,$TEST2RRD"` to be independent of it), while for
+  duplicate `[graph]` sections the **last** one parsed wins.
 - On Debian/Ubuntu the Xymon **server and client share `/etc/xymon`**,
   and the `xymon` package depends on `xymon-client`, so both of our
   packages can end up on the same host. dpkg refuses two packages that

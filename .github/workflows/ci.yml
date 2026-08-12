@@ -64,8 +64,12 @@ jobs:
             build/my-xymon-extensions-server_*.deb
           dpkg -L my-xymon-extensions | sort > /tmp/client.list
           dpkg -L my-xymon-extensions-server | sort > /tmp/server.list
+          # Directories are shared legitimately, files are not. Note the
+          # "if" instead of "[ -f ] && echo": the shared entries end on a
+          # directory, so the loop would exit non-zero and set -e would
+          # kill the step before it ever got to the assertion.
           shared=$(comm -12 /tmp/client.list /tmp/server.list \
-            | while read -r p; do [ -f "$p" ] && echo "$p"; done)
+            | while read -r p; do if [ -f "$p" ]; then echo "$p"; fi; done)
           test -z "$shared" || { echo "both packages ship: $shared"; exit 1; }
           sudo dpkg --purge my-xymon-extensions-server my-xymon-extensions
       - uses: actions/upload-artifact@v4

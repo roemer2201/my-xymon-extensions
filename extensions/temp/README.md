@@ -10,6 +10,14 @@ per-sensor threshold checks and NCV lines for RRD graphing.
   without that interface (FreeBSD) report `clear`.
 - **Requires:** nothing beyond the kernel's sysfs — no `lm-sensors`,
   no `jq`, no `bc`; runs fine on BusyBox.
+- **Note:** the packages install the script and its config, but *not*
+  the `clientlaunch.d/temp.cfg` snippet that schedules it — that file
+  name belongs to Debian's `hobbit-plugins` package, and dpkg refuses
+  two packages claiming one path. Copy it in once from the docs
+  (`/usr/share/doc/my-xymon-extensions/temp/clientlaunch.d/temp.cfg`,
+  in this repository `packaging/common/clientlaunch.d/temp.cfg`) or add
+  the task to `clientlaunch.cfg` yourself. On OpenWrt/TurrisOS the
+  standalone runner is unaffected — it runs every installed extension.
 
 ## Data sources
 
@@ -123,8 +131,9 @@ shipped as ready-made drop-in files in
 [`server/`](server/) — copy `server/xymonserver.d/temp.cfg` into the
 server's `xymonserver.d/` and `server/graphs.d/temp.cfg` into its
 `graphs.d/`, then restart Xymon. See
-[server/README.md](server/README.md) for the details (and the caveat
-about a stock `TEST2RRD` that already maps `temp`).
+[server/README.md](server/README.md) for the details — including why
+these two are the only drop-ins the server package does not install
+itself, and what to do when `hobbit-plugins` is in play.
 
 ## OpenWrt / TurrisOS
 

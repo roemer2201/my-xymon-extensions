@@ -1,0 +1,47 @@
+#!/bin/sh
+# Second call site of the conffile rename; dpkg-maintscript-helper needs
+# the same calls in preinst, postinst and postrm.
+set -e
+
+# Conffile history of this package. dpkg-maintscript-helper must see
+# the same calls in preinst, postinst and postrm.
+#
+#  0.16.0-1  drop-ins were briefly named my-xymon-extensions-<ext>.cfg
+#  0.17.0-1  back to <ext>.cfg, and the temp drop-ins are no longer
+#            installed at all: xymonserver.d/temp.cfg and
+#            graphs.d/temp.cfg belong to hobbit-plugins on
+#            Debian/Ubuntu, and dpkg refuses two packages that claim
+#            one path. They ship as documentation instead.
+#
+# mv_conffile/rm_conffile only ever touch files registered as conffiles
+# of THIS package, so hobbit-plugins' temp.cfg is never affected
+# (ensure_package_owns_file in the helper).
+migrate_conffiles() {
+    # Only dpkg may drive this - see the client package's preinst.
+    [ -n "${DPKG_MAINTSCRIPT_NAME:-}" ] || return 0
+    dpkg-maintscript-helper supports mv_conffile >/dev/null 2>&1 || return 0
+
+    for ext in smart la memory opkg fritzdsl fritzwan wifi if_link xymonext; do
+        for dropin in xymonserver.d graphs.d; do
+            dpkg-maintscript-helper mv_conffile \
+                "/etc/xymon/$dropin/my-xymon-extensions-$ext.cfg" \
+                "/etc/xymon/$dropin/$ext.cfg" \
+                0.16.0-1 -- "$@"
+        done
+    done
+    dpkg-maintscript-helper mv_conffile \
+        "/etc/xymon/rrddefinitions.d/my-xymon-extensions-if_link.cfg" \
+        "/etc/xymon/rrddefinitions.d/if_link.cfg" \
+        0.16.0-1 -- "$@"
+
+    for dropin in xymonserver.d graphs.d; do
+        dpkg-maintscript-helper rm_conffile \
+            "/etc/xymon/$dropin/temp.cfg" 0.15.0-1 -- "$@"
+        dpkg-maintscript-helper rm_conffile \
+            "/etc/xymon/$dropin/my-xymon-extensions-temp.cfg" 0.16.0-1 -- "$@"
+    done
+}
+
+migrate_conffiles "$@"
+
+exit 0
