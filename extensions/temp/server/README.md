@@ -7,46 +7,62 @@ via **split-NCV**, one RRD file per sensor, because the number of
 sensors varies per host. This is a one-time setup on the Xymon server
 host.
 
-Both steps are **drop-in files**: nothing in a stock Xymon config file
-has to be edited. See
+> **This extension is the one exception in the server package.** Its
+> two drop-ins are *not* installed by `my-xymon-extensions-server`:
+> `xymonserver.d/temp.cfg` and `graphs.d/temp.cfg` are file names that
+> Debian's `hobbit-plugins` package already ships, and dpkg refuses to
+> install two packages claiming one path. The files are shipped as
+> documentation instead
+> (`/usr/share/doc/my-xymon-extensions-server/temp/`) and are put in
+> place by hand — two `cp` commands, nothing else differs from the
+> other extensions. Which case you are in:
+> [Coexisting with hobbit-plugins](#coexisting-with-hobbit-plugins).
+
+See
 [Server-side setup: drop-in directories](../../../README.md#server-side-setup-drop-in-directories)
-in the top-level README for how those directories are wired up on your
-platform (Debian/Ubuntu ship them ready to use).
+in the top-level README for how the drop-in directories are wired up on
+your platform (Debian/Ubuntu ship them ready to use).
 
-## 1. xymonserver.d/my-xymon-extensions-temp.cfg
-
-Copy the snippet shipped next to this README into the server's
-drop-in directory:
+## 1. xymonserver.d/temp.cfg
 
 ```sh
-cp xymonserver.d/my-xymon-extensions-temp.cfg /etc/xymon/xymonserver.d/
+cp xymonserver.d/temp.cfg /etc/xymon/xymonserver.d/
 ```
 
 ```
 TEST2RRD+=",temp=ncv"
 SPLITNCV_temp="*:GAUGE"
-GRAPHS+=",tempext"
-GRAPHS_temp="tempext"
+GRAPHS+=",temp"
+GRAPHS_temp="temp"
 ```
 
 **Caveat:** the first match in `TEST2RRD` wins — `xymond` builds a tree
-from the value and keeps the first entry per test name. If your stock
-`TEST2RRD` already contains a `temp` entry (some setups map it to the
-`temperature` module), appending has no effect — change that entry in
-`xymonserver.cfg` to `temp=ncv` instead and drop the `TEST2RRD` line
-from the copied file.
+from the value and keeps the first entry per test name. If something
+read *earlier* already maps `temp` (a stock entry pointing at the
+`temperature` module, or hobbit-plugins' drop-in), appending has no
+effect. Two ways out: fix that entry, or make this one independent of
+the read order by using
 
-## 2. graphs.d/my-xymon-extensions-temp.cfg
+```
+TEST2RRD="temp=ncv,$TEST2RRD"
+```
 
-Copy the graph definition shipped next to this README:
+instead of the `+=` line — prepending puts it in front of everything,
+whatever is read when.
+
+## 2. graphs.d/temp.cfg
 
 ```sh
-cp graphs.d/my-xymon-extensions-temp.cfg /etc/xymon/graphs.d/
+cp graphs.d/temp.cfg /etc/xymon/graphs.d/
 ```
 
 Split-NCV always stores the value in a dataset called `lambda`,
-regardless of the test name. The section is named `[tempext]`, not
-`[temp]` — see [Coexisting with hobbit-plugins](#coexisting-with-hobbit-plugins).
+regardless of the test name. If you already have a `[temp]` section
+from an older or unrelated setup, fix its `DEF` line to read from
+`lambda` instead of adding a second section — with two sections of one
+name the one parsed **last** wins (`load_gdefs` pushes each onto the
+head of the list, the lookup takes the first hit), so duplicates make
+the result depend on file order.
 
 ## 3. Restart / verify
 
@@ -65,46 +81,61 @@ being updated after the upgrade and can simply be deleted.
 
 ## Coexisting with hobbit-plugins
 
-Debian's `hobbit-plugins` package ships a temperature plugin of its own
-and claims the same column. Its drop-ins are
-`/etc/xymon/xymonserver.d/temp.cfg` and `/etc/xymon/graphs.d/temp.cfg`:
+Debian's `hobbit-plugins` ships a temperature plugin of its own and
+claims the same column, with the same two file names:
 
 ```
+# /etc/xymon/xymonserver.d/temp.cfg
 TEST2RRD="$TEST2RRD,temp"        # maps the column to an RRD module "temp"
 GRAPHS="$GRAPHS,temp"
+
+# /etc/xymon/graphs.d/temp.cfg
 [temp]  … DEF:…=@RRDFN@:temp:AVERAGE
 ```
 
-Two things follow, and both are handled by the file names and section
-names this repository uses — do not rename them away:
+Three cases:
 
-- **`TEST2RRD` is first-match-wins**, and `temp` (without `=ncv`) maps
-  the column to an RRD module that `xymond_rrd` does not have: no
-  handler matches, so **no RRD file is written at all**. Our entry
-  `temp=ncv` must therefore be read first. Drop-ins are read in
-  alphabetical order, and `my-xymon-extensions-temp.cfg` sorts before
-  `temp.cfg` — that is what makes it deterministic.
-- **Duplicate graph sections**: with two `[temp]` sections the one
-  parsed *last* wins (`load_gdefs` pushes each section onto the head of
-  the list and the lookup takes the first hit). Our graph is therefore
-  named `[tempext]`, so neither definition can silently replace the
-  other — the same trick the `la` extension uses with `[laext]`.
+**hobbit-plugins is not installed.** Nothing special — copy both files
+in as shown above and you are done. (The server package leaves them out
+regardless, because it cannot know whether the package will be
+installed later.)
 
-That makes the two coexist without breaking, but they still both offer
-a graph for the column: hobbit's `[temp]` has the same `FNPATTERN` and
-would render an empty graph from our files, since it reads a dataset
-named `temp` where split-NCV writes `lambda`. If you do not use
-hobbit-plugins' temp plugin (it ships `DISABLED`), empty its two
-`temp.cfg` drop-ins. If you *do* use it, the two cannot share the
-column — give this extension another one via `TEMP_COLUMN` on its
-clients and adjust `TEST2RRD`/`GRAPHS_*` in the copied file to match.
+**It is installed, but you do not use its temp plugin.** That is the
+normal case: its client-side task ships `DISABLED`. Overwrite its two
+files with ours. Note that both are conffiles of `hobbit-plugins`, so
+dpkg will ask what to do with them on that package's next upgrade —
+answer "keep the currently-installed version". If you prefer not to
+touch another package's files, empty them instead
+(`: > /etc/xymon/graphs.d/temp.cfg`) and put ours in under a different
+name, e.g. `temp-ext.cfg`; then make step 1 order-independent with the
+`TEST2RRD="temp=ncv,$TEST2RRD"` form above, because a file name alone
+does not reliably decide the read order (the directory is expanded by a
+shell glob in Debian's init script, i.e. with locale-dependent
+collation).
+
+Leaving both configurations active is the one thing that does *not*
+work: their `TEST2RRD` entry maps the column to an RRD module
+`xymond_rrd` does not have — no branch in `update_rrd` matches `temp`,
+so whichever of the two is read first decides whether **any** RRD file
+is written. And their `[temp]` graph reads a dataset named `temp` where
+split-NCV writes `lambda`, so on top of that the graph would come out
+empty.
+
+**You actually use hobbit-plugins' temp plugin.** Then the two cannot
+share the column: give this extension its own via `TEMP_COLUMN` on its
+clients, and change `temp` to that name everywhere in the two copied
+files (including the `FNPATTERN`).
 
 **If your temp RRDs predate this setup**, check what created them:
 files written by another handler have a different dataset name, and
-`xymond_rrd` cannot update them with `lambda`. `rrdtool info
-$XYMONVAR/rrd/<host>/temp,<sensor>.rrd | grep '^ds\['` shows it; if it
-says anything but `lambda`, delete those files once and let them be
-recreated.
+`xymond_rrd` cannot update them with `lambda`.
+
+```sh
+rrdtool info $XYMONVAR/rrd/<host>/temp,<sensor>.rrd | grep '^ds\['
+```
+
+If that says anything but `lambda`, delete those files once and let
+them be recreated.
 
 The column name `temp` does not collide with Xymon's own stock
 `[temperature]` graph — that is a different name, and a different

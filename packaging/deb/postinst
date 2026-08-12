@@ -3,34 +3,48 @@
 # post-install notes.
 set -e
 
-# Conffile moves this package has been through. dpkg-maintscript-helper
-# must see the same calls in preinst, postinst and postrm, so the list
-# lives here and is sourced by all three.
+# Conffile history of this package. dpkg-maintscript-helper must see
+# the same calls in preinst, postinst and postrm.
 #
 #  0.14.0-1  snippets sat in the SERVER's drop-in directory tasks.d
-#  0.15.0-1  moved to the client's clientlaunch.d, still named <ext>.cfg
-#  0.16.0-1  renamed to my-xymon-extensions-<ext>.cfg, because
-#            clientlaunch.d is shared: hobbit-plugins ships a temp.cfg
-#            there too, and dpkg refuses two packages claiming one path
+#  0.15.0-1  moved to the client's clientlaunch.d
+#  0.16.0-1  briefly renamed to my-xymon-extensions-<ext>.cfg
+#  0.17.0-1  back to <ext>.cfg, and the temp snippet is no longer
+#            installed at all: clientlaunch.d/temp.cfg belongs to
+#            hobbit-plugins on Debian/Ubuntu, and dpkg refuses two
+#            packages that claim one path. It ships as documentation
+#            instead (see the post-install output).
 #
-# Chained moves are fine: on an upgrade from 0.14.0 the first call moves
-# tasks.d/x.cfg to clientlaunch.d/x.cfg and the second one renames it.
+# The moves are chained, so an upgrade from any of those versions lands
+# on the current layout. mv_conffile/rm_conffile only ever touch files
+# registered as conffiles of THIS package - another package's temp.cfg
+# is never affected (ensure_package_owns_file in the helper).
 migrate_conffiles() {
     # Only dpkg may drive this: the helper needs DPKG_MAINTSCRIPT_* in
     # the environment, and "supports" is the canonical availability
     # check. Outside dpkg (test suite, manual run) this is a no-op.
     [ -n "${DPKG_MAINTSCRIPT_NAME:-}" ] || return 0
     dpkg-maintscript-helper supports mv_conffile >/dev/null 2>&1 || return 0
-    for snippet in smart temp la memory disk opkg fritzdsl fritzwan wifi if_link; do
+
+    for snippet in smart la memory disk opkg fritzdsl fritzwan wifi if_link; do
         dpkg-maintscript-helper mv_conffile \
             "/etc/xymon/tasks.d/$snippet.cfg" \
             "/etc/xymon/clientlaunch.d/$snippet.cfg" \
             0.14.0-1 -- "$@"
         dpkg-maintscript-helper mv_conffile \
-            "/etc/xymon/clientlaunch.d/$snippet.cfg" \
             "/etc/xymon/clientlaunch.d/my-xymon-extensions-$snippet.cfg" \
-            0.15.0-1 -- "$@"
+            "/etc/xymon/clientlaunch.d/$snippet.cfg" \
+            0.16.0-1 -- "$@"
     done
+
+    # temp: dropped from the package, wherever it may sit. A version
+    # you edited is kept as .dpkg-bak by the helper.
+    dpkg-maintscript-helper rm_conffile \
+        "/etc/xymon/tasks.d/temp.cfg" 0.14.0-1 -- "$@"
+    dpkg-maintscript-helper rm_conffile \
+        "/etc/xymon/clientlaunch.d/temp.cfg" 0.15.0-1 -- "$@"
+    dpkg-maintscript-helper rm_conffile \
+        "/etc/xymon/clientlaunch.d/my-xymon-extensions-temp.cfg" 0.16.0-1 -- "$@"
 }
 
 migrate_conffiles "$@"
@@ -48,9 +62,18 @@ my-xymon-extensions: to activate the "smart" extension:
  /var/run/xymon/clientlaunch-include.cfg at every start, and both
  clientlaunch.cfg and the server's tasks.cfg read that file. Hence a
  restart, not a reload.
- The "temp" extension is active as well; "la", "memory" and "disk"
- ship disabled (see /etc/xymon/clientlaunch.d) because a full Xymon
- client already reports this information itself.
+ "la", "memory" and "disk" ship disabled (see
+ /etc/xymon/clientlaunch.d) because a full Xymon client already
+ reports this information itself.
+The "temp" extension is installed, but its xymonlaunch snippet is NOT:
+ /etc/xymon/clientlaunch.d/temp.cfg is a file name hobbit-plugins
+ already ships, and dpkg refuses two packages claiming one path. To
+ schedule the temp test on this host, copy the snippet in place once:
+   cp /usr/share/doc/my-xymon-extensions/temp/clientlaunch.d/temp.cfg \
+      /etc/xymon/clientlaunch.d/
+ (If hobbit-plugins is installed, that overwrites its temp.cfg - which
+ is what you want unless you use ITS temp plugin: both define a [temp]
+ task, and xymonlaunch merges same-named sections into one.)
 The FRITZ!Box extensions "fritzdsl" and "fritzwan" ship disabled:
  configure /etc/xymon/fritzdsl.cfg resp. fritzwan.cfg, then remove
  the DISABLED line from the matching /etc/xymon/clientlaunch.d/

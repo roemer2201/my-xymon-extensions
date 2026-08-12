@@ -11,13 +11,13 @@ has to be edited. See
 in the top-level README for how those directories are wired up on your
 platform (Debian/Ubuntu ship them ready to use).
 
-## 1. xymonserver.d/my-xymon-extensions-wifi.cfg
+## 1. xymonserver.d/wifi.cfg
 
 Copy the snippet shipped next to this README into the server's
 drop-in directory:
 
 ```sh
-cp xymonserver.d/my-xymon-extensions-wifi.cfg /etc/xymon/xymonserver.d/
+cp xymonserver.d/wifi.cfg /etc/xymon/xymonserver.d/
 ```
 
 All wifi metrics are plain gauges (the extension computes the rates
@@ -30,12 +30,12 @@ GRAPHS+=",wificlients,wifiutil,…"
 GRAPHS_wifi="wificlients,wifiutil,wifikbps,wifiair,wifierr,wifinoise,wifichan"
 ```
 
-## 2. graphs.d/my-xymon-extensions-wifi.cfg
+## 2. graphs.d/wifi.cfg
 
 Copy the graph definitions shipped next to this README:
 
 ```sh
-cp graphs.d/my-xymon-extensions-wifi.cfg /etc/xymon/graphs.d/
+cp graphs.d/wifi.cfg /etc/xymon/graphs.d/
 ```
 
 ## 3. Restart / verify
@@ -50,7 +50,7 @@ ls $XYMONVAR/rrd/<ap-host>/wifi,*
 ```
 
 The number of RRD files varies with the host's radios and SSIDs —
-that is expected; the FNPATTERNs in `graphs.d/my-xymon-extensions-wifi.cfg` pick up
+that is expected; the FNPATTERNs in `graphs.d/wifi.cfg` pick up
 whatever exists.
 
 ## Alerting

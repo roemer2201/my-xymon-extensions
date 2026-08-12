@@ -90,24 +90,23 @@ sh packaging/common/stage.sh "%{buildroot}" \
 %config(noreplace) %{xymonhome}/etc/disk.cfg
 %config(noreplace) %{xymonhome}/etc/opkg.cfg
 %dir %{xymonhome}/etc/clientlaunch.d
-%config(noreplace) %{xymonhome}/etc/clientlaunch.d/my-xymon-extensions-smart.cfg
-%config(noreplace) %{xymonhome}/etc/clientlaunch.d/my-xymon-extensions-temp.cfg
-%config(noreplace) %{xymonhome}/etc/clientlaunch.d/my-xymon-extensions-la.cfg
-%config(noreplace) %{xymonhome}/etc/clientlaunch.d/my-xymon-extensions-memory.cfg
-%config(noreplace) %{xymonhome}/etc/clientlaunch.d/my-xymon-extensions-disk.cfg
-%config(noreplace) %{xymonhome}/etc/clientlaunch.d/my-xymon-extensions-opkg.cfg
+%config(noreplace) %{xymonhome}/etc/clientlaunch.d/smart.cfg
+%config(noreplace) %{xymonhome}/etc/clientlaunch.d/la.cfg
+%config(noreplace) %{xymonhome}/etc/clientlaunch.d/memory.cfg
+%config(noreplace) %{xymonhome}/etc/clientlaunch.d/disk.cfg
+%config(noreplace) %{xymonhome}/etc/clientlaunch.d/opkg.cfg
 %{xymonhome}/ext/fritzdsl.sh
 %config(noreplace) %{xymonhome}/etc/fritzdsl.cfg
-%config(noreplace) %{xymonhome}/etc/clientlaunch.d/my-xymon-extensions-fritzdsl.cfg
+%config(noreplace) %{xymonhome}/etc/clientlaunch.d/fritzdsl.cfg
 %{xymonhome}/ext/fritzwan.sh
 %config(noreplace) %{xymonhome}/etc/fritzwan.cfg
-%config(noreplace) %{xymonhome}/etc/clientlaunch.d/my-xymon-extensions-fritzwan.cfg
+%config(noreplace) %{xymonhome}/etc/clientlaunch.d/fritzwan.cfg
 %{xymonhome}/ext/wifi.sh
 %config(noreplace) %{xymonhome}/etc/wifi.cfg
-%config(noreplace) %{xymonhome}/etc/clientlaunch.d/my-xymon-extensions-wifi.cfg
+%config(noreplace) %{xymonhome}/etc/clientlaunch.d/wifi.cfg
 %{xymonhome}/ext/if_link.sh
 %config(noreplace) %{xymonhome}/etc/if_link.cfg
-%config(noreplace) %{xymonhome}/etc/clientlaunch.d/my-xymon-extensions-if_link.cfg
+%config(noreplace) %{xymonhome}/etc/clientlaunch.d/if_link.cfg
 %{xymonhome}/ext/xymonext.sh
 %{xymonhome}/ext/xymonext-send.sh
 %config(noreplace) %{xymonhome}/etc/xymonext.cfg
@@ -151,6 +150,31 @@ RRD graphs need a one-time setup on the Xymon SERVER (not here):
 EOF
 
 %changelog
+* Mon Aug 10 2026 roemer2201 <r.oliver@web.de> - 0.17.0-1
+- revert the 0.16.0 file naming: the drop-ins keep their plain
+  <extension>.cfg names. Instead of renaming everything for one clash,
+  the packages simply do not install the three paths Debian's
+  hobbit-plugins already owns - clientlaunch.d/temp.cfg,
+  graphs.d/temp.cfg and xymonserver.d/temp.cfg. Those three files ship
+  as documentation (<docdir>/temp/clientlaunch.d/ and
+  <docdir>/temp/server/) and are copied in by hand; everything else is
+  installed as before. On rpm/FreeBSD the clash does not exist, but the
+  layout is kept identical across platforms so the documentation is
+  the same everywhere
+- temp: the graph section is [temp] again (the 0.16.0 rename to
+  [tempext] is reverted). extensions/temp/server/README.md now spells
+  out the three cases - hobbit-plugins absent, present but its temp
+  plugin unused (the normal one: overwrite its two files), or actually
+  in use (give this extension its own column via TEMP_COLUMN) - plus
+  the TEST2RRD="temp=ncv,$TEST2RRD" form that makes the mapping
+  independent of the drop-in read order
+- deb: existing installations are migrated with
+  dpkg-maintscript-helper, chained over all previous layouts
+  (tasks.d -> clientlaunch.d -> prefixed -> plain), and the temp
+  snippet is removed from the package with rm_conffile - an edited one
+  is kept as .dpkg-bak. The post-install of both packages says what to
+  copy where for temp
+
 * Mon Aug 10 2026 roemer2201 <r.oliver@web.de> - 0.16.0-1
 - packaging: every file installed into one of Xymon's shared drop-in
   directories is now named my-xymon-extensions-<extension>.cfg. Those

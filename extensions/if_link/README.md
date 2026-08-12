@@ -132,7 +132,7 @@ fractions, in two independent ways:
 
 The first one is inherent to RRDtool and cannot be turned off. The
 second is what the server setup shipped here fixes:
-`server/rrddefinitions.d/my-xymon-extensions-if_link.cfg` adds MAX archives alongside the
+`server/rrddefinitions.d/if_link.cfg` adds MAX archives alongside the
 default AVERAGE ones and the graph draws from MAX, so a flap keeps the
 same visible height in every time range. For an exact number the graph
 prints `(total)`, the per-poll counts integrated back into an event
@@ -162,9 +162,9 @@ wins. Defaults work out of the box.
 
 See [`server/README.md`](server/README.md) — split-NCV setup, the RRD
 archive definition in
-[`server/rrddefinitions.d/my-xymon-extensions-if_link.cfg`](server/rrddefinitions.d/if_link.cfg)
+[`server/rrddefinitions.d/if_link.cfg`](server/rrddefinitions.d/if_link.cfg)
 and the graph definition in
-[`server/graphs.d/my-xymon-extensions-if_link.cfg`](server/graphs.d/if_link.cfg). The two
+[`server/graphs.d/if_link.cfg`](server/graphs.d/if_link.cfg). The two
 belong together: the graph draws from the MAX archives that the archive
 definition adds.
 

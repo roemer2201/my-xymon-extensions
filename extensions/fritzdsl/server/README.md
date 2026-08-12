@@ -11,13 +11,13 @@ has to be edited. See
 in the top-level README for how those directories are wired up on your
 platform (Debian/Ubuntu ship them ready to use).
 
-## 1. xymonserver.d/my-xymon-extensions-fritzdsl.cfg
+## 1. xymonserver.d/fritzdsl.cfg
 
 Copy the snippet shipped next to this README into the server's
 drop-in directory:
 
 ```sh
-cp xymonserver.d/my-xymon-extensions-fritzdsl.cfg /etc/xymon/xymonserver.d/
+cp xymonserver.d/fritzdsl.cfg /etc/xymon/xymonserver.d/
 ```
 
 It appends the `fritzdsl` test to `TEST2RRD`, defines the split-NCV
@@ -40,12 +40,12 @@ everything else (rates, margins, attenuation, uptime) is a GAUGE.
 `GRAPHS_fritzdsl` is the selection shown on the status page itself —
 edit the copied file to pick the ones you care about.
 
-## 2. graphs.d/my-xymon-extensions-fritzdsl.cfg
+## 2. graphs.d/fritzdsl.cfg
 
 Copy the graph definitions shipped next to this README:
 
 ```sh
-cp graphs.d/my-xymon-extensions-fritzdsl.cfg /etc/xymon/graphs.d/
+cp graphs.d/fritzdsl.cfg /etc/xymon/graphs.d/
 ```
 
 ## 3. Restart / verify

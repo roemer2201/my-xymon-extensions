@@ -19,9 +19,9 @@ my-xymon-extensions/
 │       ├── README.md    # What it monitors, columns, thresholds
 │       └── server/      # Xymon SERVER side (only where RRD graphs exist)
 │           ├── README.md
-│           ├── xymonserver.d/my-xymon-extensions-<name>.cfg
-│           ├── graphs.d/my-xymon-extensions-<name>.cfg
-│           └── rrddefinitions.d/my-xymon-extensions-<name>.cfg
+│           ├── xymonserver.d/<name>.cfg      # TEST2RRD/NCV/GRAPHS
+│           ├── graphs.d/<name>.cfg           # graph definitions
+│           └── rrddefinitions.d/<name>.cfg   # RRA archives (rarely)
 ├── standalone/          # Run extensions WITHOUT a Xymon client
 │   ├── xymon-run.sh     # xymonlaunch replacement (env + scheduler glue)
 │   └── xymon-send.sh    # xymon(1) replacement (protocol sender)
@@ -60,16 +60,17 @@ ships them as ready-made drop-in files under
 
 | Drop-in file | goes into | contains |
 |---|---|---|
-| `server/xymonserver.d/my-xymon-extensions-<name>.cfg` | `xymonserver.d/` | `TEST2RRD`, `NCV_*`/`SPLITNCV_*`, `GRAPHS*` |
-| `server/graphs.d/my-xymon-extensions-<name>.cfg` | `graphs.d/` | the `[graphname]` graph definitions |
-| `server/rrddefinitions.d/my-xymon-extensions-<name>.cfg` | `rrddefinitions.d/` | RRA archive layout (only `if_link` so far) |
+| `server/xymonserver.d/<name>.cfg` | `xymonserver.d/` | `TEST2RRD`, `NCV_*`/`SPLITNCV_*`, `GRAPHS*` |
+| `server/graphs.d/<name>.cfg` | `graphs.d/` | the `[graphname]` graph definitions |
+| `server/rrddefinitions.d/<name>.cfg` | `rrddefinitions.d/` | RRA archive layout (only `if_link` so far) |
 
-Every file name carries the package name on purpose. These directories
-are shared: `hobbit-plugins`, for instance, ships a `temp.cfg` in
-`graphs.d`, `xymonserver.d` **and** `clientlaunch.d`, and dpkg refuses
-to install two packages that claim the same path. Keep the prefix when
-you copy the files by hand — it also decides the read order, which
-matters for `TEST2RRD` (see below).
+These directories are shared with other packages. Debian's
+`hobbit-plugins` ships a `temp.cfg` in `graphs.d`, `xymonserver.d`
+**and** `clientlaunch.d`, and dpkg refuses to install two packages that
+claim the same path — so the packages here deliberately do **not**
+install the three `temp` files. They are shipped as documentation and
+put in place by hand; see
+[extensions/temp/server/README.md](extensions/temp/server/README.md).
 
 ### Why this works
 
@@ -111,8 +112,7 @@ server, the client package on the monitored hosts, both together where
 the server also runs a client (which Debian does by default — `xymon`
 depends on `xymon-client`). They share `/etc/xymon` but no single file:
 the client owns `<name>.cfg` and its `clientlaunch.d` snippets, the
-server package only writes into the three drop-in directories above,
-and every file of both carries the `my-xymon-extensions-` prefix.
+server package only writes into the three drop-in directories above.
 
 The package never edits `xymonserver.cfg`, `graphs.cfg` or
 `rrddefinitions.cfg` — those are conffiles of the `xymon` package, and

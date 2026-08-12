@@ -86,9 +86,9 @@ conffiles, into the drop-in directories Xymon reads them from:
 
 | | installed to |
 |---|---|
-| `TEST2RRD`, `NCV_*`/`SPLITNCV_*`, `GRAPHS*` | `/etc/xymon/xymonserver.d/my-xymon-extensions-<ext>.cfg` |
-| graph definitions | `/etc/xymon/graphs.d/my-xymon-extensions-<ext>.cfg` |
-| RRA archives (if_link only) | `/etc/xymon/rrddefinitions.d/my-xymon-extensions-if_link.cfg` |
+| `TEST2RRD`, `NCV_*`/`SPLITNCV_*`, `GRAPHS*` | `/etc/xymon/xymonserver.d/<ext>.cfg` |
+| graph definitions | `/etc/xymon/graphs.d/<ext>.cfg` |
+| RRA archives (if_link only) | `/etc/xymon/rrddefinitions.d/if_link.cfg` |
 | per-extension server docs | `/usr/share/doc/my-xymon-extensions-server/<ext>/` |
 
 It depends on `xymon` (the Debian server package), the client package
@@ -104,14 +104,17 @@ to install two packages that ship the same path, so the two file lists
 must stay disjoint:
 
 - client: `/etc/xymon/<name>.cfg` and
-  `/etc/xymon/clientlaunch.d/my-xymon-extensions-<name>.cfg`
+  `/etc/xymon/clientlaunch.d/<name>.cfg`
 - server: only the three drop-in directories above
 
 The same applies to **other** packages: `clientlaunch.d`, `graphs.d`,
 `xymonserver.d` and `rrddefinitions.d` belong to no one package.
-`hobbit-plugins` ships a `temp.cfg` in three of them, which is why
-every file installed there carries the `my-xymon-extensions-` prefix —
-`tests/run.sh` fails on any that does not.
+Debian's `hobbit-plugins` ships a `temp.cfg` in three of them, so
+neither package installs those three paths — the `temp` configuration
+ships as documentation and is put in place by hand (see
+`extensions/temp/server/README.md`). `tests/run.sh` fails if one of
+those paths ever reappears in a package, and checks that the files are
+still shipped as documentation.
 
 `tests/run.sh` stages both with the Debian paths and fails if a single
 path appears in both; the CI job additionally installs both packages
@@ -137,9 +140,9 @@ Debian/Ubuntu or where the server package is not used:
 
 ```
 <docdir>/<extension>/server/README.md
-<docdir>/<extension>/server/xymonserver.d/my-xymon-extensions-<extension>.cfg
-<docdir>/<extension>/server/graphs.d/my-xymon-extensions-<extension>.cfg
-<docdir>/<extension>/server/rrddefinitions.d/my-xymon-extensions-<extension>.cfg
+<docdir>/<extension>/server/xymonserver.d/<extension>.cfg
+<docdir>/<extension>/server/graphs.d/<extension>.cfg
+<docdir>/<extension>/server/rrddefinitions.d/<extension>.cfg   (if_link only)
 ```
 
 Nothing installs them into a Xymon config directory — copy them over by

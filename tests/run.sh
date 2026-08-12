@@ -2059,7 +2059,7 @@ fi
 for srvdir in "$REPO"/extensions/*/server; do
     [ -d "$srvdir" ] || continue
     ext=$(basename "$(dirname "$srvdir")")
-    for want in "README.md" "xymonserver.d/my-xymon-extensions-$ext.cfg"; do
+    for want in "README.md" "xymonserver.d/$ext.cfg"; do
         if [ -f "$srvdir/$want" ]; then
             echo "ok:   $ext ships server/$want"
         else
@@ -2112,7 +2112,7 @@ fi
 # Every drop-in file in the repo must be installed into the drop-in
 # directory of the same name. (The server READMEs are documentation and
 # are checked through the conffiles comparison below, not here.)
-grep '/server/.*\.d/' "$TMP/server-files" | while read -r rel; do
+grep '/server/.*\.d/' "$TMP/server-files" | grep -v '^temp/' | while read -r rel; do
     # rel = <ext>/server/<dropin>/<ext>.cfg -> <dropin>/<ext>.cfg
     dropin=${rel#*/server/}
     if [ -f "$SRVSTAGE$SRVETC/$dropin" ]; then
@@ -2149,10 +2149,10 @@ CLIENTSTAGE="$TMP/pkgstage-deb"
 # is the server's (Debian's tasks.cfg reads it, and reads the client's
 # list too), so a snippet there runs twice on a combined host - that is
 # what this guards against.
-for snippet in smart temp la memory disk opkg fritzdsl fritzwan wifi if_link; do
-    grep -qx "/etc/xymon/clientlaunch.d/my-xymon-extensions-$snippet.cfg" \
-        "$TMP/client-paths" || {
-        echo "FAIL: $snippet snippet is not staged as clientlaunch.d/my-xymon-extensions-$snippet.cfg"
+# temp is missing on purpose - see the collision check further down.
+for snippet in smart la memory disk opkg fritzdsl fritzwan wifi if_link; do
+    grep -qx "/etc/xymon/clientlaunch.d/$snippet.cfg" "$TMP/client-paths" || {
+        echo "FAIL: $snippet snippet is not staged into clientlaunch.d"
         FAIL=1
     }
 done
@@ -2163,20 +2163,41 @@ else
     echo "ok:   launch snippets go to clientlaunch.d, nothing into tasks.d"
 fi
 
-# Everything either package installs into one of Xymon's shared drop-in
-# directories must carry the package name. Those directories belong to
-# no one package: hobbit-plugins ships temp.cfg in clientlaunch.d,
-# graphs.d and xymonserver.d, and dpkg refuses to install two packages
-# that claim the same path (which is exactly how this rule was found).
+# Xymon's drop-in directories belong to no one package. Debian's
+# hobbit-plugins ships temp.cfg in three of them, and dpkg refuses to
+# install two packages that claim the same path - that is what broke
+# the server package once. Neither of our packages may ship any of
+# those paths; the temp configuration is shipped as documentation and
+# put in place by hand instead (see extensions/temp/server/README.md).
 cat "$TMP/client-paths" "$TMP/server-paths" > "$TMP/all-paths"
-unprefixed=$(grep -E '^/etc/xymon/[a-z]+\.d/' "$TMP/all-paths" \
-    | grep -v '/my-xymon-extensions-' || true)
-if [ -z "$unprefixed" ]; then
-    echo "ok:   every file in a shared drop-in directory carries the package name"
+for taken in /etc/xymon/clientlaunch.d/temp.cfg \
+             /etc/xymon/graphs.d/temp.cfg \
+             /etc/xymon/xymonserver.d/temp.cfg; do
+    if grep -qx "$taken" "$TMP/all-paths"; then
+        echo "FAIL: ships $taken, which hobbit-plugins already owns"
+        FAIL=1
+    else
+        echo "ok:   does not claim $taken (hobbit-plugins owns it)"
+    fi
+done
+
+# ... and the files it does not install must still be shipped as docs,
+# otherwise the manual step in the README has nothing to copy.
+doc=temp/clientlaunch.d/temp.cfg
+if [ -f "$PKGSTAGE$DOCROOT/$doc" ]; then
+    echo "ok:   client package documents $doc"
 else
-    echo "FAIL: unprefixed files in shared drop-in directories: $(echo "$unprefixed" | tr '\n' ' ')"
+    echo "FAIL: client package does not ship $doc as documentation"
     FAIL=1
 fi
+for doc in "temp/xymonserver.d/temp.cfg" "temp/graphs.d/temp.cfg"; do
+    if [ -f "$SRVSTAGE$SRVDOC/$doc" ]; then
+        echo "ok:   server package documents $doc"
+    else
+        echo "FAIL: server package does not ship $doc as documentation"
+        FAIL=1
+    fi
+done
 
 # The deb migrates the old tasks.d conffiles; all three maintainer
 # scripts must carry the same mv_conffile calls or dpkg leaves the file

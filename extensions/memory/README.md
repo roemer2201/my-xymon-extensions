@@ -56,8 +56,8 @@ used : 42.5
 
 Plain NCV on the server turns it into one `mem.rrd` per host. The
 needed configuration is shipped as ready-made drop-in files in
-[`server/`](server/) — copy `server/xymonserver.d/my-xymon-extensions-memory.cfg` into the
-server's `xymonserver.d/` and `server/graphs.d/my-xymon-extensions-memory.cfg` into its
+[`server/`](server/) — copy `server/xymonserver.d/memory.cfg` into the
+server's `xymonserver.d/` and `server/graphs.d/memory.cfg` into its
 `graphs.d/`, then restart Xymon. See
 [server/README.md](server/README.md).
 

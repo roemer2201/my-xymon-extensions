@@ -114,7 +114,7 @@ Two known and deliberate inaccuracies:
 
 The graphs need a one-time setup on the Xymon server — see
 [`server/README.md`](server/README.md) and the graph definitions in
-[`server/graphs.d/my-xymon-extensions-xymonext.cfg`](server/graphs.d/xymonext.cfg).
+[`server/graphs.d/xymonext.cfg`](server/graphs.d/xymonext.cfg).
 
 ## Notes
 

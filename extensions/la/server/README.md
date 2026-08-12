@@ -19,13 +19,13 @@ has to be edited. See
 in the top-level README for how those directories are wired up on your
 platform (Debian/Ubuntu ship them ready to use).
 
-## 1. xymonserver.d/my-xymon-extensions-la.cfg
+## 1. xymonserver.d/la.cfg
 
 Copy the snippet shipped next to this README into the server's
 drop-in directory:
 
 ```sh
-cp xymonserver.d/my-xymon-extensions-la.cfg /etc/xymon/xymonserver.d/
+cp xymonserver.d/la.cfg /etc/xymon/xymonserver.d/
 ```
 
 ```
@@ -35,12 +35,12 @@ GRAPHS+=",laext"
 GRAPHS_la="laext"
 ```
 
-## 2. graphs.d/my-xymon-extensions-la.cfg
+## 2. graphs.d/la.cfg
 
 Copy the graph definition shipped next to this README:
 
 ```sh
-cp graphs.d/my-xymon-extensions-la.cfg /etc/xymon/graphs.d/
+cp graphs.d/la.cfg /etc/xymon/graphs.d/
 ```
 
 The graph is called `laext`, not `la`, on purpose: Xymon's stock `[la]`

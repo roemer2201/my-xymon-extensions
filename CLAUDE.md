@@ -95,7 +95,7 @@ target platform.
   - `server/` — everything the **Xymon server** needs, if the extension
     produces RRD graphs. Never tell users to edit a stock config file:
     ship ready-made drop-in files, one per Xymon config file, all named
-    `my-xymon-extensions-<name>.cfg`:
+    `<name>.cfg`:
     - `server/xymonserver.d/…` — `TEST2RRD`, `NCV_*`/`SPLITNCV_*`,
       `GRAPHS`/`GRAPHS_<column>` (append with `NAME+=`, leading comma,
       and note that this requires the file to be read after the stock
@@ -111,8 +111,7 @@ target platform.
     sources for `graphs.cfg` (`load_gdefs()`), `rrddefinitions.cfg`
     (`load_rrddefs()`) and `xymonserver.cfg` (`loadenv()`).
 - Add a xymonlaunch snippet for the extension under
-  `packaging/common/clientlaunch.d/my-xymon-extensions-<name>.cfg` so
-  all client packages
+  `packaging/common/clientlaunch.d/<name>.cfg` so all client packages
   ship it. It is installed into the **client's** drop-in directory
   `$XYMONHOME/etc/clientlaunch.d`, never into `tasks.d` — that one
   belongs to the server's xymonlaunch, and on Debian the server's
@@ -128,14 +127,19 @@ target platform.
   `packaging/deb-server`: conffiles lists, plist, `%files`). A change
   is not complete until all package definitions are consistent —
   `tests/run.sh` pins this and fails on a mismatch.
-- Every file installed into one of Xymon's drop-in directories
-  (`clientlaunch.d`, `graphs.d`, `xymonserver.d`, `rrddefinitions.d`)
-  must be named `my-xymon-extensions-<name>.cfg`. Those directories are
-  shared with other packages — `hobbit-plugins` ships a `temp.cfg` in
-  three of them — and dpkg refuses two packages claiming one path. The
-  name also fixes the read order (alphabetical), which decides
-  `TEST2RRD` (first match wins) and duplicate graph sections (last
-  parsed wins). `tests/run.sh` fails on an unprefixed file.
+- Xymon's drop-in directories (`clientlaunch.d`, `graphs.d`,
+  `xymonserver.d`, `rrddefinitions.d`) are shared with other packages,
+  and dpkg refuses two packages claiming one path. Debian's
+  `hobbit-plugins` ships `temp.cfg` in three of them, so **no package
+  here installs those paths**: the `temp` drop-ins ship as
+  documentation and are copied in by hand (`SKIP_SNIPPETS` in
+  `stage.sh`, `SKIP_EXTENSIONS` in `stage-server.sh`). Before adding a
+  new drop-in, check `dpkg -S /etc/xymon/<dir>/<name>.cfg` on a Debian
+  server. `tests/run.sh` pins the known-taken paths.
+- Read order matters where two packages configure one column: the
+  first `TEST2RRD` entry wins (prepend with
+  `TEST2RRD="x=ncv,$TEST2RRD"` to be independent of it), while for
+  duplicate `[graph]` sections the **last** one parsed wins.
 - On Debian/Ubuntu the Xymon **server and client share `/etc/xymon`**,
   and the `xymon` package depends on `xymon-client`, so both of our
   packages can end up on the same host. dpkg refuses two packages that

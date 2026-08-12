@@ -50,8 +50,8 @@ la15 : 0.30
 Plain NCV on the server turns them into one `la.rrd` per host with
 three datasets. The needed configuration is shipped as ready-made
 drop-in files in [`server/`](server/) — copy
-`server/xymonserver.d/my-xymon-extensions-la.cfg` into the server's `xymonserver.d/` and
-`server/graphs.d/my-xymon-extensions-la.cfg` into its `graphs.d/`, then restart Xymon.
+`server/xymonserver.d/la.cfg` into the server's `xymonserver.d/` and
+`server/graphs.d/la.cfg` into its `graphs.d/`, then restart Xymon.
 See [server/README.md](server/README.md).
 
 The graph is called `laext`, not `la`: the stock `[la]` graph expects
