@@ -27,7 +27,7 @@ rule and registers the graphs:
 TEST2RRD+=",fritzdsl=ncv"
 SPLITNCV_fritzdsl="crc:DERIVE,fec:DERIVE,…,*:GAUGE"
 GRAPHS+=",fritzdslrate,fritzdslmargin,…"
-GRAPHS_fritzdsl="fritzdslrate,fritzdslmargin,fritzdslerrors"
+GRAPHS_fritzdsl="fritzdslrate,fritzdslmargin,…,fritzdsluptime"
 ```
 
 `SPLITNCV_fritzdsl` (as opposed to `NCV_fritzdsl`) makes xymond_rrd
@@ -37,8 +37,13 @@ each containing a single dataset named `lambda`. This avoids NCV's
 counters are stored as DERIVE, so their graphs show error *rates*;
 everything else (rates, margins, attenuation, uptime) is a GAUGE.
 
-`GRAPHS_fritzdsl` is the selection shown on the status page itself —
-edit the copied file to pick the ones you care about.
+`GRAPHS_fritzdsl` lists the graphs drawn on the status page, and that
+page is the **only** place they appear — so the shipped file lists all
+of them. A graph removed there is gone from the web interface entirely:
+the trends page looks graphs up by comparing the *graph* name with the
+beginning of the *RRD file* name (`lib/xymonrrd.c`,
+`find_xymon_graph()`), without consulting `FNPATTERN`, so
+`fritzdslrate` never matches `fritzdsl,rateup.rrd`.
 
 ## 2. graphs.d/fritzdsl.cfg
 
