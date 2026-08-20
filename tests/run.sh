@@ -1569,6 +1569,253 @@ rm -f "$LINKSTATE"
 unset IF_LINK_CFG FAKESYSNET_LINK
 
 # ----------------------------------------------------------------------
+echo "--- lxc ---"
+# The fixtures mirror a Turris Omnia running LXC 6.0.5 on cgroup v2:
+# four containers plus one whose name needs sanitizing, the memory
+# controller not delegated to the container cgroups (so memory.current
+# is missing for ca/web-01 and reads 0 for jd), and one container -
+# sshproxy - with a working memory.current, to prove which source wins.
+export FAKELXC_LS="$TESTDIR/lxc/fakelxc-ls"
+export FAKELXC_INFO="$TESTDIR/lxc/fakelxc-info"
+export FAKELXC_AUTOSTART="$TESTDIR/lxc/fakelxc-autostart"
+export FAKELXC_UCI="$TESTDIR/lxc/lxc-auto"
+export FAKELXC_CGROUP="$TESTDIR/lxc/cgroup"
+export FAKELXC_PROC="$TESTDIR/lxc/proc"
+export FAKELXC_DIR="$TESTDIR/lxc/data/normal"
+export LXC_CFG="$TESTDIR/lxc/lxc_test.cfg"
+unset LXC_REQUIRED LXC_OPTIONAL LXC_IGNORE LXC_DOWN_COLOR LXC_RAM \
+    LXC_METRICS LXC_COLUMN LXC_RAM_YELLOW LXC_RAM_RED LXC_CPU_YELLOW \
+    LXC_CPU_RED FAKELXC_NOF 2>/dev/null || true
+LXCSTATE="$TMP/lxc.testhost.state"
+
+# The RSS sums are in pages, so the expected MiB depend on the page
+# size of the machine running the test suite (4 KiB on x86, 16 KiB on
+# some arm64) - compute them the same way the extension does.
+LXCPS=$(getconf PAGESIZE 2>/dev/null)
+case "$LXCPS" in ''|*[!0-9]*) LXCPS=4096 ;; esac
+mib() { LC_ALL=C awk -v p="$LXCPS" -v n="$1" 'BEGIN { printf "%.1f", n * p / 1048576 }'; }
+CA_RAM=$(mib 3808)          # 2308 + 1000 + 500 pages
+JD_RAM=$(mib 5000)          # 2000 + 3000 pages
+WEB_RAM=$(mib 250)
+
+rm -f "$LXCSTATE"
+# shellcheck disable=SC2086
+out=$($TESTSH "$REPO/extensions/lxc/lxc.sh")
+rc=$?
+if [ "$rc" -ne 0 ]; then
+    echo "FAIL: lxc.sh exited with $rc"
+    printf '%s\n' "$out"
+    exit 1
+fi
+expect "$out" '^status testhost\.lxc green ' \
+    "everything that should run is running"
+expect "$out" 'lxc: 4 of 5 container\(s\) running' "summary counts the containers"
+expect "$out" '&green jd  state=RUNNING  autostart=yes\(lxc\.start\.auto\+lxc-auto\)' \
+    "the status line names every source that wants a container running"
+expect "$out" '&green sshproxy  state=RUNNING  autostart=yes\(lxc-auto\)' \
+    "a container started by OpenWrt's lxc-auto is expected to run, without lxc.start.auto"
+expect "$out" '&green ca  state=RUNNING  autostart=no' \
+    "a container nobody autostarts is still reported when it runs"
+expect "$out" '&clear thunderbird-test  state=STOPPED  autostart=no  not autostarted' \
+    "a stopped container nobody autostarts is not a fault"
+expect "$out" "^ca_ram : $CA_RAM\$" \
+    "RAM falls back to the RSS sum from /proc where the cgroup has no memory.current"
+expect "$out" "^jd_ram : $JD_RAM\$" \
+    "a memory.current of 0 (controller not accounting) counts as missing, not as 0 MiB"
+expect "$out" '^sshproxy_ram : 256\.0$' \
+    "a working memory.current wins over the /proc estimate"
+expect "$out" "^web_01_ram : $WEB_RAM\$" \
+    "metric names are sanitized (web-01 -> web_01)"
+expect "$out" '^count_total : 5$'   "count_total counts every defined container"
+expect "$out" '^count_running : 4$' "count_running counts the running ones"
+expect "$out" '^count_down : 0$'    "count_down is 0 while nothing is missing"
+expect_not "$out" '^[a-z0-9_]+_(cpu|netin|netout) : ' \
+    "no rates on the first poll - there is nothing to compare against"
+if grep -q '^CT ca [0-9][0-9]* 3246951260 47117625 555609848$' "$LXCSTATE" 2>/dev/null; then
+    echo "ok:   state file primed with the cumulative counters"
+else
+    echo "FAIL: state file missing or incomplete ($LXCSTATE)"
+    FAIL=1
+fi
+
+# Previous poll, 5 minutes ago: ca has used 15 s of CPU and moved 3/6 MB,
+# jd's byte counters went backwards and sshproxy's CPU counter did -
+# both of which is what a container restart looks like.
+lxc_prev_state() {
+    lps_t0=$(($(date +%s) - 300))
+    {
+        printf 'CT ca %s %s %s %s\n' "$lps_t0" 3231951260 44117625 549609848
+        printf 'CT jd %s %s %s %s\n' "$lps_t0" 997000000 47117625 555609848
+        printf 'CT sshproxy %s %s %s %s\n' "$lps_t0" 999999999999 0 0
+        printf 'CT web-01 %s %s %s %s\n' "$lps_t0" 249700000 10000 20000
+    } > "$LXCSTATE"
+}
+
+lxc_prev_state
+# shellcheck disable=SC2086
+out=$($TESTSH "$REPO/extensions/lxc/lxc.sh")
+expect "$out" '^status testhost\.lxc green ' "rates alone do not color the column"
+expect_rate "$out" "ca_cpu" 5.0 \
+    "CPU percent from the cgroup's cpu.stat delta (15 s over 300 s)"
+expect_rate "$out" "ca_netin" 80.0 \
+    "netin is lxc-info's TX counter, i.e. traffic into the container"
+expect_rate "$out" "ca_netout" 160.0 "netout is lxc-info's RX counter"
+expect_rate "$out" "web_01_cpu" 0.1 "a small CPU delta still produces a value"
+expect "$out" 'cpu=[0-9.]+%  net=[0-9.]+/[0-9.]+ kbit/s' \
+    "status line shows the rates (key=value style)"
+expect_not "$out" '^jd_(netin|netout) : ' \
+    "byte counters that went backwards (container restart) are skipped for one poll"
+expect_not "$out" '^sshproxy_cpu : ' \
+    "a CPU counter that went backwards is skipped for one poll"
+expect "$out" '^jd_cpu : ' \
+    "the other metrics of that container are unaffected"
+expect_not "$out" '^[a-z0-9_]+_(cpu|netin|netout) : -' \
+    "no negative value ever reaches the RRD"
+expect "$out" '\(30[01] s ago\)' "footer names the age of the previous poll"
+
+# lxc-info sums all interfaces of a container and understands the
+# human-readable units older versions print even with -H.
+lxc_prev_state
+# shellcheck disable=SC2086
+out=$($TESTSH "$REPO/extensions/lxc/lxc.sh")
+expect_rate "$out" "sshproxy_netin" 40.0 \
+    "traffic is summed over all interfaces of a container (1000000+500000 bytes)"
+
+# The NCV parser treats "=" like ":", so the human-readable lines must
+# be fenced off - otherwise every "state=RUNNING" would become an RRD
+# dataset of its own.
+view=$(ncv_view "$out")
+expect "$view" '^count_total : 5$' \
+    "the data message stays visible to the server's parser"
+expect_not "$view" '=' \
+    "no '=' line reaches the NCV parser (display lines are fenced off)"
+
+# The /proc scan must not pick up processes of the host or of a
+# container whose name merely starts with the same characters.
+expect "$out" "^ca_ram : $CA_RAM\$" \
+    "the RSS scan stops at the cgroup path boundary (lxc.payload.cats is not ca)"
+
+# --- containers that should run but do not ----------------------------
+rm -f "$LXCSTATE"
+# shellcheck disable=SC2086
+out=$(FAKELXC_DIR="$TESTDIR/lxc/data/down" $TESTSH "$REPO/extensions/lxc/lxc.sh")
+expect "$out" '^status testhost\.lxc red ' \
+    "a container that should run and does not turns the column red"
+expect "$out" 'lxc: 2 of 4 container\(s\) not running although they should: jd sshproxy' \
+    "the summary names the missing containers"
+expect "$out" '&red jd  state=STOPPED .*should be running' \
+    "the container line says why it is red"
+expect "$out" '&red sshproxy  state=STOPPED  autostart=yes\(lxc-auto\)' \
+    "a container listed only in /etc/config/lxc-auto is caught too"
+expect "$out" '&clear thunderbird-test ' \
+    "the stopped container nobody wants stays uncolored"
+expect "$out" '^count_down : 2$' "count_down counts them for the graph"
+expect_not "$out" '^(jd|sshproxy)_(ram|cpu) : ' \
+    "a stopped container produces no resource metrics"
+
+# LXC_REQUIRED replaces the automatic detection completely
+# shellcheck disable=SC2086
+out=$(FAKELXC_DIR="$TESTDIR/lxc/data/down" LXC_REQUIRED="ca" \
+    $TESTSH "$REPO/extensions/lxc/lxc.sh")
+expect "$out" '^status testhost\.lxc green ' \
+    "LXC_REQUIRED overrides lxc.start.auto and /etc/config/lxc-auto"
+expect "$out" '&green ca .*autostart=yes\(required\)' "the required container is named as such"
+
+# LXC_OPTIONAL takes single containers out of the expected set again
+# shellcheck disable=SC2086
+out=$(FAKELXC_DIR="$TESTDIR/lxc/data/down" LXC_OPTIONAL="jd*" \
+    $TESTSH "$REPO/extensions/lxc/lxc.sh")
+expect "$out" '&clear jd .*autostart=no' "LXC_OPTIONAL makes a stopped container harmless"
+expect "$out" '&red sshproxy ' "the others stay red"
+
+# LXC_DOWN_COLOR downgrades the alarm
+# shellcheck disable=SC2086
+out=$(FAKELXC_DIR="$TESTDIR/lxc/data/down" LXC_DOWN_COLOR=yellow \
+    $TESTSH "$REPO/extensions/lxc/lxc.sh")
+expect "$out" '^status testhost\.lxc yellow ' "LXC_DOWN_COLOR=yellow is honored"
+
+# LXC_IGNORE drops a container entirely
+rm -f "$LXCSTATE"
+# shellcheck disable=SC2086
+out=$(LXC_IGNORE="thunderbird*" $TESTSH "$REPO/extensions/lxc/lxc.sh")
+expect_not "$out" 'thunderbird' "LXC_IGNORE removes the container from the report"
+expect "$out" '^count_total : 4$' "and from the counts"
+
+# --- the measurement switches -----------------------------------------
+rm -f "$LXCSTATE"
+# shellcheck disable=SC2086
+out=$(LXC_RAM=off $TESTSH "$REPO/extensions/lxc/lxc.sh")
+expect_not "$out" '_ram : ' "LXC_RAM=off switches the memory measurement off"
+rm -f "$LXCSTATE"
+# shellcheck disable=SC2086
+out=$(LXC_RAM=cgroup $TESTSH "$REPO/extensions/lxc/lxc.sh")
+expect "$out" '^sshproxy_ram : 256\.0$' "LXC_RAM=cgroup keeps the accounted container"
+expect_not "$out" '^ca_ram : ' \
+    "LXC_RAM=cgroup reports nothing where the controller does not account"
+lxc_prev_state
+# shellcheck disable=SC2086
+out=$(LXC_METRICS="ram" $TESTSH "$REPO/extensions/lxc/lxc.sh")
+expect "$out" '^ca_ram : ' "LXC_METRICS selects the metrics to graph"
+expect_not "$out" '_(cpu|netin|netout) : ' "the unselected ones are not sent"
+
+# --- optional resource thresholds -------------------------------------
+lxc_prev_state
+# shellcheck disable=SC2086
+out=$(LXC_RAM_YELLOW=100 $TESTSH "$REPO/extensions/lxc/lxc.sh")
+expect "$out" '^status testhost\.lxc yellow ' "LXC_RAM_YELLOW colors the column"
+expect "$out" '&yellow sshproxy .*\[yellow at >=100 MiB\]' \
+    "the offending container names the threshold it crossed"
+expect "$out" '&green ca ' "containers below the threshold stay green"
+lxc_prev_state
+# shellcheck disable=SC2086
+out=$(LXC_CPU_RED=4 $TESTSH "$REPO/extensions/lxc/lxc.sh")
+expect "$out" '^status testhost\.lxc red ' "LXC_CPU_RED colors the column"
+expect "$out" '&red ca .*red at >=4% CPU' "the CPU threshold is named on the line"
+
+# --- degraded environments --------------------------------------------
+# An lxc-ls too old for -F: the container list still works, the
+# autostart flag then comes from the other two sources only.
+rm -f "$LXCSTATE"
+# shellcheck disable=SC2086
+out=$(FAKELXC_DIR="$TESTDIR/lxc/data/down" FAKELXC_NOF=1 \
+    $TESTSH "$REPO/extensions/lxc/lxc.sh")
+expect "$out" '^status testhost\.lxc red ' \
+    "an lxc-ls without -F still finds the containers that should run"
+expect "$out" '&red jd  state=STOPPED  autostart=yes\(lxc-auto\+lxc-autostart\)' \
+    "state and PID then come from lxc-info instead"
+
+# No lxc-info (a separate package on OpenWrt): everything but the
+# traffic metrics still works.
+rm -f "$LXCSTATE"
+# shellcheck disable=SC2086
+out=$(FAKELXC_INFO="$TMP/no-such-lxc-info" $TESTSH "$REPO/extensions/lxc/lxc.sh")
+expect "$out" '^status testhost\.lxc green ' "a missing lxc-info does not break the test"
+expect "$out" '^ca_ram : ' "memory is still measured without lxc-info"
+expect_not "$out" '_(netin|netout) : ' "only the traffic metrics are gone"
+
+# No container at all, and no LXC at all -> clear, not red
+# shellcheck disable=SC2086
+out=$(FAKELXC_DIR="$TESTDIR/lxc/data/empty" $TESTSH "$REPO/extensions/lxc/lxc.sh")
+expect "$out" '^status testhost\.lxc clear ' \
+    "a host without containers reports clear, not red"
+expect "$out" 'no LXC container defined' "the message says why"
+# shellcheck disable=SC2086
+out=$(LXC_CFG="$TESTDIR/lxc/lxc_test_nolxc.cfg" $TESTSH "$REPO/extensions/lxc/lxc.sh")
+expect "$out" '^status testhost\.lxc clear ' "a host without LXC reports clear"
+expect "$out" 'lxc-ls not found' "the message names the missing tool"
+
+# Column name override
+rm -f "$LXCSTATE"
+# shellcheck disable=SC2086
+out=$(LXC_COLUMN=container $TESTSH "$REPO/extensions/lxc/lxc.sh")
+expect "$out" '^status testhost\.container green ' \
+    "column name is overridable via LXC_COLUMN"
+
+rm -f "$LXCSTATE"
+unset LXC_CFG FAKELXC_DIR FAKELXC_LS FAKELXC_INFO FAKELXC_AUTOSTART \
+    FAKELXC_UCI FAKELXC_CGROUP FAKELXC_PROC
+
+# ----------------------------------------------------------------------
 echo "--- xymonext ---"
 
 # Install tree for the measurement wrapper plus fake extensions that
@@ -1872,6 +2119,7 @@ cp "$REPO/extensions/la/la.sh" "$STAGE/ext/la.sh"
 cp "$REPO/extensions/memory/memory.sh" "$STAGE/ext/memory.sh"
 cp "$REPO/extensions/disk/disk.sh" "$STAGE/ext/disk.sh"
 cp "$REPO/extensions/opkg/opkg.sh" "$STAGE/ext/opkg.sh"
+cp "$REPO/extensions/lxc/lxc.sh" "$STAGE/ext/lxc.sh"
 # The measurement wrapper is installed like an extension, but the
 # runner must call it instead of running it as a test of its own.
 cp "$REPO/extensions/xymonext/xymonext.sh" "$STAGE/ext/xymonext.sh"
@@ -1899,6 +2147,15 @@ touch "$FAKEOPKG_LISTSDIR/base"
 cat > "$STAGE/etc/opkg.cfg" <<EOF
 OPKG_BIN="$FAKEOPKG"
 OPKG_LISTSDIR="$FAKEOPKG_LISTSDIR"
+EOF
+cat > "$STAGE/etc/lxc.cfg" <<EOF
+LXC_LS="$TESTDIR/lxc/fakelxc-ls"
+LXC_INFO="$TESTDIR/lxc/fakelxc-info"
+LXC_AUTOSTART="$TESTDIR/lxc/fakelxc-autostart"
+LXC_UCI_AUTO="$TESTDIR/lxc/lxc-auto"
+LXC_CGROUPFS="$TESTDIR/lxc/cgroup"
+LXC_PROC="$TESTDIR/lxc/proc"
+export FAKELXC_DIR="$TESTDIR/lxc/data/normal"
 EOF
 # XYMONTMP/XYMONCLIENTLOGS deliberately do not exist yet: the runner
 # must create them (on OpenWrt /tmp is a RAM disk, configured
@@ -1955,6 +2212,10 @@ expect "$captured" '^status turris,example,org\.opkg green ' \
     "opkg extension runs under the standalone runner"
 expect "$captured" '^updates : 0$' \
     "opkg NCV payload arrives, config read from \$XYMONHOME/etc"
+expect "$captured" '^status turris,example,org\.lxc green ' \
+    "lxc extension runs under the standalone runner"
+expect "$captured" '^count_running : 4$' \
+    "lxc NCV payload arrives, config read from \$XYMONHOME/etc"
 expect "$captured" '^status turris,example,org\.xymonext ' \
     "the runner measures the extensions and reports the xymonext column"
 expect "$captured" '^wall_smart : [0-9]+\.[0-9][0-9]$' \
@@ -2011,7 +2272,7 @@ expect "$captured" '^status turris,example,org\.temp ' \
     "TESTS: listed extension temp runs"
 expect "$captured" '^status turris,example,org\.la ' \
     "TESTS: listed extension la runs"
-expect_not "$captured" '^status turris,example,org\.(smart|mem|disk|opkg) ' \
+expect_not "$captured" '^status turris,example,org\.(smart|mem|disk|opkg|lxc) ' \
     "TESTS: unlisted extensions do not run"
 
 # Extensions named explicitly run even when not in TESTS
@@ -2150,7 +2411,7 @@ CLIENTSTAGE="$TMP/pkgstage-deb"
 # list too), so a snippet there runs twice on a combined host - that is
 # what this guards against.
 # temp is missing on purpose - see the collision check further down.
-for snippet in smart la memory disk opkg fritzdsl fritzwan wifi if_link; do
+for snippet in smart la memory disk opkg fritzdsl fritzwan wifi if_link lxc; do
     grep -qx "/etc/xymon/clientlaunch.d/$snippet.cfg" "$TMP/client-paths" || {
         echo "FAIL: $snippet snippet is not staged into clientlaunch.d"
         FAIL=1

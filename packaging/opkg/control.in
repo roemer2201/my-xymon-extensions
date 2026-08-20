@@ -25,7 +25,10 @@ Description: Portable Xymon client extensions with standalone runner
  without AP radios); if_link - link state changes per network
  interface from the kernel's carrier counters, so even short flaps
  between two polls are counted (physical ports and DSA switch ports
- auto-detected, optional per-port thresholds); xymonext - what the
+ auto-detected, optional per-port thresholds); lxc - LXC container
+ status and resource usage, red when a container that should run
+ does not (autostart taken from lxc.start.auto, /etc/config/lxc-auto
+ and lxc-autostart); xymonext - what the
  tests above cost the router: wall clock time, CPU time and bytes
  sent per test, graphed per extension (the runner calls the
  extensions through its wrapper; switch it off with

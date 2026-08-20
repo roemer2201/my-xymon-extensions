@@ -1,0 +1,6 @@
+NAME             STATE   PID  AUTOSTART
+ca               RUNNING 2155 0
+jd               RUNNING 7817 1
+sshproxy         RUNNING 7907 0
+web-01           RUNNING 8100 0
+thunderbird-test STOPPED -    0

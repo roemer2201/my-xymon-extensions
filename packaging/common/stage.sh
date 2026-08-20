@@ -62,7 +62,7 @@ task() { # task NAME
         "$DESTDIR$LAUNCHDIR/$1.cfg$SUF"
 }
 
-for ext in smart temp la memory disk opkg wifi if_link; do
+for ext in smart temp la memory disk opkg wifi if_link lxc; do
     inst 0755 "extensions/$ext/$ext.sh" "$DESTDIR$EXTDIR/$ext.sh" || exit 1
     inst 0644 "extensions/$ext/$ext.cfg" "$DESTDIR$ETCDIR/$ext.cfg$SUF" || exit 1
     task "$ext" || exit 1
@@ -90,7 +90,7 @@ if [ "$DOCDIR" != "-" ]; then
 
     # Client-side documentation: one README per extension.
     for ext in smart temp la memory disk opkg fritzdsl fritzwan wifi \
-        if_link xymonext; do
+        if_link lxc xymonext; do
         mkdir -p "$DESTDIR$DOCDIR/$ext" || exit 1
         inst 0644 "extensions/$ext/README.md" "$DESTDIR$DOCDIR/$ext/README.md" || exit 1
     done
@@ -109,7 +109,7 @@ if [ "$DOCDIR" != "-" ]; then
     # rrddefinitions.d directories. Every extension with RRD graphs has
     # them; "disk" uses the server's built-in handler and has none.
     for ext in smart temp la memory opkg fritzdsl fritzwan wifi \
-        if_link xymonext; do
+        if_link lxc xymonext; do
         mkdir -p "$DESTDIR$DOCDIR/$ext/server" || exit 1
         inst 0644 "extensions/$ext/server/README.md" \
             "$DESTDIR$DOCDIR/$ext/server/README.md" || exit 1

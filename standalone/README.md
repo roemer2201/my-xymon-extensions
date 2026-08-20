@@ -121,6 +121,15 @@ Run logs go to `$XYMONTMP` (default `/tmp`, a RAM disk on OpenWrt) as
   a Turris Omnia). It stays green unless you configure thresholds -
   see `extensions/if_link/README.md`. Keep the cron interval stable,
   since the metric is "changes since the previous poll".
+- The `lxc` extension is in the default `TESTS` list: on a router
+  running LXC containers (`opkg install lxc lxc-info`) it reports
+  which containers exist, which of them are supposed to run — taken
+  from `lxc.start.auto`, `/etc/config/lxc-auto` and `lxc-autostart`,
+  so nothing has to be configured twice — and what each one costs in
+  memory, CPU and traffic; see `extensions/lxc/README.md`. Without
+  the lxc tools it reports a `clear` column — remove it from `TESTS`
+  there if you don't want that. Keep the cron interval stable, since
+  cpu and network are averages since the previous poll.
 - The FRITZ!Box pollers `fritzdsl`/`fritzwan` are installed but not in
   the default `TESTS` list: they are remote pollers that query a
   FRITZ!Box over the network, a job that normally belongs on the

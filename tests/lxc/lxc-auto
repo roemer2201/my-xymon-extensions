@@ -1,0 +1,10 @@
+#config container
+	#option name container1
+	#option timeout 300
+	#list command '/bin/command --option'
+config container
+	option name jd
+	option timeout 60
+config container
+	option name 'sshproxy'
+	option timeout 60

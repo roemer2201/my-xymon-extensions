@@ -1,0 +1,29 @@
+#!/bin/sh
+# Fake lxc-ls for the unit tests: replays a canned container table.
+# FAKELXC_DIR points at the fixture directory, FAKELXC_NOF=1 simulates
+# an old lxc-ls that does not know -F.
+set -u
+dir="${FAKELXC_DIR:?FAKELXC_DIR must be set}"
+mode=list
+while [ $# -gt 0 ]; do
+    case "$1" in
+        -f) mode=fancy ;;
+        -F) shift ;;
+        -1) mode=plain ;;
+    esac
+    shift
+done
+[ -f "$dir/ls.txt" ] || exit 0
+case "$mode" in
+    fancy)
+        [ "${FAKELXC_NOF:-0}" = 1 ] && exit 1
+        cat "$dir/ls.txt"
+        ;;
+    plain)
+        awk 'NR > 1 { print $1 }' "$dir/ls.txt"
+        ;;
+    *)
+        awk 'NR > 1 { print $1 }' "$dir/ls.txt"
+        ;;
+esac
+exit 0

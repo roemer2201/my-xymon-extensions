@@ -1,0 +1,8 @@
+Name:           web-01
+State:          RUNNING
+PID:            8100
+IP:             192.168.5.40
+Link:           vethWeb01aa
+ TX bytes:      10000
+ RX bytes:      20000
+ Total bytes:   30000

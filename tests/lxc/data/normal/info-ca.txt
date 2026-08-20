@@ -1,0 +1,9 @@
+Name:           ca
+State:          RUNNING
+PID:            2155
+IP:             192.168.5.29
+IP:             2003:f8:df10:c100:a04c:e7ff:fe85:7810
+Link:           vethdjnWsE
+ TX bytes:      47117625
+ RX bytes:      555609848
+ Total bytes:   602727473

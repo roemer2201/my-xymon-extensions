@@ -31,6 +31,6 @@ Description: Xymon server configuration for my-xymon-extensions
     is missing.
  .
  Covered extensions: smart, temp, la, memory, opkg, fritzdsl,
- fritzwan, wifi, if_link and xymonext. The disk extension needs no
+ fritzwan, wifi, if_link, lxc and xymonext. The disk extension needs no
  server-side configuration - it reports into the standard disk column,
  which the server parses itself.

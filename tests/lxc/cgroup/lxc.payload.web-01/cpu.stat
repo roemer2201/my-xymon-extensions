@@ -1,0 +1,3 @@
+usage_usec 250000000
+user_usec 150000000
+system_usec 100000000

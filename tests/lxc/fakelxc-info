@@ -1,0 +1,19 @@
+#!/bin/sh
+# Fake lxc-info for the unit tests: replays "lxc-info -n <name> -H"
+# from $FAKELXC_DIR/info-<name>.txt.
+set -u
+dir="${FAKELXC_DIR:?FAKELXC_DIR must be set}"
+name=""
+while [ $# -gt 0 ]; do
+    case "$1" in
+        -n) shift; name="${1:-}" ;;
+    esac
+    shift
+done
+[ -n "$name" ] || exit 1
+if [ ! -f "$dir/info-$name.txt" ]; then
+    echo "$name doesn't exist" >&2
+    exit 1
+fi
+cat "$dir/info-$name.txt"
+exit 0
