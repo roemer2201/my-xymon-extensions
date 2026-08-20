@@ -17,4 +17,6 @@
 /etc/xymon/clientlaunch.d/wifi.cfg
 /etc/xymon/if_link.cfg
 /etc/xymon/clientlaunch.d/if_link.cfg
+/etc/xymon/lxc.cfg
+/etc/xymon/clientlaunch.d/lxc.cfg
 /etc/xymon/xymonext.cfg

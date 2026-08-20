@@ -42,6 +42,11 @@ Description: Portable Xymon client extensions
     by default: full clients are rarely APs): client counts, channel
     utilization, airtime, throughput, TX retries and noise floor
     with RRD graphing; informational only.
+  * lxc - LXC container status: which containers exist, which of them
+    are supposed to run (lxc.start.auto, OpenWrt's /etc/config/lxc-auto
+    and lxc-autostart), and what each one costs in memory, CPU and
+    network traffic, with one RRD file per container and metric; red
+    when a container that should run does not. Ships disabled.
   * if_link - network interface link state changes from the kernel's
     carrier counters: counts every link down/up transition per port,
     including short flaps between two polls, with optional per-port

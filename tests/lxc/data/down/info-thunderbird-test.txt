@@ -1,0 +1,2 @@
+Name:           thunderbird-test
+State:          STOPPED

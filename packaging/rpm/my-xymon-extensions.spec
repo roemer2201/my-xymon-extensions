@@ -107,6 +107,9 @@ sh packaging/common/stage.sh "%{buildroot}" \
 %{xymonhome}/ext/if_link.sh
 %config(noreplace) %{xymonhome}/etc/if_link.cfg
 %config(noreplace) %{xymonhome}/etc/clientlaunch.d/if_link.cfg
+%{xymonhome}/ext/lxc.sh
+%config(noreplace) %{xymonhome}/etc/lxc.cfg
+%config(noreplace) %{xymonhome}/etc/clientlaunch.d/lxc.cfg
 %{xymonhome}/ext/xymonext.sh
 %{xymonhome}/ext/xymonext-send.sh
 %config(noreplace) %{xymonhome}/etc/xymonext.cfg
@@ -138,6 +141,11 @@ The "wifi" extension ships disabled too: enable it (remove the
 The "if_link" extension (link state changes per network interface)
  is active out of the box and adds an "if_link" column. It stays
  green until you configure thresholds in %{xymonhome}/etc/if_link.cfg.
+The "lxc" extension ships disabled: on an LXC host, remove the
+ DISABLED line from %{xymonhome}/etc/clientlaunch.d/lxc.cfg. Which
+ containers are supposed to run is detected automatically
+ (lxc.start.auto, /etc/config/lxc-auto, lxc-autostart); LXC_REQUIRED
+ in %{xymonhome}/etc/lxc.cfg overrides that with an explicit list.
 Every task now runs through %{xymonhome}/ext/xymonext.sh, which
  measures the extension and adds an "xymonext" column with runtime,
  CPU time and traffic per test. Set XYMONEXT_ENABLE="no" in
@@ -150,6 +158,42 @@ RRD graphs need a one-time setup on the Xymon SERVER (not here):
 EOF
 
 %changelog
+* Fri Aug 21 2026 roemer2201 <r.oliver@web.de> - 0.18.0-1
+- lxc: new extension - LXC container status and resource usage in one
+  "lxc" column. Which containers are supposed to run is derived from
+  the three places the host itself uses, so nothing is configured
+  twice: lxc.start.auto (the AUTOSTART column of lxc-ls), the OpenWrt
+  UCI list /etc/config/lxc-auto - whose init script starts containers
+  without lxc.start.auto, so the flag alone misses them - and
+  lxc-autostart -L, which lists only containers it would start now and
+  is therefore empty on a healthy host, never a complete list on its
+  own. A container from that set that is not running turns the column
+  red, every other stopped container is green and marked "not
+  autostarted"; LXC_REQUIRED/LXC_OPTIONAL/LXC_IGNORE override the
+  detection. Per container it graphs memory, CPU and network traffic
+  through split-NCV, i.e. one RRD file per container and metric, so
+  creating or destroying a container never disturbs an existing graph.
+  CPU comes from the cgroup's cpu.stat (cpuacct.usage on cgroup v1),
+  the cgroup being located through the container's init process rather
+  than by guessing a path; memory from memory.current, with a fallback
+  that sums the RSS of the container processes from /proc in a single
+  awk pass - needed on OpenWrt/TurrisOS, where no controller is
+  delegated to the container cgroups, so memory.current is missing or
+  reads 0 and lxc-ls -F RAM shows 0.00MB; traffic from the counters of
+  lxc-info (optional package), reported from the container's point of
+  view - lxc-info measures the host side of the veth pair, where TX is
+  what goes INTO the container. Ships disabled on full clients and is
+  in the default TESTS list of the standalone runner
+- every extension now forces LC_ALL=C. awk formats floating point
+  numbers according to LC_NUMERIC, so an extension that inherited a
+  locale such as de_DE - through an ENVFILE, a systemd unit or a cron
+  environment - sent its metrics as "14,9". The server's NCV parser
+  drops those silently: the affected graphs simply stay empty, with
+  nothing in any log to say why. Numbers in the status text were
+  affected the same way. Reproduced with the test suite, which failed
+  71 of its assertions under de_DE.UTF-8 and passes under any locale
+  now
+
 * Mon Aug 10 2026 roemer2201 <r.oliver@web.de> - 0.17.0-1
 - revert the 0.16.0 file naming: the drop-ins keep their plain
   <extension>.cfg names. Instead of renaming everything for one clash,

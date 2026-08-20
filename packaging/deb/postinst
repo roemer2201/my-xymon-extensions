@@ -85,6 +85,11 @@ The "wifi" extension ships disabled too: enable it (remove the
 The "if_link" extension (link state changes per network interface)
  is active out of the box and adds an "if_link" column. It stays
  green until you configure thresholds in /etc/xymon/if_link.cfg.
+The "lxc" extension ships disabled: on an LXC host, remove the
+ DISABLED line from /etc/xymon/clientlaunch.d/lxc.cfg. It needs no
+ configuration - which containers are supposed to run is taken from
+ lxc.start.auto, /etc/config/lxc-auto and lxc-autostart; override it
+ in /etc/xymon/lxc.cfg with LXC_REQUIRED if you want an explicit list.
 Every task runs through /usr/lib/xymon/client/ext/xymonext.sh, which
  measures the extension and adds an "xymonext" column with runtime,
  CPU time and traffic per test. Set XYMONEXT_ENABLE="no" in

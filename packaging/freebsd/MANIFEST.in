@@ -33,6 +33,8 @@ Included extensions:
   configured.
 * wifi - Wi-Fi access point metadata. Linux-only (iw/nl80211);
   reports a clear status on FreeBSD and ships disabled.
+* lxc - LXC container status and resource usage (Linux-only; reports
+  a clear status where the lxc tools are missing) and ships disabled.
 * if_link - link state changes per network interface, counted from
   the kernel's carrier counters, with optional per-port thresholds.
   Linux-only (there is no equivalent counter on FreeBSD, and polling

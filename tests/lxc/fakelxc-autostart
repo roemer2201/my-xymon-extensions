@@ -1,0 +1,9 @@
+#!/bin/sh
+# Fake lxc-autostart for the unit tests. "-L" lists the containers it
+# would start, i.e. the ones with lxc.start.auto that are NOT running
+# (that filtering is what the real tool does, too).
+set -u
+dir="${FAKELXC_DIR:?FAKELXC_DIR must be set}"
+[ -f "$dir/autostart.txt" ] || exit 0
+cat "$dir/autostart.txt"
+exit 0
