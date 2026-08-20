@@ -21,6 +21,13 @@
 
 set -u
 
+# Every number in a Xymon message must use a decimal point. awk formats
+# floating point numbers according to LC_NUMERIC, so under a locale
+# like de_DE the metrics would come out as "14,9" - which the server's
+# NCV parser silently drops.
+LC_ALL=C
+export LC_ALL
+
 COLUMN="fritzdsl"
 
 # ----------------------------------------------------------------------

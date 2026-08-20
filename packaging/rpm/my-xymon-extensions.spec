@@ -184,9 +184,15 @@ EOF
   view - lxc-info measures the host side of the veth pair, where TX is
   what goes INTO the container. Ships disabled on full clients and is
   in the default TESTS list of the standalone runner
-- lxc.sh forces LC_ALL=C: awk formats floating point numbers according
-  to LC_NUMERIC, so under a locale such as de_DE every metric would be
-  sent as "14,9" and silently dropped by the server's NCV parser
+- every extension now forces LC_ALL=C. awk formats floating point
+  numbers according to LC_NUMERIC, so an extension that inherited a
+  locale such as de_DE - through an ENVFILE, a systemd unit or a cron
+  environment - sent its metrics as "14,9". The server's NCV parser
+  drops those silently: the affected graphs simply stay empty, with
+  nothing in any log to say why. Numbers in the status text were
+  affected the same way. Reproduced with the test suite, which failed
+  71 of its assertions under de_DE.UTF-8 and passes under any locale
+  now
 
 * Mon Aug 10 2026 roemer2201 <r.oliver@web.de> - 0.17.0-1
 - revert the 0.16.0 file naming: the drop-ins keep their plain
