@@ -100,7 +100,11 @@ is_yes() {
 
 # sanitize <text> -> lowercase, [a-z0-9_] only, squeezed and trimmed
 sanitize() {
-    s_out=$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9' '_' | tr -s '_')
+    # shellcheck disable=SC2018,SC2019  # NOT '[:upper:]'/'[:lower:]': BusyBox
+    # tr does not recognize the class syntax and translates it letter-by-
+    # letter as the literal string "[:upper:]" instead, silently corrupting
+    # names that contain 'p' or 'u'. A-Z/a-z ranges are the portable form.
+    s_out=$(printf '%s' "$1" | tr 'A-Z' 'a-z' | tr -c 'a-z0-9' '_' | tr -s '_')
     s_out=${s_out#_}
     printf '%s' "${s_out%_}"
 }

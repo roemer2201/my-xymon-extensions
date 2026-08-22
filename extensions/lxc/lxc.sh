@@ -122,7 +122,12 @@ is_uint() {
 # The result names an RRD file on the server, so it must survive the
 # round trip through the FNPATTERN in server/graphs.d/lxc.cfg.
 sanitize() {
-    s_out=$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9' '_' | tr -s '_')
+    # shellcheck disable=SC2018,SC2019  # NOT '[:upper:]'/'[:lower:]': BusyBox
+    # tr (TurrisOS 1.36.1) does not recognize the class syntax and instead
+    # translates it letter-by-letter as the literal string "[:upper:]" -
+    # e.g. "product" silently becomes "wrodlct" because 'p' and 'u' occur
+    # in that literal string. A-Z/a-z ranges are the portable form.
+    s_out=$(printf '%s' "$1" | tr 'A-Z' 'a-z' | tr -c 'a-z0-9' '_' | tr -s '_')
     s_out=${s_out#_}
     printf '%s' "${s_out%_}"
 }
