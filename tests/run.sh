@@ -2295,6 +2295,198 @@ else
 fi
 
 # ----------------------------------------------------------------------
+echo "--- claude ---"
+
+# The extension is driven against generated home directories: the
+# helper looks the account up in CLAUDE_PASSWD instead of /etc/passwd,
+# so no real account and no sudo are needed here. Every timestamp is
+# computed from "now" - the whole point of the test is the remaining
+# lifetime, which cannot come from a static fixture.
+CLAUDEHOME="$TMP/claudehome"
+CLAUDEPW="$TMP/claude-passwd"
+NOWMS=$(( $(date +%s) * 1000 ))
+DAY=86400000
+HALFDAY=43200000
+
+claude_account() {
+    # claude_account <user> [<refresh-ms> <access-ms>]
+    # Creates the home directory, the passwd entry and - with
+    # timestamps given - a credentials file in the real format.
+    mkdir -p "$CLAUDEHOME/$1/.claude"
+    echo "$1:x:4711:4711::$CLAUDEHOME/$1:/bin/sh" >> "$CLAUDEPW"
+    [ $# -eq 3 ] || return 0
+    cat > "$CLAUDEHOME/$1/.claude/.credentials.json" <<EOF
+{"claudeAiOauth":{"accessToken":"FAKE-ACCESS-TOKEN","refreshToken":"FAKE-REFRESH-TOKEN","expiresAt":$3,"scopes":["user:inference","user:profile"],"subscriptionType":"pro","rateLimitTier":"default_claude_ai","refreshTokenExpiresAt":$2}}
+EOF
+}
+
+rm -f "$CLAUDEPW"
+# 27 days left, access token expired half a day ago (the normal state
+# of an idle host: the access token renews itself on the next run)
+claude_account cgreen $(( NOWMS + 27 * DAY + HALFDAY )) $(( NOWMS - HALFDAY ))
+claude_account cwarn  $(( NOWMS + 8 * DAY + HALFDAY ))  $(( NOWMS + 3600000 ))
+claude_account ccrit  $(( NOWMS + 3 * DAY + HALFDAY ))  $(( NOWMS + 3600000 ))
+claude_account cexp   $(( NOWMS - 2 * DAY - HALFDAY ))  $(( NOWMS - 2 * DAY ))
+claude_account cnone
+claude_account cbad
+# A login that was never completed: the file exists, but the refresh
+# token expiry is missing (also what a file caught mid-rewrite looks
+# like).
+cat > "$CLAUDEHOME/cbad/.claude/.credentials.json" <<'EOF'
+{"claudeAiOauth":{"accessToken":"FAKE-ACCESS-TOKEN","scopes":["user:inference"]}}
+EOF
+# Pretty-printed instead of one line - both forms must parse.
+claude_account cpretty $(( NOWMS + 20 * DAY + HALFDAY )) $(( NOWMS + 3600000 ))
+cat > "$CLAUDEHOME/cpretty/.claude/.credentials.json" <<EOF
+{
+  "claudeAiOauth": {
+    "accessToken": "FAKE-ACCESS-TOKEN",
+    "expiresAt": $(( NOWMS + 3600000 )),
+    "subscriptionType": "max",
+    "refreshTokenExpiresAt": $(( NOWMS + 20 * DAY + HALFDAY ))
+  }
+}
+EOF
+
+export CLAUDE_PASSWD="$CLAUDEPW"
+export CLAUDE_HELPER="$REPO/extensions/claude/claude-expiry.sh"
+export CLAUDE_SUDO="no"
+export XYMONTMP="$TMP"
+export MACHINE="testhost"
+unset XYMON XYMSRV XYMONHOME CLAUDE_CFG CLAUDE_WARN CLAUDE_CRIT 2>/dev/null || true
+
+claude_run() {
+    # claude_run <accounts> -> status message
+    # shellcheck disable=SC2086  # TESTSH may be multi-word ("busybox sh")
+    CLAUDE_ACCOUNTS="$1" $TESTSH "$REPO/extensions/claude/claude.sh"
+}
+
+out=$(claude_run cgreen)
+rc=$?
+if [ "$rc" -ne 0 ]; then
+    echo "FAIL: claude.sh exited with $rc"
+    printf '%s\n' "$out"
+    exit 1
+fi
+expect "$out" '^status testhost\.claude green ' \
+    "27 days left is green"
+expect "$out" '&green cgreen - login valid for 27 more day\(s\)' \
+    "remaining days counted from refreshTokenExpiresAt"
+expect "$out" '\[pro\]' "subscription type shown"
+expect "$out" 'access token expired .*renewed at the next Claude run' \
+    "an expired access token is information, not an alarm"
+expect_not "$out" 'FAKE-(ACCESS|REFRESH)-TOKEN' \
+    "no token material in the status message"
+
+out=$(claude_run cwarn)
+expect "$out" '^status testhost\.claude yellow ' "8 days left is yellow"
+expect "$out" '&yellow cwarn - login valid for 8 more day\(s\)' \
+    "yellow line names the account and the days left"
+
+out=$(claude_run ccrit)
+expect "$out" '^status testhost\.claude red ' "3 days left is red"
+
+out=$(claude_run cexp)
+expect "$out" '^status testhost\.claude red ' "an expired login is red"
+expect "$out" '&red cexp - login EXPIRED 2 day\(s\) ago' \
+    "expired login reports how long ago"
+expect "$out" 'claude /login' "the red status says how to fix it"
+
+out=$(claude_run cnone)
+expect "$out" '^status testhost\.claude clear ' \
+    "an account without a login is clear, not red"
+expect "$out" '&clear cnone - no Claude Code login' \
+    "clear line names the missing credentials file"
+
+out=$(claude_run cbad)
+expect "$out" '^status testhost\.claude yellow ' \
+    "credentials without refreshTokenExpiresAt are yellow"
+expect "$out" 'carries no refreshTokenExpiresAt field' \
+    "yellow line says what is wrong with the file"
+
+out=$(claude_run nosuchaccount)
+expect "$out" '^status testhost\.claude yellow ' \
+    "an account that does not exist is yellow"
+expect "$out" 'no such account on this host' \
+    "misconfigured CLAUDE_ACCOUNTS is named as such"
+
+out=$(claude_run cpretty)
+expect "$out" '^status testhost\.claude green ' \
+    "pretty printed credentials parse as well"
+expect "$out" '&green cpretty - login valid for 20 more day\(s\).*\[max\]' \
+    "pretty printed values are read correctly"
+
+# Several accounts in one column: every account gets a line, the worst
+# one sets the color.
+out=$(claude_run "cgreen ccrit cnone")
+expect "$out" '^status testhost\.claude red ' \
+    "worst account determines the column color"
+expect "$out" '&green cgreen - login valid' "green account still listed"
+expect "$out" '&red ccrit - login valid for 3 more day' "red account listed"
+expect "$out" '&clear cnone - no Claude Code login' "account without login listed"
+expect "$out" 'Checked account\(s\): cgreen ccrit cnone' \
+    "footer lists the checked accounts"
+
+# Thresholds from the config file win over the built-in defaults.
+cat > "$TMP/claude_test.cfg" <<'EOF'
+CLAUDE_WARN=40
+CLAUDE_CRIT=10
+EOF
+CLAUDE_CFG="$TMP/claude_test.cfg"
+export CLAUDE_CFG
+out=$(claude_run cgreen)
+unset CLAUDE_CFG
+expect "$out" '^status testhost\.claude yellow ' \
+    "CLAUDE_WARN from the config file is applied"
+expect "$out" 'Thresholds: yellow at 40 day\(s\) left, red at 10' \
+    "configured thresholds are documented in the status"
+
+# Garbage thresholds must not break the arithmetic.
+CLAUDE_WARN="ten"
+CLAUDE_CRIT=""
+export CLAUDE_WARN CLAUDE_CRIT
+out=$(claude_run cgreen)
+unset CLAUDE_WARN CLAUDE_CRIT
+expect "$out" 'Thresholds: yellow at 10 day\(s\) left, red at 5' \
+    "non-numeric thresholds fall back to the defaults"
+
+# The privileged helper on its own.
+out=$("$REPO/extensions/claude/claude-expiry.sh" cgreen)
+expect "$out" '^status=ok$' "helper reports status=ok"
+expect "$out" '^refreshexpires=[0-9]+$' "helper prints the refresh token expiry"
+expect "$out" '^subscription=pro$' "helper prints the subscription type"
+expect_not "$out" 'FAKE-(ACCESS|REFRESH)-TOKEN' \
+    "helper never prints token material"
+expect_not "$out" '^(accessToken|refreshToken)' \
+    "helper prints no token fields at all"
+
+out=$("$REPO/extensions/claude/claude-expiry.sh" cnone)
+expect "$out" '^status=nofile$' "helper reports a missing credentials file"
+
+out=$("$REPO/extensions/claude/claude-expiry.sh" nosuchaccount)
+expect "$out" '^status=nouser$' "helper reports an unknown account"
+
+# The user name is the only argument, and it must look like one: the
+# sudoers rule pins the accounts, so anything path-shaped is refused
+# before a file is touched.
+for arg in "../../etc/passwd" "/etc/passwd" "root;id" ".ssh"; do
+    if "$REPO/extensions/claude/claude-expiry.sh" "$arg" >/dev/null 2>&1; then
+        echo "FAIL: helper accepted the argument \"$arg\""
+        FAIL=1
+    else
+        echo "ok:   helper refuses the argument \"$arg\""
+    fi
+done
+if "$REPO/extensions/claude/claude-expiry.sh" >/dev/null 2>&1; then
+    echo "FAIL: helper accepted a call without an account"
+    FAIL=1
+else
+    echo "ok:   helper refuses a call without an account"
+fi
+
+unset CLAUDE_PASSWD CLAUDE_HELPER CLAUDE_SUDO CLAUDE_ACCOUNTS 2>/dev/null || true
+
+# ----------------------------------------------------------------------
 echo "--- packaging ---"
 
 # The server-side drop-in files (server/xymonserver.d, server/graphs.d,
@@ -2411,7 +2603,7 @@ CLIENTSTAGE="$TMP/pkgstage-deb"
 # list too), so a snippet there runs twice on a combined host - that is
 # what this guards against.
 # temp is missing on purpose - see the collision check further down.
-for snippet in smart la memory disk opkg fritzdsl fritzwan wifi if_link lxc; do
+for snippet in smart la memory disk opkg fritzdsl fritzwan wifi if_link lxc claude; do
     grep -qx "/etc/xymon/clientlaunch.d/$snippet.cfg" "$TMP/client-paths" || {
         echo "FAIL: $snippet snippet is not staged into clientlaunch.d"
         FAIL=1

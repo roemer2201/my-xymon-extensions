@@ -110,6 +110,10 @@ sh packaging/common/stage.sh "%{buildroot}" \
 %{xymonhome}/ext/lxc.sh
 %config(noreplace) %{xymonhome}/etc/lxc.cfg
 %config(noreplace) %{xymonhome}/etc/clientlaunch.d/lxc.cfg
+%{xymonhome}/ext/claude.sh
+%{xymonhome}/ext/claude-expiry.sh
+%config(noreplace) %{xymonhome}/etc/claude.cfg
+%config(noreplace) %{xymonhome}/etc/clientlaunch.d/claude.cfg
 %{xymonhome}/ext/xymonext.sh
 %{xymonhome}/ext/xymonext-send.sh
 %config(noreplace) %{xymonhome}/etc/xymonext.cfg
@@ -146,6 +150,14 @@ The "lxc" extension ships disabled: on an LXC host, remove the
  containers are supposed to run is detected automatically
  (lxc.start.auto, /etc/config/lxc-auto, lxc-autostart); LXC_REQUIRED
  in %{xymonhome}/etc/lxc.cfg overrides that with an explicit list.
+The "claude" extension ships disabled: it reports how much longer the
+ Claude Code login of an account is valid (yellow 10 days before it
+ expires, red 5 days). The credentials file is mode 0600 in a private
+ home directory, so allow the xymon user to run the reader as root -
+ see %{_docdir}/%{name}/claude/sudoers.example, which ships one line
+ for the "root" account - list the accounts to check in
+ CLAUDE_ACCOUNTS in %{xymonhome}/etc/claude.cfg and uncomment the task
+ in %{xymonhome}/etc/clientlaunch.d/claude.cfg.
 Every task now runs through %{xymonhome}/ext/xymonext.sh, which
  measures the extension and adds an "xymonext" column with runtime,
  CPU time and traffic per test. Set XYMONEXT_ENABLE="no" in
@@ -158,6 +170,26 @@ RRD graphs need a one-time setup on the Xymon SERVER (not here):
 EOF
 
 %changelog
+* Mon Sep 21 2026 roemer2201 <r.oliver@web.de> - 0.19.0-1
+- claude: new extension - validity of the Claude Code login in one
+  "claude" column. Of the two timestamps in
+  $HOME/.claude/.credentials.json only refreshTokenExpiresAt says how
+  long the login lasts; the access token in expiresAt is renewed
+  automatically whenever Claude runs, so an expired one is normal on
+  an idle host and is reported as information only. Yellow at 10 days
+  left, red at 5 (CLAUDE_WARN/CLAUDE_CRIT), which is the point: a
+  headless session - claude --remote-control in a service, a cron job,
+  an agent - dies silently when the refresh token expires, and the
+  repair is an interactive "claude /login" on the host. Several
+  accounts per host are supported (CLAUDE_ACCOUNTS), since the login
+  is per user. The file is mode 0600 in a private home directory, so
+  reading it is confined to claude-expiry.sh, which is called through
+  sudo, takes a user NAME rather than a path - so the sudoers rule
+  pins the accounts that may be queried - and prints the two
+  timestamps and the subscription type, never token material. Hosts
+  without a login report "clear", not red, and so does a missing sudo
+  rule; ships disabled
+
 * Fri Aug 21 2026 roemer2201 <r.oliver@web.de> - 0.18.0-1
 - lxc: new extension - LXC container status and resource usage in one
   "lxc" column. Which containers are supposed to run is derived from
