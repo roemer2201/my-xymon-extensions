@@ -62,7 +62,7 @@ task() { # task NAME
         "$DESTDIR$LAUNCHDIR/$1.cfg$SUF"
 }
 
-for ext in smart temp la memory disk opkg wifi if_link lxc; do
+for ext in smart temp la memory disk opkg wifi if_link lxc claude; do
     inst 0755 "extensions/$ext/$ext.sh" "$DESTDIR$EXTDIR/$ext.sh" || exit 1
     inst 0644 "extensions/$ext/$ext.cfg" "$DESTDIR$ETCDIR/$ext.cfg$SUF" || exit 1
     task "$ext" || exit 1
@@ -75,6 +75,10 @@ task fritzdsl || exit 1
 inst 0755 extensions/fritzwan/fritzwan.sh "$DESTDIR$EXTDIR/fritzwan.sh" || exit 1
 inst 0644 extensions/fritzwan/fritzwan.cfg "$DESTDIR$ETCDIR/fritzwan.cfg$SUF" || exit 1
 task fritzwan || exit 1
+
+# The "claude" extension reads credentials files that are only
+# readable for root, through this helper (called via sudo).
+inst 0755 extensions/claude/claude-expiry.sh "$DESTDIR$EXTDIR/claude-expiry.sh" || exit 1
 
 # xymonext measures the other extensions and therefore has no task of
 # its own: the clientlaunch.d snippets above call it with the extension to
@@ -90,11 +94,12 @@ if [ "$DOCDIR" != "-" ]; then
 
     # Client-side documentation: one README per extension.
     for ext in smart temp la memory disk opkg fritzdsl fritzwan wifi \
-        if_link lxc xymonext; do
+        if_link lxc claude xymonext; do
         mkdir -p "$DESTDIR$DOCDIR/$ext" || exit 1
         inst 0644 "extensions/$ext/README.md" "$DESTDIR$DOCDIR/$ext/README.md" || exit 1
     done
     inst 0644 extensions/smart/sudoers.example "$DESTDIR$DOCDIR/smart/sudoers.example" || exit 1
+    inst 0644 extensions/claude/sudoers.example "$DESTDIR$DOCDIR/claude/sudoers.example" || exit 1
 
     # The launch snippets that are not installed (see SKIP_SNIPPETS)
     # ship here instead, so they can be put in place by hand.

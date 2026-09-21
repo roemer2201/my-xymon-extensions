@@ -1,0 +1,46 @@
+# sudoers rule for the Xymon "claude" extension.
+#
+# The extension reports how long the Claude Code login of an account is
+# still valid. That information sits in $HOME/.claude/.credentials.json,
+# mode 0600 in a private home directory, so the unprivileged Xymon
+# client cannot read it. claude-expiry.sh is the only part that needs
+# root: it takes a USER NAME (never a path), reads that account's
+# credentials file and prints the two expiry timestamps and the
+# subscription type - no token material, ever.
+#
+# Install this file with visudo -f:
+#
+#   Linux (Debian/Ubuntu):  visudo -f /etc/sudoers.d/xymon-claude
+#   Linux (Rocky/EL):       visudo -f /etc/sudoers.d/xymon-claude
+#   FreeBSD:                visudo -f /usr/local/etc/sudoers.d/xymon-claude
+#
+# Keep exactly one uncommented line per account and platform. The user
+# name is part of the rule on purpose: sudo then permits exactly the
+# accounts named here and nothing else, so the rule cannot be turned
+# into a way of reading other files as root.
+#
+# Hosts where the Xymon client itself runs as root (or where the
+# standalone runner runs from root's crontab, as on OpenWrt) need no
+# rule at all - set CLAUDE_SUDO="no" in claude.cfg there.
+
+# Debian/Ubuntu and Rocky/EL - the default account:
+xymon ALL=(root) NOPASSWD: /usr/lib/xymon/client/ext/claude-expiry.sh root
+
+# Rocky/EL with the EPEL xymon-client package (different prefix):
+#xymon ALL=(root) NOPASSWD: /usr/share/xymon-client/ext/claude-expiry.sh root
+
+# FreeBSD (net-mgmt/xymon-client):
+#xymon ALL=(root) NOPASSWD: /usr/local/www/xymon/client/ext/claude-expiry.sh root
+
+# Further accounts: one line per account, and add the account to
+# CLAUDE_ACCOUNTS in claude.cfg. Example for a service account "deploy"
+# and a user "alice" on Debian/Ubuntu:
+#xymon ALL=(root) NOPASSWD: /usr/lib/xymon/client/ext/claude-expiry.sh deploy
+#xymon ALL=(root) NOPASSWD: /usr/lib/xymon/client/ext/claude-expiry.sh alice
+#
+# Several accounts in one line work as well:
+#xymon ALL=(root) NOPASSWD: /usr/lib/xymon/client/ext/claude-expiry.sh root, /usr/lib/xymon/client/ext/claude-expiry.sh deploy
+#
+# Do NOT write a rule without the argument, e.g.
+#   xymon ALL=(root) NOPASSWD: /usr/lib/xymon/client/ext/claude-expiry.sh
+# That allows ANY argument, i.e. every account on the host.

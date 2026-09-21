@@ -90,6 +90,17 @@ The "lxc" extension ships disabled: on an LXC host, remove the
  configuration - which containers are supposed to run is taken from
  lxc.start.auto, /etc/config/lxc-auto and lxc-autostart; override it
  in /etc/xymon/lxc.cfg with LXC_REQUIRED if you want an explicit list.
+The "claude" extension ships disabled: it reports how much longer the
+ Claude Code login of an account is valid - yellow 10 days before it
+ expires, red 5 days - so a headless session is renewed before it
+ breaks. Setting it up takes two steps, because the credentials file
+ is mode 0600 in a private home directory:
+   1. Allow the xymon user to run the reader as root - see
+      /usr/share/doc/my-xymon-extensions/claude/sudoers.example (it
+      ships one line for the "root" account; add a line per further
+      account you want checked).
+   2. List those accounts in CLAUDE_ACCOUNTS in /etc/xymon/claude.cfg,
+      then uncomment the task in /etc/xymon/clientlaunch.d/claude.cfg.
 Every task runs through /usr/lib/xymon/client/ext/xymonext.sh, which
  measures the extension and adds an "xymonext" column with runtime,
  CPU time and traffic per test. Set XYMONEXT_ENABLE="no" in

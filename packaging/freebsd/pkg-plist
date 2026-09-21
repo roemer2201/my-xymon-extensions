@@ -9,6 +9,8 @@ www/xymon/client/ext/fritzwan.sh
 www/xymon/client/ext/wifi.sh
 www/xymon/client/ext/if_link.sh
 www/xymon/client/ext/lxc.sh
+www/xymon/client/ext/claude.sh
+www/xymon/client/ext/claude-expiry.sh
 www/xymon/client/ext/xymonext.sh
 www/xymon/client/ext/xymonext-send.sh
 @sample www/xymon/client/etc/smart.cfg.sample
@@ -32,6 +34,8 @@ www/xymon/client/ext/xymonext-send.sh
 @sample www/xymon/client/etc/clientlaunch.d/if_link.cfg.sample
 @sample www/xymon/client/etc/lxc.cfg.sample
 @sample www/xymon/client/etc/clientlaunch.d/lxc.cfg.sample
+@sample www/xymon/client/etc/claude.cfg.sample
+@sample www/xymon/client/etc/clientlaunch.d/claude.cfg.sample
 @sample www/xymon/client/etc/xymonext.cfg.sample
 share/doc/my-xymon-extensions/README.md
 share/doc/my-xymon-extensions/temp/README.md
@@ -78,6 +82,8 @@ share/doc/my-xymon-extensions/lxc/README.md
 share/doc/my-xymon-extensions/lxc/server/README.md
 share/doc/my-xymon-extensions/lxc/server/graphs.d/lxc.cfg
 share/doc/my-xymon-extensions/lxc/server/xymonserver.d/lxc.cfg
+share/doc/my-xymon-extensions/claude/README.md
+share/doc/my-xymon-extensions/claude/sudoers.example
 share/doc/my-xymon-extensions/xymonext/README.md
 share/doc/my-xymon-extensions/xymonext/server/README.md
 share/doc/my-xymon-extensions/xymonext/server/graphs.d/xymonext.cfg
