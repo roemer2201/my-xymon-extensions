@@ -20,7 +20,7 @@
 #
 # The poller runs on the Xymon server itself (or any host that can
 # reach the box) - no software is installed on the FRITZ!Box.
-# Configuration: $XYMONHOME/etc/fritzwan.cfg. Without configuration
+# Configuration: $XYMONHOME/etc/my-xymon-extensions/fritzwan.cfg. Without configuration
 # the extension exits silently (the shipped launch snippet is
 # additionally DISABLED by default).
 
@@ -58,7 +58,16 @@ MODE="auto"                # auto | igd | tr064 (see fritzwan.cfg)
 # Thresholds; setting a value to 0 disables that check.
 UTIL_WARN=0        UTIL_CRIT=0        # link utilization in percent
 
-CFGFILE="${FRITZWAN_CFG:-${XYMONHOME:+${XYMONHOME}/etc/fritzwan.cfg}}"
+# The config file lives in a directory of this package's own: on
+# Debian/Ubuntu the Xymon client, the server and hobbit-plugins all
+# share $XYMONHOME/etc, where these generically named files sat until
+# 0.19.0. One left behind there is still read, so an installation
+# that was never migrated keeps working.
+CFGFILE="${FRITZWAN_CFG:-}"
+if [ -z "$CFGFILE" ] && [ -n "$XYMONHOME" ]; then
+    CFGFILE="$XYMONHOME/etc/my-xymon-extensions/fritzwan.cfg"
+    [ -f "$CFGFILE" ] || CFGFILE="$XYMONHOME/etc/fritzwan.cfg"
+fi
 if [ -n "$CFGFILE" ] && [ -r "$CFGFILE" ]; then
     # shellcheck disable=SC1090  # user config, sourced on purpose
     . "$CFGFILE"

@@ -89,8 +89,13 @@ target platform.
 - New extension → new directory `extensions/<name>/` containing:
   - `<name>.sh` — the script (executable, POSIX sh)
   - `<name>.cfg` — default config, only if the extension is configurable;
-    read from `$XYMONHOME/etc/<name>.cfg` with sane built-in defaults so
-    the extension works without a config file
+    read from `$XYMONHOME/etc/my-xymon-extensions/<name>.cfg` with sane
+    built-in defaults so the extension works without a config file. That
+    subdirectory is this package's own: `$XYMONHOME/etc` is shared with
+    the Xymon server and `hobbit-plugins` on Debian/Ubuntu, and names
+    like `memory.cfg` belong to nobody in particular. Up to 0.19.0 the
+    files sat there; every extension still reads a file left behind in
+    the old place, so a host that was never migrated keeps working.
   - `README.md` — purpose, column name, thresholds, platform notes
   - `server/` — everything the **Xymon server** needs, if the extension
     produces RRD graphs. Never tell users to edit a stock config file:
@@ -143,10 +148,10 @@ target platform.
 - On Debian/Ubuntu the Xymon **server and client share `/etc/xymon`**,
   and the `xymon` package depends on `xymon-client`, so both of our
   packages can end up on the same host. dpkg refuses two packages that
-  ship the same path: the client owns `<name>.cfg` and
-  `clientlaunch.d/`, the
-  server package only the `xymonserver.d/`, `graphs.d/` and
-  `rrddefinitions.d/` drop-ins. Never let the two lists intersect.
+  ship the same path: the client owns `my-xymon-extensions/<name>.cfg`
+  and its `clientlaunch.d/` snippets, the server package only the
+  `xymonserver.d/`, `graphs.d/` and `rrddefinitions.d/` drop-ins. Never
+  let the two lists intersect.
 - Maintainer scripts must not edit another package's conffile
   (`xymonserver.cfg`, `graphs.cfg`, `rrddefinitions.cfg` belong to
   `xymon`) — dpkg would prompt on its next upgrade. Detect and print

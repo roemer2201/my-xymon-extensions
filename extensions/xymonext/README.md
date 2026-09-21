@@ -11,7 +11,7 @@ the result in one column:
 | msgs | number of messages it sent (status, data, …) |
 
 - **Column:** `xymonext`
-- **Config:** `$XYMONHOME/etc/xymonext.cfg` (see the shipped
+- **Config:** `$XYMONHOME/etc/my-xymon-extensions/xymonext.cfg` (see the shipped
   `xymonext.cfg`; every setting also works as an environment variable,
   the file wins)
 - **Platforms:** Linux (incl. OpenWrt/TurrisOS with BusyBox) and

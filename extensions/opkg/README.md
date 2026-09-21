@@ -53,7 +53,7 @@ pattern list (dropbear, *ssl*, wpad, dnsmasq, firewall, ... — see
 ## Configuration
 
 Every setting is an environment variable with a built-in default and
-can also be set in `$XYMONHOME/etc/opkg.cfg` (sourced POSIX shell; a
+can also be set in `$XYMONHOME/etc/my-xymon-extensions/opkg.cfg` (sourced POSIX shell; a
 value set there wins over the environment). See the shipped
 [opkg.cfg](opkg.cfg).
 

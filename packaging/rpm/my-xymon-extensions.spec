@@ -83,12 +83,13 @@ sh packaging/common/stage.sh "%{buildroot}" \
 %{xymonhome}/ext/memory.sh
 %{xymonhome}/ext/disk.sh
 %{xymonhome}/ext/opkg.sh
-%config(noreplace) %{xymonhome}/etc/smart.cfg
-%config(noreplace) %{xymonhome}/etc/temp.cfg
-%config(noreplace) %{xymonhome}/etc/la.cfg
-%config(noreplace) %{xymonhome}/etc/memory.cfg
-%config(noreplace) %{xymonhome}/etc/disk.cfg
-%config(noreplace) %{xymonhome}/etc/opkg.cfg
+%config(noreplace) %{xymonhome}/etc/my-xymon-extensions/smart.cfg
+%config(noreplace) %{xymonhome}/etc/my-xymon-extensions/temp.cfg
+%config(noreplace) %{xymonhome}/etc/my-xymon-extensions/la.cfg
+%config(noreplace) %{xymonhome}/etc/my-xymon-extensions/memory.cfg
+%config(noreplace) %{xymonhome}/etc/my-xymon-extensions/disk.cfg
+%config(noreplace) %{xymonhome}/etc/my-xymon-extensions/opkg.cfg
+%dir %{xymonhome}/etc/my-xymon-extensions
 %dir %{xymonhome}/etc/clientlaunch.d
 %config(noreplace) %{xymonhome}/etc/clientlaunch.d/smart.cfg
 %config(noreplace) %{xymonhome}/etc/clientlaunch.d/la.cfg
@@ -96,32 +97,38 @@ sh packaging/common/stage.sh "%{buildroot}" \
 %config(noreplace) %{xymonhome}/etc/clientlaunch.d/disk.cfg
 %config(noreplace) %{xymonhome}/etc/clientlaunch.d/opkg.cfg
 %{xymonhome}/ext/fritzdsl.sh
-%config(noreplace) %{xymonhome}/etc/fritzdsl.cfg
+%config(noreplace) %{xymonhome}/etc/my-xymon-extensions/fritzdsl.cfg
 %config(noreplace) %{xymonhome}/etc/clientlaunch.d/fritzdsl.cfg
 %{xymonhome}/ext/fritzwan.sh
-%config(noreplace) %{xymonhome}/etc/fritzwan.cfg
+%config(noreplace) %{xymonhome}/etc/my-xymon-extensions/fritzwan.cfg
 %config(noreplace) %{xymonhome}/etc/clientlaunch.d/fritzwan.cfg
 %{xymonhome}/ext/wifi.sh
-%config(noreplace) %{xymonhome}/etc/wifi.cfg
+%config(noreplace) %{xymonhome}/etc/my-xymon-extensions/wifi.cfg
 %config(noreplace) %{xymonhome}/etc/clientlaunch.d/wifi.cfg
 %{xymonhome}/ext/if_link.sh
-%config(noreplace) %{xymonhome}/etc/if_link.cfg
+%config(noreplace) %{xymonhome}/etc/my-xymon-extensions/if_link.cfg
 %config(noreplace) %{xymonhome}/etc/clientlaunch.d/if_link.cfg
 %{xymonhome}/ext/lxc.sh
-%config(noreplace) %{xymonhome}/etc/lxc.cfg
+%config(noreplace) %{xymonhome}/etc/my-xymon-extensions/lxc.cfg
 %config(noreplace) %{xymonhome}/etc/clientlaunch.d/lxc.cfg
 %{xymonhome}/ext/claude.sh
 %{xymonhome}/ext/claude-expiry.sh
-%config(noreplace) %{xymonhome}/etc/claude.cfg
+%config(noreplace) %{xymonhome}/etc/my-xymon-extensions/claude.cfg
 %config(noreplace) %{xymonhome}/etc/clientlaunch.d/claude.cfg
 %{xymonhome}/ext/xymonext.sh
 %{xymonhome}/ext/xymonext-send.sh
-%config(noreplace) %{xymonhome}/etc/xymonext.cfg
+%config(noreplace) %{xymonhome}/etc/my-xymon-extensions/xymonext.cfg
 %{_docdir}/%{name}/
 
 %post
 cat <<'EOF'
-my-xymon-extensions: to activate the "smart" extension:
+my-xymon-extensions: the per-extension configuration now lives in
+ %{xymonhome}/etc/my-xymon-extensions/ instead of straight in
+ %{xymonhome}/etc. rpm installs the new files; a config you had edited
+ stays behind in the old place and is STILL READ by its extension, so
+ nothing breaks - move your changes over and delete the old file when
+ convenient.
+To activate the "smart" extension:
  1. Grant the xymon user access to smartctl - see
     %{_docdir}/%{name}/smart/sudoers.example
  2. Make sure clientlaunch.cfg loads the client drop-in directory
@@ -135,7 +142,7 @@ my-xymon-extensions: to activate the "smart" extension:
     leftovers in etc/tasks.d (rpm keeps edited ones as .rpmsave).
  3. Restart the Xymon client service.
 The FRITZ!Box extensions "fritzdsl" and "fritzwan" ship disabled:
- configure %{xymonhome}/etc/fritzdsl.cfg resp. fritzwan.cfg, then
+ configure %{xymonhome}/etc/my-xymon-extensions/fritzdsl.cfg resp. fritzwan.cfg, then
  remove the DISABLED line from the matching clientlaunch.d snippet
  and restart the client on the polling host (normally the Xymon
  server).
@@ -144,24 +151,24 @@ The "wifi" extension ships disabled too: enable it (remove the
  access point with iw installed.
 The "if_link" extension (link state changes per network interface)
  is active out of the box and adds an "if_link" column. It stays
- green until you configure thresholds in %{xymonhome}/etc/if_link.cfg.
+ green until you configure thresholds in %{xymonhome}/etc/my-xymon-extensions/if_link.cfg.
 The "lxc" extension ships disabled: on an LXC host, remove the
  DISABLED line from %{xymonhome}/etc/clientlaunch.d/lxc.cfg. Which
  containers are supposed to run is detected automatically
  (lxc.start.auto, /etc/config/lxc-auto, lxc-autostart); LXC_REQUIRED
- in %{xymonhome}/etc/lxc.cfg overrides that with an explicit list.
+ in %{xymonhome}/etc/my-xymon-extensions/lxc.cfg overrides that with an explicit list.
 The "claude" extension ships disabled: it reports how much longer the
  Claude Code login of an account is valid (yellow 10 days before it
  expires, red 5 days). The credentials file is mode 0600 in a private
  home directory, so allow the xymon user to run the reader as root -
  see %{_docdir}/%{name}/claude/sudoers.example, which ships one line
  for the "root" account - list the accounts to check in
- CLAUDE_ACCOUNTS in %{xymonhome}/etc/claude.cfg and uncomment the task
+ CLAUDE_ACCOUNTS in %{xymonhome}/etc/my-xymon-extensions/claude.cfg and uncomment the task
  in %{xymonhome}/etc/clientlaunch.d/claude.cfg.
 Every task now runs through %{xymonhome}/ext/xymonext.sh, which
  measures the extension and adds an "xymonext" column with runtime,
  CPU time and traffic per test. Set XYMONEXT_ENABLE="no" in
- %{xymonhome}/etc/xymonext.cfg to run the extensions directly again.
+ %{xymonhome}/etc/my-xymon-extensions/xymonext.cfg to run the extensions directly again.
 RRD graphs need a one-time setup on the Xymon SERVER (not here):
  ready-made drop-in files for its xymonserver.d, graphs.d and
  rrddefinitions.d directories ship in
@@ -170,6 +177,29 @@ RRD graphs need a one-time setup on the Xymon SERVER (not here):
 EOF
 
 %changelog
+* Mon Sep 21 2026 roemer2201 <r.oliver@web.de> - 0.20.0-1
+- the per-extension config files move out of the shared Xymon etc
+  directory into one of this package's own:
+  $XYMONHOME/etc/my-xymon-extensions/<name>.cfg. On Debian/Ubuntu
+  /etc/xymon belongs to the Xymon client, the Xymon server AND
+  hobbit-plugins at the same time, and thirteen files with names like
+  memory.cfg, disk.cfg or temp.cfg sat in the middle of it - a
+  collision waiting to happen (hobbit-plugins already ships a temp.yaml
+  there, and its temp plugin collided with ours in three drop-in
+  directories before). The launch snippets stay in clientlaunch.d:
+  that one is Xymon's own drop-in directory and has to be. Every
+  extension reads the new location first and falls back to the old
+  path, so a file left behind - on rpm and FreeBSD, where nothing is
+  moved for you, or on a host installed from the tarball - keeps being
+  used instead of silently reverting the extension to its defaults.
+  The deb moves the files with dpkg-maintscript-helper, edits
+  included, chained after the 0.14.0/0.16.0 migrations
+- standalone runner: claude-expiry.sh is no longer picked up as an
+  extension when TESTS is empty (the "run everything installed" mode).
+  It is the privileged reader of the claude extension, called with an
+  account name; run on its own it prints its usage and exits non-zero,
+  which would have shown up as a failing test
+
 * Mon Sep 21 2026 roemer2201 <r.oliver@web.de> - 0.19.0-1
 - claude: new extension - validity of the Claude Code login in one
   "claude" column. Of the two timestamps in

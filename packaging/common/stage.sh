@@ -34,6 +34,14 @@ LAUNCHDIR=$4
 DOCDIR=$5
 SUF=${6:-}
 
+# The per-extension config files go into a subdirectory named after the
+# package, not straight into ETCDIR: on Debian/Ubuntu that is
+# /etc/xymon, shared by the Xymon client, the Xymon server and
+# hobbit-plugins, and names like memory.cfg or disk.cfg are anybody's.
+# Up to 0.19.0 they sat there; the deb moves them with mv_conffile, and
+# the extensions still read a file left behind on the other platforms.
+CFGDIR="$ETCDIR/my-xymon-extensions"
+
 # No install(1) here: BusyBox on OpenWrt/TurrisOS has no install
 # applet, and the opkg build must run there.
 inst() { # inst MODE SRC DST
@@ -48,7 +56,7 @@ inst() { # inst MODE SRC DST
 # extensions/temp/README.md.
 SKIP_SNIPPETS="temp"
 
-mkdir -p "$DESTDIR$EXTDIR" "$DESTDIR$ETCDIR" || exit 1
+mkdir -p "$DESTDIR$EXTDIR" "$DESTDIR$CFGDIR" || exit 1
 if [ "$LAUNCHDIR" != "-" ]; then
     mkdir -p "$DESTDIR$LAUNCHDIR" || exit 1
 fi
@@ -64,16 +72,16 @@ task() { # task NAME
 
 for ext in smart temp la memory disk opkg wifi if_link lxc claude; do
     inst 0755 "extensions/$ext/$ext.sh" "$DESTDIR$EXTDIR/$ext.sh" || exit 1
-    inst 0644 "extensions/$ext/$ext.cfg" "$DESTDIR$ETCDIR/$ext.cfg$SUF" || exit 1
+    inst 0644 "extensions/$ext/$ext.cfg" "$DESTDIR$CFGDIR/$ext.cfg$SUF" || exit 1
     task "$ext" || exit 1
 done
 
 inst 0755 extensions/fritzdsl/fritzdsl.sh "$DESTDIR$EXTDIR/fritzdsl.sh" || exit 1
-inst 0644 extensions/fritzdsl/fritzdsl.cfg "$DESTDIR$ETCDIR/fritzdsl.cfg$SUF" || exit 1
+inst 0644 extensions/fritzdsl/fritzdsl.cfg "$DESTDIR$CFGDIR/fritzdsl.cfg$SUF" || exit 1
 task fritzdsl || exit 1
 
 inst 0755 extensions/fritzwan/fritzwan.sh "$DESTDIR$EXTDIR/fritzwan.sh" || exit 1
-inst 0644 extensions/fritzwan/fritzwan.cfg "$DESTDIR$ETCDIR/fritzwan.cfg$SUF" || exit 1
+inst 0644 extensions/fritzwan/fritzwan.cfg "$DESTDIR$CFGDIR/fritzwan.cfg$SUF" || exit 1
 task fritzwan || exit 1
 
 # The "claude" extension reads credentials files that are only
@@ -86,7 +94,7 @@ inst 0755 extensions/claude/claude-expiry.sh "$DESTDIR$EXTDIR/claude-expiry.sh" 
 # $XYMON to count the bytes an extension sends.
 inst 0755 extensions/xymonext/xymonext.sh "$DESTDIR$EXTDIR/xymonext.sh" || exit 1
 inst 0755 extensions/xymonext/xymonext-send.sh "$DESTDIR$EXTDIR/xymonext-send.sh" || exit 1
-inst 0644 extensions/xymonext/xymonext.cfg "$DESTDIR$ETCDIR/xymonext.cfg$SUF" || exit 1
+inst 0644 extensions/xymonext/xymonext.cfg "$DESTDIR$CFGDIR/xymonext.cfg$SUF" || exit 1
 
 if [ "$DOCDIR" != "-" ]; then
     mkdir -p "$DESTDIR$DOCDIR" || exit 1

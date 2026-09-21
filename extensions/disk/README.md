@@ -60,7 +60,7 @@ The evaluated value is df's own `Use%`/`Capacity` column. Only
 ## Configuration
 
 Every setting is an environment variable with a built-in default and
-can also be set in `$XYMONHOME/etc/disk.cfg` (sourced POSIX shell; a
+can also be set in `$XYMONHOME/etc/my-xymon-extensions/disk.cfg` (sourced POSIX shell; a
 value set there wins over the environment). See the shipped
 [disk.cfg](disk.cfg).
 

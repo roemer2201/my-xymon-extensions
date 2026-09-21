@@ -2111,7 +2111,7 @@ echo "--- standalone: xymon-run.sh + extensions ---"
 
 # Simulated install tree, as the opkg package would lay it out.
 STAGE="$TMP/xymon-standalone"
-mkdir -p "$STAGE/ext" "$STAGE/etc"
+mkdir -p "$STAGE/ext" "$STAGE/etc" "$STAGE/etc/my-xymon-extensions"
 cp "$REPO/standalone/xymon-run.sh" "$REPO/standalone/xymon-send.sh" "$STAGE/"
 cp "$REPO/extensions/smart/smart.sh" "$STAGE/ext/smart.sh"
 cp "$REPO/extensions/temp/temp.sh" "$STAGE/ext/temp.sh"
@@ -2124,31 +2124,38 @@ cp "$REPO/extensions/lxc/lxc.sh" "$STAGE/ext/lxc.sh"
 # runner must call it instead of running it as a test of its own.
 cp "$REPO/extensions/xymonext/xymonext.sh" "$STAGE/ext/xymonext.sh"
 cp "$REPO/extensions/xymonext/xymonext-send.sh" "$STAGE/ext/xymonext-send.sh"
-cp "$TESTDIR/smart/smart_test.cfg" "$STAGE/etc/smart.cfg"
-# The extensions must pick these up via $XYMONHOME/etc/<name>.cfg
-cat > "$STAGE/etc/temp.cfg" <<EOF
+# The privileged reader of the claude extension is installed into ext/
+# as well, and with no TESTS list the runner runs everything it finds
+# there - it has to skip this one. (claude.sh itself is left out of
+# this tree on purpose: it would read the credentials of a real
+# account on the machine running the tests.)
+cp "$REPO/extensions/claude/claude-expiry.sh" "$STAGE/ext/claude-expiry.sh"
+cp "$TESTDIR/smart/smart_test.cfg" "$STAGE/etc/my-xymon-extensions/smart.cfg"
+# The extensions must pick these up via
+# $XYMONHOME/etc/my-xymon-extensions/<name>.cfg
+cat > "$STAGE/etc/my-xymon-extensions/temp.cfg" <<EOF
 TEMP_HWMON_DIR="$TEMPFIX/sys/class/hwmon"
 TEMP_THERMAL_DIR="$EMPTYDIR"
 EOF
-cat > "$STAGE/etc/la.cfg" <<EOF
+cat > "$STAGE/etc/my-xymon-extensions/la.cfg" <<EOF
 LA_LOADAVG="$LAFIX"
 LA_NCPU=4
 EOF
-cat > "$STAGE/etc/memory.cfg" <<EOF
+cat > "$STAGE/etc/my-xymon-extensions/memory.cfg" <<EOF
 MEM_MEMINFO="$MEMFIX"
 EOF
-cat > "$STAGE/etc/disk.cfg" <<EOF
+cat > "$STAGE/etc/my-xymon-extensions/disk.cfg" <<EOF
 DISK_DF="$FAKEDF"
 export FAKEDF_OUTPUT="$TESTDIR/disk/data/df-turris.txt"
 EOF
 # Fresh lists so opkg.sh neither calls "opkg update" nor warns
 mkdir -p "$FAKEOPKG_LISTSDIR"
 touch "$FAKEOPKG_LISTSDIR/base"
-cat > "$STAGE/etc/opkg.cfg" <<EOF
+cat > "$STAGE/etc/my-xymon-extensions/opkg.cfg" <<EOF
 OPKG_BIN="$FAKEOPKG"
 OPKG_LISTSDIR="$FAKEOPKG_LISTSDIR"
 EOF
-cat > "$STAGE/etc/lxc.cfg" <<EOF
+cat > "$STAGE/etc/my-xymon-extensions/lxc.cfg" <<EOF
 LXC_LS="$TESTDIR/lxc/fakelxc-ls"
 LXC_INFO="$TESTDIR/lxc/fakelxc-info"
 LXC_AUTOSTART="$TESTDIR/lxc/fakelxc-autostart"
@@ -2167,7 +2174,8 @@ XYMONTMP="$TMP/work/tmp"
 XYMONCLIENTLOGS="$TMP/work/logs"
 EOF
 
-# The extension must find its config via \$XYMONHOME/etc, not SMART_CFG.
+# The extension must find its config in the package config dir under
+# $XYMONHOME/etc, not through SMART_CFG.
 unset SMART_CFG 2>/dev/null || true
 export STANDALONE_CFG="$STAGE/etc/standalone.cfg"
 export NC_CAPTURE="$TMP/capture-run"
@@ -2186,6 +2194,8 @@ fi
 captured=$(cat "$NC_CAPTURE")
 expect "$captured" '^ARGS: 127\.0\.0\.1 1984$' \
     "runner sends to the configured XYMSRV"
+expect_not "$captured" 'claude-expiry' \
+    "the claude helper is not run as an extension of its own"
 expect "$captured" '^status turris,example,org\.smart yellow ' \
     "status message with comma-encoded FQDN from MACHINEDOTS"
 expect "$captured" '^data turris,example,org\.smart$' \
@@ -2195,27 +2205,27 @@ expect "$captured" '^tsda_pending : 8$' \
 expect "$captured" '^status turris,example,org\.temp yellow ' \
     "temp extension runs under the standalone runner"
 expect "$captured" '^mv88e6xxx_internal : 85\.4$' \
-    "temp NCV payload arrives, config read from \$XYMONHOME/etc"
+    "temp NCV payload arrives, config read from the package config dir"
 expect "$captured" '^status turris,example,org\.la green ' \
     "la extension runs under the standalone runner"
 expect "$captured" '^la5 : 1\.20$' \
-    "la NCV payload arrives, config read from \$XYMONHOME/etc"
+    "la NCV payload arrives, config read from the package config dir"
 expect "$captured" '^status turris,example,org\.mem green ' \
     "memory extension runs under the standalone runner, defaulted to column \"mem\""
 expect "$captured" '^used : 50\.0$' \
-    "memory NCV payload arrives, config read from \$XYMONHOME/etc"
+    "memory NCV payload arrives, config read from the package config dir"
 expect "$captured" '^status turris,example,org\.disk green ' \
     "disk extension runs under the standalone runner"
 expect "$captured" '% /srv$' \
-    "disk df table arrives, config read from \$XYMONHOME/etc"
+    "disk df table arrives, config read from the package config dir"
 expect "$captured" '^status turris,example,org\.opkg green ' \
     "opkg extension runs under the standalone runner"
 expect "$captured" '^updates : 0$' \
-    "opkg NCV payload arrives, config read from \$XYMONHOME/etc"
+    "opkg NCV payload arrives, config read from the package config dir"
 expect "$captured" '^status turris,example,org\.lxc green ' \
     "lxc extension runs under the standalone runner"
 expect "$captured" '^count_running : 4$' \
-    "lxc NCV payload arrives, config read from \$XYMONHOME/etc"
+    "lxc NCV payload arrives, config read from the package config dir"
 expect "$captured" '^status turris,example,org\.xymonext ' \
     "the runner measures the extensions and reports the xymonext column"
 expect "$captured" '^wall_smart : [0-9]+\.[0-9][0-9]$' \
@@ -2487,6 +2497,64 @@ fi
 unset CLAUDE_PASSWD CLAUDE_HELPER CLAUDE_SUDO CLAUDE_ACCOUNTS 2>/dev/null || true
 
 # ----------------------------------------------------------------------
+echo "--- config file lookup ---"
+
+# Since 0.20.0 the per-extension config lives in
+# $XYMONHOME/etc/my-xymon-extensions/<name>.cfg. A file left in the old
+# place ($XYMONHOME/etc/<name>.cfg) must still be read - on rpm and
+# FreeBSD nothing moves it, and an extension that silently fell back to
+# its built-in defaults would be the worst possible outcome of this
+# move. Driven through "la", whose thresholds are visible in the status.
+CFGHOME="$TMP/cfghome"
+mkdir -p "$CFGHOME/etc/my-xymon-extensions"
+unset LA_CFG LA_WARN LA_CRIT LA_LOADAVG 2>/dev/null || true
+
+cfg_write() { # cfg_write <file> <warn>
+    cat > "$1" <<EOF
+LA_WARN=$2
+LA_CRIT=99
+LA_LOADAVG="$TESTDIR/la/loadavg"
+EOF
+}
+
+cfg_run() {
+    # shellcheck disable=SC2086  # TESTSH may be multi-word ("busybox sh")
+    XYMONHOME="$CFGHOME" $TESTSH "$REPO/extensions/la/la.sh"
+}
+
+rm -f "$CFGHOME/etc/la.cfg" "$CFGHOME/etc/my-xymon-extensions/la.cfg"
+cfg_write "$CFGHOME/etc/my-xymon-extensions/la.cfg" 7.5
+out=$(cfg_run)
+expect "$out" 'yellow >= 7\.5' "config is read from etc/my-xymon-extensions"
+
+rm -f "$CFGHOME/etc/my-xymon-extensions/la.cfg"
+cfg_write "$CFGHOME/etc/la.cfg" 6.5
+out=$(cfg_run)
+expect "$out" 'yellow >= 6\.5' "a config left in the pre-0.20.0 place is still read"
+
+cfg_write "$CFGHOME/etc/my-xymon-extensions/la.cfg" 7.5
+out=$(cfg_run)
+expect "$out" 'yellow >= 7\.5' "the new location wins when both files exist"
+
+rm -f "$CFGHOME/etc/la.cfg" "$CFGHOME/etc/my-xymon-extensions/la.cfg"
+out=$(cfg_run)
+expect "$out" 'yellow >= 1\.5' "without any config file the built-in defaults apply"
+
+# Every extension must look in both places - one forgotten script would
+# quietly lose its configuration on upgrade.
+for script in "$REPO"/extensions/*/*.sh; do
+    ext=$(basename "$script" .sh)
+    grep -q 'CFGFILE=' "$script" || continue
+    if grep -q "etc/my-xymon-extensions/$ext.cfg" "$script" &&
+       grep -q "CFGFILE=\"\$XYMONHOME/etc/$ext.cfg\"" "$script"; then
+        echo "ok:   $ext reads the new location and falls back to the old one"
+    else
+        echo "FAIL: $ext does not implement the 0.20.0 config lookup"
+        FAIL=1
+    fi
+done
+
+# ----------------------------------------------------------------------
 echo "--- packaging ---"
 
 # The server-side drop-in files (server/xymonserver.d, server/graphs.d,
@@ -2597,6 +2665,21 @@ CLIENTSTAGE="$TMP/pkgstage-deb"
 (cd "$REPO" && sh packaging/common/stage.sh "$CLIENTSTAGE" \
     /usr/lib/xymon/client/ext /etc/xymon /etc/xymon/clientlaunch.d - >/dev/null)
 (cd "$CLIENTSTAGE" && find . -type f) | sed 's|^\.||' | sort > "$TMP/client-paths"
+
+# The deb conffiles list must name exactly the config files the client
+# package installs - the same guard the server package already has. It
+# is hand-maintained, and a config file missing from it is not a
+# conffile: dpkg would overwrite the admin's edits without asking.
+grep "^/etc/" "$TMP/client-paths" | sort > "$TMP/client-etc"
+sort < "$REPO/packaging/deb/conffiles" > "$TMP/client-conffiles"
+if cmp -s "$TMP/client-etc" "$TMP/client-conffiles"; then
+    echo "ok:   deb conffiles lists exactly the installed config files"
+else
+    echo "FAIL: deb conffiles and stage.sh disagree"
+    echo "      only staged:      $(grep -Fxv -f "$TMP/client-conffiles" "$TMP/client-etc" | tr '\n' ' ')"
+    echo "      only in conffiles:$(grep -Fxv -f "$TMP/client-etc" "$TMP/client-conffiles" | tr '\n' ' ')"
+    FAIL=1
+fi
 
 # The launch snippets belong to the CLIENT's drop-in directory. tasks.d
 # is the server's (Debian's tasks.cfg reads it, and reads the client's

@@ -52,7 +52,7 @@
 #
 # Hosts without LXC report "clear".
 #
-# Configuration: environment variables and/or $XYMONHOME/etc/lxc.cfg
+# Configuration: environment variables and/or $XYMONHOME/etc/my-xymon-extensions/lxc.cfg
 # (see the shipped lxc.cfg; the config file wins over the environment).
 
 set -u
@@ -94,7 +94,16 @@ LXC_RAM_RED="${LXC_RAM_RED:-}"            # MiB, per container
 LXC_CPU_YELLOW="${LXC_CPU_YELLOW:-}"      # percent of one core
 LXC_CPU_RED="${LXC_CPU_RED:-}"            # percent of one core
 
-CFGFILE="${LXC_CFG:-${XYMONHOME:+${XYMONHOME}/etc/lxc.cfg}}"
+# The config file lives in a directory of this package's own: on
+# Debian/Ubuntu the Xymon client, the server and hobbit-plugins all
+# share $XYMONHOME/etc, where these generically named files sat until
+# 0.19.0. One left behind there is still read, so an installation
+# that was never migrated keeps working.
+CFGFILE="${LXC_CFG:-}"
+if [ -z "$CFGFILE" ] && [ -n "$XYMONHOME" ]; then
+    CFGFILE="$XYMONHOME/etc/my-xymon-extensions/lxc.cfg"
+    [ -f "$CFGFILE" ] || CFGFILE="$XYMONHOME/etc/lxc.cfg"
+fi
 if [ -n "$CFGFILE" ] && [ -r "$CFGFILE" ]; then
     # shellcheck disable=SC1090  # user config, sourced on purpose
     . "$CFGFILE"

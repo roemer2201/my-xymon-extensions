@@ -82,7 +82,7 @@ the second poll.
 
 ## Configuration
 
-See the shipped `wifi.cfg` (installed to `$XYMONHOME/etc/wifi.cfg`);
+See the shipped `wifi.cfg` (installed to `$XYMONHOME/etc/my-xymon-extensions/wifi.cfg`);
 every setting can also come from the environment, the config file
 wins. Defaults work out of the box on OpenWrt/TurrisOS.
 

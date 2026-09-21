@@ -90,7 +90,7 @@ reliable real value to recover from a stuck reading.
 ## Configuration
 
 Every setting is an environment variable with a built-in default and
-can also be set in `$XYMONHOME/etc/temp.cfg` (sourced POSIX shell; a
+can also be set in `$XYMONHOME/etc/my-xymon-extensions/temp.cfg` (sourced POSIX shell; a
 value set there wins over the environment). See the shipped
 [temp.cfg](temp.cfg).
 

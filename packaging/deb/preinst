@@ -14,6 +14,10 @@ set -e
 #            hobbit-plugins on Debian/Ubuntu, and dpkg refuses two
 #            packages that claim one path. It ships as documentation
 #            instead (see the post-install output).
+#  0.20.0-1  the per-extension CONFIG files move out of the shared
+#            /etc/xymon into /etc/xymon/my-xymon-extensions/. The
+#            launch snippets stay in clientlaunch.d, which is Xymon's
+#            own drop-in directory and has to be.
 #
 # The moves are chained, so an upgrade from any of those versions lands
 # on the current layout. mv_conffile/rm_conffile only ever touch files
@@ -45,6 +49,17 @@ migrate_conffiles() {
         "/etc/xymon/clientlaunch.d/temp.cfg" 0.15.0-1 -- "$@"
     dpkg-maintscript-helper rm_conffile \
         "/etc/xymon/clientlaunch.d/my-xymon-extensions-temp.cfg" 0.16.0-1 -- "$@"
+
+    # 0.20.0-1: config files into this package's own directory. temp is
+    # in the list: its CONFIG file is ours - only its launch snippet
+    # and its server drop-ins are hobbit-plugins' territory.
+    for cfg in smart temp la memory disk opkg fritzdsl fritzwan wifi \
+        if_link lxc claude xymonext; do
+        dpkg-maintscript-helper mv_conffile \
+            "/etc/xymon/$cfg.cfg" \
+            "/etc/xymon/my-xymon-extensions/$cfg.cfg" \
+            0.20.0-1 -- "$@"
+    done
 }
 
 migrate_conffiles "$@"
