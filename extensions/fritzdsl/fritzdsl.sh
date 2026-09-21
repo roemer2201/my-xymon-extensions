@@ -14,7 +14,7 @@
 #
 # The poller runs on the Xymon server itself (or any host that can
 # reach the box) - no software is installed on the FRITZ!Box.
-# Configuration: $XYMONHOME/etc/fritzdsl.cfg. Credentials are
+# Configuration: $XYMONHOME/etc/my-xymon-extensions/fritzdsl.cfg. Credentials are
 # required; without them the extension exits silently, so it is
 # harmless when installed but not configured (the shipped launch
 # snippet is additionally DISABLED by default).
@@ -54,7 +54,16 @@ WAN_SERVICE="auto"         # WAN uptime source: auto | ppp | ip | off
 MARGIN_WARN=6      MARGIN_CRIT=3      # noise margin in dB (below = bad)
 CRC_RATE_WARN=30   CRC_RATE_CRIT=300  # CRC errors per minute since last run
 
-CFGFILE="${FRITZDSL_CFG:-${XYMONHOME:+${XYMONHOME}/etc/fritzdsl.cfg}}"
+# The config file lives in a directory of this package's own: on
+# Debian/Ubuntu the Xymon client, the server and hobbit-plugins all
+# share $XYMONHOME/etc, where these generically named files sat until
+# 0.19.0. One left behind there is still read, so an installation
+# that was never migrated keeps working.
+CFGFILE="${FRITZDSL_CFG:-}"
+if [ -z "$CFGFILE" ] && [ -n "$XYMONHOME" ]; then
+    CFGFILE="$XYMONHOME/etc/my-xymon-extensions/fritzdsl.cfg"
+    [ -f "$CFGFILE" ] || CFGFILE="$XYMONHOME/etc/fritzdsl.cfg"
+fi
 if [ -n "$CFGFILE" ] && [ -r "$CFGFILE" ]; then
     # shellcheck disable=SC1090  # user config, sourced on purpose
     . "$CFGFILE"

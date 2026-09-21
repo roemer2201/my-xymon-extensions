@@ -41,7 +41,7 @@ missing) — never `blue`/`purple`, those are managed by the server.
 ## Configuration
 
 Every setting is an environment variable with a built-in default and
-can also be set in `$XYMONHOME/etc/memory.cfg` (sourced POSIX shell; a
+can also be set in `$XYMONHOME/etc/my-xymon-extensions/memory.cfg` (sourced POSIX shell; a
 value set there wins over the environment). See the shipped
 [memory.cfg](memory.cfg).
 

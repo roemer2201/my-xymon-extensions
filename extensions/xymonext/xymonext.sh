@@ -25,7 +25,7 @@
 # report holding only the current test would make the column flip
 # between tests scheduled at different intervals.
 #
-# Configuration: environment variables and/or $XYMONHOME/etc/xymonext.cfg
+# Configuration: environment variables and/or $XYMONHOME/etc/my-xymon-extensions/xymonext.cfg
 # (see the shipped xymonext.cfg; the config file wins over the
 # environment).
 
@@ -65,7 +65,7 @@ usage() {
 "  -h, --help   show this help and exit" \
 "" \
 "Settings (environment variable, or same name in the config file" \
-"\$XYMONHOME/etc/xymonext.cfg, which wins over the environment):" \
+"\$XYMONHOME/etc/my-xymon-extensions/xymonext.cfg, which wins over the environment):" \
 "  XYMONEXT_COLUMN       Xymon column name (default: xymonext)" \
 "  XYMONEXT_ENABLE       no = run the extension without measuring" \
 "  XYMONEXT_COUNT_BYTES  no = do not count the bytes sent" \
@@ -122,7 +122,16 @@ XYMONEXT_MAXAGE="${XYMONEXT_MAXAGE:-7200}"
 XYMONEXT_STATEDIR="${XYMONEXT_STATEDIR:-}"
 XYMONEXT_WALLSRC="${XYMONEXT_WALLSRC:-auto}"
 
-CFGFILE="${XYMONEXT_CFG:-${XYMONHOME:+${XYMONHOME}/etc/xymonext.cfg}}"
+# The config file lives in a directory of this package's own: on
+# Debian/Ubuntu the Xymon client, the server and hobbit-plugins all
+# share $XYMONHOME/etc, where these generically named files sat until
+# 0.19.0. One left behind there is still read, so an installation
+# that was never migrated keeps working.
+CFGFILE="${XYMONEXT_CFG:-}"
+if [ -z "$CFGFILE" ] && [ -n "$XYMONHOME" ]; then
+    CFGFILE="$XYMONHOME/etc/my-xymon-extensions/xymonext.cfg"
+    [ -f "$CFGFILE" ] || CFGFILE="$XYMONHOME/etc/xymonext.cfg"
+fi
 if [ -n "$CFGFILE" ] && [ -r "$CFGFILE" ]; then
     # shellcheck disable=SC1090  # user config, sourced on purpose
     . "$CFGFILE"

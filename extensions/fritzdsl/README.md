@@ -51,7 +51,7 @@ as a "connection was re-established" note.
    Network Settings > *Allow access for applications*) and create a
    dedicated user (System > FRITZ!Box Users) with the *FRITZ!Box
    settings* permission.
-2. **Configure** `$XYMONHOME/etc/fritzdsl.cfg` on the polling host
+2. **Configure** `$XYMONHOME/etc/my-xymon-extensions/fritzdsl.cfg` on the polling host
    (normally the Xymon server): set `FRITZ_USER`, `FRITZ_PASSWORD`
    (or `FRITZ_PASSWORD_FILE`), and `FRITZ_HOST`/`REPORTHOST` if the
    box is not reachable as `fritz.box`. `chmod 600` the file.

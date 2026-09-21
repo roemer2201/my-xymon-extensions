@@ -154,7 +154,7 @@ status text.
 
 ## Configuration
 
-See the shipped `if_link.cfg` (installed to `$XYMONHOME/etc/if_link.cfg`);
+See the shipped `if_link.cfg` (installed to `$XYMONHOME/etc/my-xymon-extensions/if_link.cfg`);
 every setting can also come from the environment, the config file
 wins. Defaults work out of the box.
 

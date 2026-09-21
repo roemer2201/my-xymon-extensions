@@ -27,7 +27,7 @@
 # runner, but works on any Linux with iw(8). Platforms without iw or
 # without AP interfaces report "clear".
 #
-# Configuration: environment variables and/or $XYMONHOME/etc/wifi.cfg
+# Configuration: environment variables and/or $XYMONHOME/etc/my-xymon-extensions/wifi.cfg
 # (see the shipped wifi.cfg; the config file wins over the
 # environment).
 
@@ -59,7 +59,16 @@ WIFI_IWINFO="${WIFI_IWINFO:-}"      # path to iwinfo; empty = search $PATH
 WIFI_SYSNET="${WIFI_SYSNET:-/sys/class/net}"
 WIFI_INTERFACES="${WIFI_INTERFACES:-}"  # optional interface whitelist
 
-CFGFILE="${WIFI_CFG:-${XYMONHOME:+${XYMONHOME}/etc/wifi.cfg}}"
+# The config file lives in a directory of this package's own: on
+# Debian/Ubuntu the Xymon client, the server and hobbit-plugins all
+# share $XYMONHOME/etc, where these generically named files sat until
+# 0.19.0. One left behind there is still read, so an installation
+# that was never migrated keeps working.
+CFGFILE="${WIFI_CFG:-}"
+if [ -z "$CFGFILE" ] && [ -n "$XYMONHOME" ]; then
+    CFGFILE="$XYMONHOME/etc/my-xymon-extensions/wifi.cfg"
+    [ -f "$CFGFILE" ] || CFGFILE="$XYMONHOME/etc/wifi.cfg"
+fi
 if [ -n "$CFGFILE" ] && [ -r "$CFGFILE" ]; then
     # shellcheck disable=SC1090  # user config, sourced on purpose
     . "$CFGFILE"

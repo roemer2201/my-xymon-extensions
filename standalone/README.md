@@ -46,7 +46,7 @@ all configuration to `/etc/xymon-standalone/` (preserved on
 sysupgrade): `standalone.cfg` for the runner itself plus one
 `<extension>.cfg` per extension. `/usr/lib/xymon-standalone/etc` is a
 symlink to `/etc/xymon-standalone`, so the extensions find their
-config through `$XYMONHOME/etc/<name>.cfg` as on a full client.
+config through `$XYMONHOME/etc/my-xymon-extensions/<name>.cfg` as on a full client.
 
 ### Manual (three files + extension)
 
@@ -101,7 +101,7 @@ Run logs go to `$XYMONTMP` (default `/tmp`, a RAM disk on OpenWrt) as
 - `smartctl` comes from the `smartmontools` package
   (`opkg install smartmontools`).
 - USB disks may need `-d sat` — use a `device` line in
-  `/etc/xymon-standalone/smart.cfg` as usual.
+  `/etc/xymon-standalone/my-xymon-extensions/smart.cfg` as usual.
 - BusyBox `nc` is part of the default OpenWrt/TurrisOS busybox build;
   if yours lacks it, install `netcat` or `socat`.
 - Only the extension columns are reported — this runner does not
@@ -136,7 +136,7 @@ Run logs go to `$XYMONTMP` (default `/tmp`, a RAM disk on OpenWrt) as
   Xymon server (via the deb/rpm package and its clientlaunch.d
   snippets).
   Run them from the router only when the server cannot reach the box
-  itself — configure `/etc/xymon-standalone/fritzdsl.cfg` (resp.
+  itself — configure `/etc/xymon-standalone/my-xymon-extensions/fritzdsl.cfg` (resp.
   `fritzwan.cfg`) and add them to `TESTS`.
 - The transport is the plain Xymon protocol (unencrypted TCP :1984),
   exactly like a normal Xymon client — fine on a LAN/VPN, not meant to

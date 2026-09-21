@@ -13,30 +13,30 @@ www/xymon/client/ext/claude.sh
 www/xymon/client/ext/claude-expiry.sh
 www/xymon/client/ext/xymonext.sh
 www/xymon/client/ext/xymonext-send.sh
-@sample www/xymon/client/etc/smart.cfg.sample
-@sample www/xymon/client/etc/temp.cfg.sample
-@sample www/xymon/client/etc/la.cfg.sample
-@sample www/xymon/client/etc/memory.cfg.sample
-@sample www/xymon/client/etc/disk.cfg.sample
-@sample www/xymon/client/etc/opkg.cfg.sample
+@sample www/xymon/client/etc/my-xymon-extensions/smart.cfg.sample
+@sample www/xymon/client/etc/my-xymon-extensions/temp.cfg.sample
+@sample www/xymon/client/etc/my-xymon-extensions/la.cfg.sample
+@sample www/xymon/client/etc/my-xymon-extensions/memory.cfg.sample
+@sample www/xymon/client/etc/my-xymon-extensions/disk.cfg.sample
+@sample www/xymon/client/etc/my-xymon-extensions/opkg.cfg.sample
 @sample www/xymon/client/etc/clientlaunch.d/smart.cfg.sample
 @sample www/xymon/client/etc/clientlaunch.d/la.cfg.sample
 @sample www/xymon/client/etc/clientlaunch.d/memory.cfg.sample
 @sample www/xymon/client/etc/clientlaunch.d/disk.cfg.sample
 @sample www/xymon/client/etc/clientlaunch.d/opkg.cfg.sample
-@sample www/xymon/client/etc/fritzdsl.cfg.sample
+@sample www/xymon/client/etc/my-xymon-extensions/fritzdsl.cfg.sample
 @sample www/xymon/client/etc/clientlaunch.d/fritzdsl.cfg.sample
-@sample www/xymon/client/etc/fritzwan.cfg.sample
+@sample www/xymon/client/etc/my-xymon-extensions/fritzwan.cfg.sample
 @sample www/xymon/client/etc/clientlaunch.d/fritzwan.cfg.sample
-@sample www/xymon/client/etc/wifi.cfg.sample
+@sample www/xymon/client/etc/my-xymon-extensions/wifi.cfg.sample
 @sample www/xymon/client/etc/clientlaunch.d/wifi.cfg.sample
-@sample www/xymon/client/etc/if_link.cfg.sample
+@sample www/xymon/client/etc/my-xymon-extensions/if_link.cfg.sample
 @sample www/xymon/client/etc/clientlaunch.d/if_link.cfg.sample
-@sample www/xymon/client/etc/lxc.cfg.sample
+@sample www/xymon/client/etc/my-xymon-extensions/lxc.cfg.sample
 @sample www/xymon/client/etc/clientlaunch.d/lxc.cfg.sample
-@sample www/xymon/client/etc/claude.cfg.sample
+@sample www/xymon/client/etc/my-xymon-extensions/claude.cfg.sample
 @sample www/xymon/client/etc/clientlaunch.d/claude.cfg.sample
-@sample www/xymon/client/etc/xymonext.cfg.sample
+@sample www/xymon/client/etc/my-xymon-extensions/xymonext.cfg.sample
 share/doc/my-xymon-extensions/README.md
 share/doc/my-xymon-extensions/temp/README.md
 share/doc/my-xymon-extensions/temp/clientlaunch.d/temp.cfg

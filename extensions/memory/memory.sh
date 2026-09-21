@@ -17,7 +17,7 @@
 #
 # Needs a Linux /proc/meminfo; other platforms report "clear".
 #
-# Configuration: environment variables and/or $XYMONHOME/etc/memory.cfg
+# Configuration: environment variables and/or $XYMONHOME/etc/my-xymon-extensions/memory.cfg
 # (see the shipped memory.cfg; the config file wins over the
 # environment).
 
@@ -47,7 +47,16 @@ MEM_WARN="${MEM_WARN:-80}"          # yellow at/above, percent used
 MEM_CRIT="${MEM_CRIT:-90}"          # red at/above, percent used
 MEM_MEMINFO="${MEM_MEMINFO:-/proc/meminfo}"
 
-CFGFILE="${MEM_CFG:-${XYMONHOME:+${XYMONHOME}/etc/memory.cfg}}"
+# The config file lives in a directory of this package's own: on
+# Debian/Ubuntu the Xymon client, the server and hobbit-plugins all
+# share $XYMONHOME/etc, where these generically named files sat until
+# 0.19.0. One left behind there is still read, so an installation
+# that was never migrated keeps working.
+CFGFILE="${MEM_CFG:-}"
+if [ -z "$CFGFILE" ] && [ -n "$XYMONHOME" ]; then
+    CFGFILE="$XYMONHOME/etc/my-xymon-extensions/memory.cfg"
+    [ -f "$CFGFILE" ] || CFGFILE="$XYMONHOME/etc/memory.cfg"
+fi
 if [ -n "$CFGFILE" ] && [ -r "$CFGFILE" ]; then
     # shellcheck disable=SC1090  # user config, sourced on purpose
     . "$CFGFILE"

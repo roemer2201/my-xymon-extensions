@@ -159,7 +159,7 @@ container.
 
 ## Configuration
 
-Environment variables or `$XYMONHOME/etc/lxc.cfg`; the config file wins
+Environment variables or `$XYMONHOME/etc/my-xymon-extensions/lxc.cfg`; the config file wins
 over the environment. See the shipped [lxc.cfg](lxc.cfg) — the
 extension needs none of it to work.
 

@@ -17,7 +17,7 @@
 # switch sensors), but works on any Linux. Platforms without a
 # hwmon/thermal sysfs report "clear".
 #
-# Configuration: environment variables and/or $XYMONHOME/etc/temp.cfg
+# Configuration: environment variables and/or $XYMONHOME/etc/my-xymon-extensions/temp.cfg
 # (see the shipped temp.cfg; the config file wins over the environment).
 
 set -u
@@ -57,7 +57,16 @@ TEMP_THERMAL_DIR="${TEMP_THERMAL_DIR:-/sys/class/thermal}"
 TEMP_PLAUSIBLE_MIN="${TEMP_PLAUSIBLE_MIN:--40}"
 TEMP_PLAUSIBLE_MAX="${TEMP_PLAUSIBLE_MAX:-150}"
 
-CFGFILE="${TEMP_CFG:-${XYMONHOME:+${XYMONHOME}/etc/temp.cfg}}"
+# The config file lives in a directory of this package's own: on
+# Debian/Ubuntu the Xymon client, the server and hobbit-plugins all
+# share $XYMONHOME/etc, where these generically named files sat until
+# 0.19.0. One left behind there is still read, so an installation
+# that was never migrated keeps working.
+CFGFILE="${TEMP_CFG:-}"
+if [ -z "$CFGFILE" ] && [ -n "$XYMONHOME" ]; then
+    CFGFILE="$XYMONHOME/etc/my-xymon-extensions/temp.cfg"
+    [ -f "$CFGFILE" ] || CFGFILE="$XYMONHOME/etc/temp.cfg"
+fi
 if [ -n "$CFGFILE" ] && [ -r "$CFGFILE" ]; then
     # shellcheck disable=SC1090  # user config, sourced on purpose
     . "$CFGFILE"

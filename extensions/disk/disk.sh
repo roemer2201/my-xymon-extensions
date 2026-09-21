@@ -16,7 +16,7 @@
 # column from its own df report, so the shipped launch snippet is
 # disabled by default - never enable both on one host.
 #
-# Configuration: environment variables and/or $XYMONHOME/etc/disk.cfg
+# Configuration: environment variables and/or $XYMONHOME/etc/my-xymon-extensions/disk.cfg
 # (see the shipped disk.cfg; the config file wins over the
 # environment).
 
@@ -48,7 +48,16 @@ DISK_THRESHOLDS="${DISK_THRESHOLDS:-}"      # per-mount "PATTERN:WARN:CRIT"
 DISK_EXCLUDE="${DISK_EXCLUDE:-/dev /rom}"   # globs, mount point or device
 DISK_DF="${DISK_DF:-df}"            # invoked as "$DISK_DF -P -k"
 
-CFGFILE="${DISK_CFG:-${XYMONHOME:+${XYMONHOME}/etc/disk.cfg}}"
+# The config file lives in a directory of this package's own: on
+# Debian/Ubuntu the Xymon client, the server and hobbit-plugins all
+# share $XYMONHOME/etc, where these generically named files sat until
+# 0.19.0. One left behind there is still read, so an installation
+# that was never migrated keeps working.
+CFGFILE="${DISK_CFG:-}"
+if [ -z "$CFGFILE" ] && [ -n "$XYMONHOME" ]; then
+    CFGFILE="$XYMONHOME/etc/my-xymon-extensions/disk.cfg"
+    [ -f "$CFGFILE" ] || CFGFILE="$XYMONHOME/etc/disk.cfg"
+fi
 if [ -n "$CFGFILE" ] && [ -r "$CFGFILE" ]; then
     # shellcheck disable=SC1090  # user config, sourced on purpose
     . "$CFGFILE"

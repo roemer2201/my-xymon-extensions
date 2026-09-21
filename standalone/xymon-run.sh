@@ -158,6 +158,10 @@ if [ "$1" = "all" ]; then
                 # Measurement wrapper and its transport shim: they run
                 # extensions, they are not extensions themselves.
                 */xymonext.sh|*/xymonext-send.sh) continue ;;
+                # Privileged reader of the claude extension: it is
+                # called by claude.sh with an account name, and on its
+                # own it does nothing but print its usage.
+                */claude-expiry.sh) continue ;;
             esac
             found=yes
             ext=$(basename "$script" .sh)

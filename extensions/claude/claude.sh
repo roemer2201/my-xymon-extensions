@@ -38,7 +38,7 @@
 #   4. combine the per-account colors into the column color
 #   5. send the status message
 #
-# Configuration: environment variables and/or $XYMONHOME/etc/claude.cfg
+# Configuration: environment variables and/or $XYMONHOME/etc/my-xymon-extensions/claude.cfg
 # (see the shipped claude.cfg; the config file wins over the
 # environment).
 
@@ -87,7 +87,16 @@ CLAUDE_CRIT="${CLAUDE_CRIT:-5}"             # red at/below N days left
 CLAUDE_HELPER="${CLAUDE_HELPER:-}"          # empty: next to this script
 CLAUDE_SUDO="${CLAUDE_SUDO:-auto}"          # auto|yes|no
 
-CFGFILE="${CLAUDE_CFG:-${XYMONHOME:+${XYMONHOME}/etc/claude.cfg}}"
+# The config file lives in a directory of this package's own: on
+# Debian/Ubuntu the Xymon client, the server and hobbit-plugins all
+# share $XYMONHOME/etc, where these generically named files sat until
+# 0.19.0. One left behind there is still read, so an installation
+# that was never migrated keeps working.
+CFGFILE="${CLAUDE_CFG:-}"
+if [ -z "$CFGFILE" ] && [ -n "$XYMONHOME" ]; then
+    CFGFILE="$XYMONHOME/etc/my-xymon-extensions/claude.cfg"
+    [ -f "$CFGFILE" ] || CFGFILE="$XYMONHOME/etc/claude.cfg"
+fi
 if [ -n "$CFGFILE" ] && [ -r "$CFGFILE" ]; then
     # shellcheck disable=SC1090  # user config, sourced on purpose
     . "$CFGFILE"

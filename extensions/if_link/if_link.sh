@@ -36,7 +36,7 @@
 # quietly miss short flaps. FreeBSD reports "clear".
 #
 # Configuration: environment variables and/or
-# $XYMONHOME/etc/if_link.cfg (see the shipped if_link.cfg; the config
+# $XYMONHOME/etc/my-xymon-extensions/if_link.cfg (see the shipped if_link.cfg; the config
 # file wins over the environment).
 
 set -u
@@ -71,7 +71,16 @@ IF_LINK_YELLOW="${IF_LINK_YELLOW:-}"          # global yellow threshold
 IF_LINK_RED="${IF_LINK_RED:-}"                # global red threshold
 IF_LINK_THRESHOLDS="${IF_LINK_THRESHOLDS:-}"  # per-interface overrides
 
-CFGFILE="${IF_LINK_CFG:-${XYMONHOME:+${XYMONHOME}/etc/if_link.cfg}}"
+# The config file lives in a directory of this package's own: on
+# Debian/Ubuntu the Xymon client, the server and hobbit-plugins all
+# share $XYMONHOME/etc, where these generically named files sat until
+# 0.19.0. One left behind there is still read, so an installation
+# that was never migrated keeps working.
+CFGFILE="${IF_LINK_CFG:-}"
+if [ -z "$CFGFILE" ] && [ -n "$XYMONHOME" ]; then
+    CFGFILE="$XYMONHOME/etc/my-xymon-extensions/if_link.cfg"
+    [ -f "$CFGFILE" ] || CFGFILE="$XYMONHOME/etc/if_link.cfg"
+fi
 if [ -n "$CFGFILE" ] && [ -r "$CFGFILE" ]; then
     # shellcheck disable=SC1090  # user config, sourced on purpose
     . "$CFGFILE"

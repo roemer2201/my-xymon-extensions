@@ -12,7 +12,7 @@
 #     (split-NCV on the Xymon server, see server/README.md).
 #
 # Runs unmodified on Ubuntu, Rocky Linux (EL) and FreeBSD.
-# Configuration: $XYMONHOME/etc/smart.cfg (see the shipped smart.cfg).
+# Configuration: $XYMONHOME/etc/my-xymon-extensions/smart.cfg (see the shipped smart.cfg).
 
 set -u
 
@@ -79,7 +79,16 @@ attrmap() {
 "
 }
 
-CFGFILE="${SMART_CFG:-${XYMONHOME:+${XYMONHOME}/etc/smart.cfg}}"
+# The config file lives in a directory of this package's own: on
+# Debian/Ubuntu the Xymon client, the server and hobbit-plugins all
+# share $XYMONHOME/etc, where these generically named files sat until
+# 0.19.0. One left behind there is still read, so an installation
+# that was never migrated keeps working.
+CFGFILE="${SMART_CFG:-}"
+if [ -z "$CFGFILE" ] && [ -n "$XYMONHOME" ]; then
+    CFGFILE="$XYMONHOME/etc/my-xymon-extensions/smart.cfg"
+    [ -f "$CFGFILE" ] || CFGFILE="$XYMONHOME/etc/smart.cfg"
+fi
 if [ -n "$CFGFILE" ] && [ -r "$CFGFILE" ]; then
     # shellcheck disable=SC1090  # user config, sourced on purpose
     . "$CFGFILE"

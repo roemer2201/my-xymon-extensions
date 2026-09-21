@@ -61,7 +61,7 @@ the rates appear from the second poll on.
    - enable TR-064 (*Allow access for applications*) and create a
      dedicated user with the *FRITZ!Box settings* permission (for
      `MODE=auto`/`tr064`).
-2. **Configure** `$XYMONHOME/etc/fritzwan.cfg` on the polling host:
+2. **Configure** `$XYMONHOME/etc/my-xymon-extensions/fritzwan.cfg` on the polling host:
    set `FRITZ_USER`/`FRITZ_PASSWORD`, or `MODE="igd"`; set
    `FRITZ_HOST`/`REPORTHOST` if the box is not reachable as
    `fritz.box`. `chmod 600` the file.

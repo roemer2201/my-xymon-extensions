@@ -15,7 +15,7 @@
 # information as its "cpu" column, so the shipped launch snippet is
 # disabled by default.
 #
-# Configuration: environment variables and/or $XYMONHOME/etc/la.cfg
+# Configuration: environment variables and/or $XYMONHOME/etc/my-xymon-extensions/la.cfg
 # (see the shipped la.cfg; the config file wins over the environment).
 
 set -u
@@ -45,7 +45,16 @@ LA_CRIT="${LA_CRIT:-3.0}"       # red at/above, 5-min load PER CORE
 LA_NCPU="${LA_NCPU:-}"          # CPU count override; empty = detect
 LA_LOADAVG="${LA_LOADAVG:-/proc/loadavg}"
 
-CFGFILE="${LA_CFG:-${XYMONHOME:+${XYMONHOME}/etc/la.cfg}}"
+# The config file lives in a directory of this package's own: on
+# Debian/Ubuntu the Xymon client, the server and hobbit-plugins all
+# share $XYMONHOME/etc, where these generically named files sat until
+# 0.19.0. One left behind there is still read, so an installation
+# that was never migrated keeps working.
+CFGFILE="${LA_CFG:-}"
+if [ -z "$CFGFILE" ] && [ -n "$XYMONHOME" ]; then
+    CFGFILE="$XYMONHOME/etc/my-xymon-extensions/la.cfg"
+    [ -f "$CFGFILE" ] || CFGFILE="$XYMONHOME/etc/la.cfg"
+fi
 if [ -n "$CFGFILE" ] && [ -r "$CFGFILE" ]; then
     # shellcheck disable=SC1090  # user config, sourced on purpose
     . "$CFGFILE"

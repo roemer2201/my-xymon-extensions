@@ -16,7 +16,7 @@
 #
 # Hosts without opkg (Debian/EL/FreeBSD) report "clear".
 #
-# Configuration: environment variables and/or $XYMONHOME/etc/opkg.cfg
+# Configuration: environment variables and/or $XYMONHOME/etc/my-xymon-extensions/opkg.cfg
 # (see the shipped opkg.cfg; the config file wins over the
 # environment).
 
@@ -50,7 +50,16 @@ OPKG_CONF="${OPKG_CONF:-/etc/opkg.conf}"
 OPKG_LISTSDIR="${OPKG_LISTSDIR:-}"  # empty: lists_dir from OPKG_CONF
 OPKG_TIMEOUT="${OPKG_TIMEOUT:-300}" # seconds for "opkg update", 0 = off
 
-CFGFILE="${OPKG_CFG:-${XYMONHOME:+${XYMONHOME}/etc/opkg.cfg}}"
+# The config file lives in a directory of this package's own: on
+# Debian/Ubuntu the Xymon client, the server and hobbit-plugins all
+# share $XYMONHOME/etc, where these generically named files sat until
+# 0.19.0. One left behind there is still read, so an installation
+# that was never migrated keeps working.
+CFGFILE="${OPKG_CFG:-}"
+if [ -z "$CFGFILE" ] && [ -n "$XYMONHOME" ]; then
+    CFGFILE="$XYMONHOME/etc/my-xymon-extensions/opkg.cfg"
+    [ -f "$CFGFILE" ] || CFGFILE="$XYMONHOME/etc/opkg.cfg"
+fi
 if [ -n "$CFGFILE" ] && [ -r "$CFGFILE" ]; then
     # shellcheck disable=SC1090  # user config, sourced on purpose
     . "$CFGFILE"

@@ -7,6 +7,9 @@ my-xymon-extensions: to activate the standalone Xymon reporting:
       */10 * * * * /usr/lib/xymon-standalone/xymon-run.sh all
     and restart cron: /etc/init.d/cron restart
  3. Add this host to hosts.cfg on the Xymon server.
+ Per-extension settings live in
+ /etc/xymon-standalone/my-xymon-extensions/<name>.cfg (up to 0.19.0
+ they sat next to standalone.cfg; a file left there is still read).
  Dry run for testing: /usr/lib/xymon-standalone/xymon-run.sh -n all
  The runner measures every test (runtime, CPU time, bytes sent) and
  reports that in the "xymonext" column; XYMONEXT_ENABLE="no" in
