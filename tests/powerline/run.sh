@@ -35,7 +35,7 @@ poll() {
     export POWERLINE_NOW PL_TOPOLOGY PL_STATS
     : >"${PL_MESSAGES}"
     # shellcheck disable=SC2086 # TESTSH intentionally supports multiword shell.
-    ${TESTSH} "${REPO}/extensions/powerline/powerline.sh" >"${TMP}/stdout" 2>"${TMP}/stderr"
+    ${TESTSH} "${REPO}/extensions/powerline/powerline.sh" </dev/null >"${TMP}/stdout" 2>"${TMP}/stderr"
 }
 # Assertions do not abort, so one run reports all regressions.
 ok() {
@@ -71,6 +71,19 @@ ok poll 100900 both stats1
 ok has 'tx_pb_pass_per_second : U'
 ok poll 103000 both stats2
 ok has 'tx_pb_interval_pct : U'
+
+# Every adapter status explains its abbreviations.
+ok has '^  PB +PHY block'
+ok has '^  MPDU +MAC protocol data unit'
+ok has '^  BER +bit errors'
+
+# The helper runs inside while-read loops: one reading stdin must not eat
+# the remaining adapters (the second one would lose its PHY rates).
+PL_READ_STDIN=1; export PL_READ_STDIN
+ok poll 103000 both stats2
+ok has '^status\+15 powerline1,lan.powerline green '
+ok has '^status\+15 powerline3,lan.powerline green '
+unset PL_READ_STDIN
 
 # Neighbor expiry must preserve identity; LOC must not resolve to the server BDA.
 PL_NO_NEIGHBORS=1; export PL_NO_NEIGHBORS
@@ -137,6 +150,21 @@ ok poll 205500 both
 ok has '^status\+15 powerline3,lan.powerline red '
 ok has 'rx_pb_pass : U'
 unset PL_EMPTY_STATS
+
+# An adapter absent longer than the retention is forgotten entirely.
+POWERLINE_STATE_DIR=${TMP}/retention-state POWERLINE_RETENTION_DAYS=1
+export POWERLINE_STATE_DIR POWERLINE_RETENTION_DAYS
+ok poll 400000 both
+ok poll 400300 local
+ok poll 486300 local
+ok grep -q '^state|e8df701d65a6|' "${POWERLINE_STATE_DIR}/state"
+ok has '^status\+15 powerline3,lan.powerline green '
+ok poll 486500 local
+ok test -z "$(grep 'e8df701d65a6' "${POWERLINE_STATE_DIR}/state")"
+ok lacks 'powerline3,lan'
+ok has '^status\+15 powerline1,lan.powerline green '
+POWERLINE_STATE_DIR=${TMP}/new-state POWERLINE_RETENTION_DAYS=30
+export POWERLINE_STATE_DIR POWERLINE_RETENTION_DAYS
 
 # Global errors never change inventory or age it into accepted absence.
 cp "${POWERLINE_STATE_DIR}/state" "${TMP}/saved"

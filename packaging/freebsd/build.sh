@@ -28,9 +28,14 @@ sh packaging/common/stage.sh "$STAGE" \
     "/usr/local/share/doc/$PKG" \
     .sample || exit 1
 
-sed -e "s/@VERSION@/$VERSION/" packaging/freebsd/MANIFEST.in > "$BUILD/MANIFEST" || exit 1
+# Metadata directory (as the ports framework uses it): the manifest
+# plus the install script that migrates pre-0.20.0 config files.
+META=$BUILD/meta
+mkdir -p "$META" || exit 1
+sed -e "s/@VERSION@/$VERSION/" packaging/freebsd/MANIFEST.in > "$META/+MANIFEST" || exit 1
+cp packaging/freebsd/post-install "$META/+POST_INSTALL" || exit 1
 
-pkg create -M "$BUILD/MANIFEST" -p packaging/freebsd/pkg-plist \
+pkg create -m "$META" -p packaging/freebsd/pkg-plist \
     -r "$STAGE" -o "$BUILD/out" || exit 1
 
 echo "Created:"

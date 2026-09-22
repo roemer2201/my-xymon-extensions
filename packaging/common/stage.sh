@@ -38,8 +38,11 @@ SUF=${6:-}
 # package, not straight into ETCDIR: on Debian/Ubuntu that is
 # /etc/xymon, shared by the Xymon client, the Xymon server and
 # hobbit-plugins, and names like memory.cfg or disk.cfg are anybody's.
-# Up to 0.19.0 they sat there; the deb moves them with mv_conffile, and
-# the extensions still read a file left behind on the other platforms.
+# Up to 0.19.0 they sat there. Every package moves an edited file over
+# at install time: the deb with mv_conffile, the rpm in %pre/%posttrans,
+# FreeBSD in +POST_INSTALL and opkg in preinst/postinst. The extensions
+# themselves only fall back to the old place when the new file does not
+# exist, which a package installation never leaves behind.
 CFGDIR="$ETCDIR/my-xymon-extensions"
 
 # No install(1) here: BusyBox on OpenWrt/TurrisOS has no install

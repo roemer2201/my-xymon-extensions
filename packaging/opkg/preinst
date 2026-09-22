@@ -1,0 +1,15 @@
+#!/bin/sh
+# Up to 0.19.0 the config files sat in /etc/xymon-standalone/, since
+# 0.20.0 in its my-xymon-extensions/ subdirectory. Stash every old file
+# whose new counterpart does not exist yet: that one is about to be
+# created from the package, so postinst may replace it with the stash.
+ETC=${IPKG_INSTROOT:-}/etc/xymon-standalone
+STASH=$ETC/.cfg-migrate
+rm -rf "$STASH"
+for cfg in smart temp la memory disk opkg fritzdsl fritzwan wifi \
+    if_link lxc claude xymonext; do
+    if [ -f "$ETC/$cfg.cfg" ] && [ ! -e "$ETC/my-xymon-extensions/$cfg.cfg" ]; then
+        mkdir -p "$STASH" && cp -p "$ETC/$cfg.cfg" "$STASH/$cfg.cfg"
+    fi
+done
+exit 0

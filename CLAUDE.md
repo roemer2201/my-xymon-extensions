@@ -101,8 +101,12 @@ target platform.
     subdirectory is this package's own: `$XYMONHOME/etc` is shared with
     the Xymon server and `hobbit-plugins` on Debian/Ubuntu, and names
     like `memory.cfg` belong to nobody in particular. Up to 0.19.0 the
-    files sat there; every extension still reads a file left behind in
-    the old place, so a host that was never migrated keeps working.
+    files sat there. The packages move an edited file over at install
+    time (deb: `mv_conffile`; rpm, FreeBSD and opkg: their install
+    scripts) - a runtime fallback alone is not enough, because every
+    package also installs the new default file, and an existing new
+    file always wins. Each extension still falls back to the old place
+    when the new file is missing (tarball installs).
   - `README.md` — purpose, column name, thresholds, platform notes
   - `server/` — everything the **Xymon server** needs, if the extension
     produces RRD graphs. Never tell users to edit a stock config file:

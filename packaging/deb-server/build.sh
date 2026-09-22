@@ -32,8 +32,11 @@ sed -e "s/@VERSION@/$VERSION/" packaging/deb-server/control.in > "$ROOT/DEBIAN/c
 # must run under BusyBox (see packaging/common/stage.sh).
 cp packaging/deb-server/conffiles "$ROOT/DEBIAN/conffiles" || exit 1
 chmod 0644 "$ROOT/DEBIAN/conffiles" || exit 1
-cp packaging/deb-server/postinst "$ROOT/DEBIAN/postinst" || exit 1
-chmod 0755 "$ROOT/DEBIAN/postinst" || exit 1
+# All three: dpkg-maintscript-helper needs its calls in each of them.
+for script in preinst postinst postrm; do
+    cp "packaging/deb-server/$script" "$ROOT/DEBIAN/$script" || exit 1
+    chmod 0755 "$ROOT/DEBIAN/$script" || exit 1
+done
 
 DEBFILE="build/${PKG}_${VERSION}-1_all.deb"
 dpkg-deb --build --root-owner-group "$ROOT" "$DEBFILE" || exit 1

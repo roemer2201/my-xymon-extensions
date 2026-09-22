@@ -30,6 +30,7 @@ Usage: powerline.sh [--config FILE] [--interface IFACE] [--set KEY=VALUE]
     POWERLINE_ENABLED (1), POWERLINE_IFACE (eth0), POWERLINE_LIFETIME (15)
     POWERLINE_CHANGE_MINUTES (60), POWERLINE_FLAP_MINUTES (180)
     POWERLINE_MAX_SAMPLE_GAP (900 seconds)
+    POWERLINE_RETENTION_DAYS (30; forget an adapter absent this long, 0 = never)
     POWERLINE_STATE_DIR (XYMONVAR/powerline)
     POWERLINE_MAPPING (optional file; a missing file just means no mapping)
     POWERLINE_HOSTS (HOSTSCFG), POWERLINE_XYMONCFG (XYMONHOME/bin/xymoncfg)
@@ -53,7 +54,7 @@ EOF
 setting() {
     # shellcheck disable=SC2163 # Export a validated NAME=VALUE, not positional $1.
     case "${1%%=*}" in
-        POWERLINE_ENABLED|POWERLINE_IFACE|POWERLINE_LIFETIME|POWERLINE_CHANGE_MINUTES|POWERLINE_FLAP_MINUTES|POWERLINE_MAX_SAMPLE_GAP|POWERLINE_STATE_DIR|POWERLINE_MAPPING|POWERLINE_HOSTS|POWERLINE_XYMONCFG|POWERLINE_HELPER|POWERLINE_SUDO|POWERLINE_IP|POWERLINE_COLLECTOR_HOST|POWERLINE_TX_PHY_WARN|POWERLINE_TX_PHY_CRIT|POWERLINE_RX_PHY_WARN|POWERLINE_RX_PHY_CRIT|POWERLINE_TX_PB_WARN|POWERLINE_TX_PB_CRIT|POWERLINE_RX_PB_WARN|POWERLINE_RX_PB_CRIT|POWERLINE_SILENT|POWERLINE_VERBOSE|POWERLINE_DRY_RUN|POWERLINE_NOW) export "${1}" ;;
+        POWERLINE_ENABLED|POWERLINE_IFACE|POWERLINE_LIFETIME|POWERLINE_CHANGE_MINUTES|POWERLINE_FLAP_MINUTES|POWERLINE_MAX_SAMPLE_GAP|POWERLINE_RETENTION_DAYS|POWERLINE_STATE_DIR|POWERLINE_MAPPING|POWERLINE_HOSTS|POWERLINE_XYMONCFG|POWERLINE_HELPER|POWERLINE_SUDO|POWERLINE_IP|POWERLINE_COLLECTOR_HOST|POWERLINE_TX_PHY_WARN|POWERLINE_TX_PHY_CRIT|POWERLINE_RX_PHY_WARN|POWERLINE_RX_PHY_CRIT|POWERLINE_TX_PB_WARN|POWERLINE_TX_PB_CRIT|POWERLINE_RX_PB_WARN|POWERLINE_RX_PB_CRIT|POWERLINE_SILENT|POWERLINE_VERBOSE|POWERLINE_DRY_RUN|POWERLINE_NOW) export "${1}" ;;
         *) printf 'Unknown setting: %s\n' "${1%%=*}" >&2; exit 2 ;;
     esac
 }
@@ -88,6 +89,7 @@ done
 saved_env=$(env | LC_ALL=C sort | awk '/^POWERLINE_/ && !/^POWERLINE_CONFIG=/')
 POWERLINE_ENABLED=1 POWERLINE_IFACE=eth0 POWERLINE_LIFETIME=15
 POWERLINE_CHANGE_MINUTES=60 POWERLINE_FLAP_MINUTES=180 POWERLINE_MAX_SAMPLE_GAP=900
+POWERLINE_RETENTION_DAYS=30
 POWERLINE_STATE_DIR=${XYMONVAR:-}/powerline
 POWERLINE_MAPPING='' POWERLINE_HOSTS=${HOSTSCFG:-${XYMONHOME:-}/etc/hosts.cfg}
 POWERLINE_XYMONCFG=${XYMONHOME:-}/bin/xymoncfg
@@ -112,6 +114,7 @@ ${saved_env}
 ${cli}
 EOF
 export POWERLINE_NOW POWERLINE_CHANGE_MINUTES POWERLINE_FLAP_MINUTES POWERLINE_MAX_SAMPLE_GAP
+export POWERLINE_RETENTION_DAYS
 export POWERLINE_TX_PHY_WARN POWERLINE_TX_PHY_CRIT POWERLINE_RX_PHY_WARN POWERLINE_RX_PHY_CRIT
 export POWERLINE_TX_PB_WARN POWERLINE_TX_PB_CRIT POWERLINE_RX_PB_WARN POWERLINE_RX_PB_CRIT
 LC_ALL=C
@@ -155,6 +158,7 @@ for n in "${POWERLINE_LIFETIME}" "${POWERLINE_CHANGE_MINUTES}" "${POWERLINE_FLAP
     case "${n}" in ''|*[!0-9]*) fail 'Expected positive integer timer' ;; esac
     [ "${n}" -gt 0 ] || fail 'Timer must be positive'
 done
+case "${POWERLINE_RETENTION_DAYS}" in ''|*[!0-9]*) fail 'Retention must be a whole number of days' ;; esac
 for n in "${POWERLINE_ENABLED}" "${POWERLINE_SILENT}" "${POWERLINE_VERBOSE}" "${POWERLINE_DRY_RUN}"; do
     case "${n}" in 0|1) ;; *) fail 'Boolean settings must be 0 or 1' ;; esac
 done
@@ -217,12 +221,13 @@ elif [ -n "${POWERLINE_MAPPING}" ]; then
     log debug "No static mapping file at ${POWERLINE_MAPPING}; using discovery only"
 fi
 
-# Execute fixed operations through sudo -n; argv cannot contain extra options.
+# Fixed read-only operations through sudo -n. stdin is /dev/null: query runs
+# inside while-read loops, and a helper reading stdin would eat their input.
 query() {
     if [ -n "${POWERLINE_SUDO}" ]; then
-        "${POWERLINE_SUDO}" -n "${POWERLINE_HELPER}" "${@}" >"${work}/stdout" 2>"${work}/stderr"
+        "${POWERLINE_SUDO}" -n "${POWERLINE_HELPER}" "${@}" </dev/null >"${work}/stdout" 2>"${work}/stderr"
     else
-        "${POWERLINE_HELPER}" "${@}" >"${work}/stdout" 2>"${work}/stderr"
+        "${POWERLINE_HELPER}" "${@}" </dev/null >"${work}/stdout" 2>"${work}/stderr"
     fi
     rc=${?}
     if [ "${rc}" -ne 0 ]; then log error "PLC request failed: ${*}: $(cat "${work}/stderr")"
@@ -272,6 +277,13 @@ deliver() {
     if [ "${POWERLINE_DRY_RUN}" = 1 ]; then printf '%s\n\n' "${1}"
     else "${XYMON}" "${XYMSRV}" "${1}"; fi
 }
+# Appended to every adapter status, so the metric names explain themselves.
+legend='Legend:
+  aMAC_pMAC  reporting adapter and its peer; tx/rx seen from the reporting adapter
+  PB    PHY block, the 520-byte unit sent over the powerline; a failed PB is resent
+  MPDU  MAC protocol data unit, one powerline frame carrying PBs; ackd/fail/collision
+  BER   bit errors seen by the FEC (turbo) decoder, summed per PB; fec = share of all bits
+  slotN receive slot N; interval_pct = since the last poll, reported_pct = since device reset'
 sent=1
 collector_seen=0
 while IFS='|' read -r host color summary; do
@@ -281,7 +293,9 @@ while IFS='|' read -r host color summary; do
     [ ! -f "${work}/${host}.details" ] || details=$(cat "${work}/${host}.details")
     deliver "status+${POWERLINE_LIFETIME} ${wirehost}.powerline ${color} $(date) ${summary}
 ${details}
-$(cat "${work}/${host}.metrics")" || sent=0
+$(cat "${work}/${host}.metrics")
+
+${legend}" || sent=0
     deliver "data ${wirehost}.trends
 $(cat "${work}/${host}.trends")" || sent=0
 done <"${work}/manifest"

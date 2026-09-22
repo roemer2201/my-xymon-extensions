@@ -2669,10 +2669,8 @@ altstage="$TMP/srvstage-alt"
 if (cd "$REPO" && sh packaging/common/stage-server.sh "$altstage" \
         /opt/xymon/ext /opt/xymon/etc /opt/xymon/doc /opt/sudoers.d >/dev/null) &&
         [ -x "$altstage/opt/xymon/ext/powerline.sh" ] &&
-        grep -q '^    CMD /opt/xymon/ext/powerline\.sh$' \
-            "$altstage/opt/xymon/etc/tasks.d/powerline.cfg" &&
-        grep -q '^include /opt/xymon/etc/my-xymon-extensions-server/powerline\.cfg$' \
-            "$altstage/opt/xymon/etc/xymonserver.d/powerline.cfg"; then
+        grep -q '^    CMD /opt/xymon/ext/powerline\.sh --config /opt/xymon/etc/my-xymon-extensions-server/powerline\.cfg$' \
+            "$altstage/opt/xymon/etc/tasks.d/powerline.cfg"; then
     echo "ok:   stage-server.sh honours BINDIR/ETCDIR in the files it installs"
 else
     echo "FAIL: stage-server.sh ignores BINDIR/ETCDIR somewhere"
@@ -2684,6 +2682,15 @@ if (cd "$altstage" && find . -type f -exec grep -l '@BINDIR@\|@ETCDIR@' {} +) \
     FAIL=1
 else
     echo "ok:   no unresolved path placeholders are installed"
+fi
+# The collector config must not reach the server environment: exported
+# POWERLINE_* would override the task's --config (and every manual one).
+if grep -q '^[[:space:]]*\(optional[[:space:]]*\)\{0,1\}include' \
+        "$REPO/extensions/powerline/server/xymonserver.d/powerline.cfg"; then
+    echo "FAIL: xymonserver.d/powerline.cfg includes a file into the server environment"
+    FAIL=1
+else
+    echo "ok:   powerline config stays out of the server environment"
 fi
 if [ -f "$PKGSTAGE/ext/powerline.sh" ] || [ -f "$PKGSTAGE/etc/clientlaunch.d/powerline.cfg" ]; then
     echo "FAIL: server-only powerline was installed in the client package"; FAIL=1
@@ -3026,6 +3033,160 @@ expect "$out" 'COMMENTED OUT' "postinst: says the rule is not granted yet"
 # Any other dpkg action must be a no-op.
 out=$(XYMONETCDIR="$TMP/xymonetc-bare" $TESTSH "$SRVPOSTINST" abort-upgrade 1.0)
 expect_not "$out" '.' "postinst: silent for actions other than configure"
+
+# --- config migration on upgrade --------------------------------------
+# 0.20.0 moved the config files into etc/my-xymon-extensions/. The runtime
+# fallback to etc/<name>.cfg never helps a package upgrade: the package also
+# installs the new default, and the new file wins. So rpm, FreeBSD and opkg
+# move an edited old file in their install scripts (the deb uses
+# mv_conffile). Each script is run here against a fake root.
+echo "--- config migration ---"
+sed -n 's|^/etc/xymon/my-xymon-extensions/\(.*\)\.cfg$|\1|p' "$TMP/client-etc" \
+    | sort > "$TMP/cfg-names"
+cfglist() { # cfglist FILE - config names of every "for cfg in" loop in FILE
+    awk '/for cfg in/ { on = 1; sub(/.*for cfg in/, "") }
+         on { line = $0; sub(/;.*/, "", line); gsub(/\\/, "", line)
+              n = split(line, w, " "); for (i = 1; i <= n; i++) print w[i] }
+         on && /; do/ { on = 0 }' "$1" | sort | uniq
+}
+for f in packaging/rpm/my-xymon-extensions.spec packaging/freebsd/post-install \
+    packaging/opkg/preinst packaging/opkg/postinst; do
+    if cfglist "$REPO/$f" | cmp -s - "$TMP/cfg-names"; then
+        echo "ok:   $f migrates exactly the installed config files"
+    else
+        echo "FAIL: $f and stage.sh disagree about the config files"
+        FAIL=1
+    fi
+done
+
+# opkg: preinst stashes, opkg unpacks, postinst moves.
+OPKGROOT="$TMP/opkgroot"
+OE="$OPKGROOT/etc/xymon-standalone"
+opkg_unpack() { mkdir -p "$OE/my-xymon-extensions" && echo default > "$OE/my-xymon-extensions/la.cfg"; }
+rm -rf "$OPKGROOT"; mkdir -p "$OE"
+echo edited > "$OE/la.cfg"
+IPKG_INSTROOT="$OPKGROOT" $TESTSH "$REPO/packaging/opkg/preinst"
+opkg_unpack
+out=$(IPKG_INSTROOT="$OPKGROOT" $TESTSH "$REPO/packaging/opkg/postinst")
+if [ "$(cat "$OE/my-xymon-extensions/la.cfg")" = edited ] &&
+   [ "$(cat "$OE/my-xymon-extensions/la.cfg-opkg")" = default ] &&
+   [ ! -e "$OE/la.cfg" ] && [ ! -e "$OE/.cfg-migrate" ]; then
+    echo "ok:   opkg: an edited pre-0.20.0 config replaces the new default"
+else
+    echo "FAIL: opkg: edited config not migrated"
+    FAIL=1
+fi
+expect "$out" 'moved your .*la\.cfg' "opkg: postinst reports the move"
+# Already upgraded to 0.20.0-0.23.0 and the new file edited since: keep both.
+rm -rf "$OPKGROOT"; mkdir -p "$OE/my-xymon-extensions"
+echo edited > "$OE/la.cfg"; echo mine > "$OE/my-xymon-extensions/la.cfg"
+IPKG_INSTROOT="$OPKGROOT" $TESTSH "$REPO/packaging/opkg/preinst"
+out=$(IPKG_INSTROOT="$OPKGROOT" $TESTSH "$REPO/packaging/opkg/postinst")
+if [ "$(cat "$OE/my-xymon-extensions/la.cfg")" = mine ] && [ -f "$OE/la.cfg" ]; then
+    echo "ok:   opkg: an existing new config is never overwritten"
+else
+    echo "FAIL: opkg: existing new config overwritten"
+    FAIL=1
+fi
+expect "$out" 'WARNING: .*la\.cfg' "opkg: both files present is reported"
+
+# FreeBSD: the new file may be replaced while it equals its .sample.
+BSDROOT="$TMP/bsdroot"
+BE="$BSDROOT/www/xymon/client/etc"
+rm -rf "$BSDROOT"; mkdir -p "$BE/my-xymon-extensions"
+echo edited > "$BE/la.cfg"
+echo default > "$BE/my-xymon-extensions/la.cfg"
+echo default > "$BE/my-xymon-extensions/la.cfg.sample"
+echo default > "$BE/memory.cfg"; echo default > "$BE/memory.cfg.sample"
+out=$(PKG_PREFIX="$BSDROOT" $TESTSH "$REPO/packaging/freebsd/post-install")
+if [ "$(cat "$BE/my-xymon-extensions/la.cfg")" = edited ] && [ ! -e "$BE/la.cfg" ] &&
+   [ ! -e "$BE/memory.cfg" ] && [ ! -e "$BE/my-xymon-extensions/memory.cfg" ]; then
+    echo "ok:   FreeBSD: edited config migrated, unmodified one removed"
+else
+    echo "FAIL: FreeBSD: config migration"
+    FAIL=1
+fi
+echo edited > "$BE/la.cfg"; echo mine > "$BE/my-xymon-extensions/la.cfg"
+out=$(PKG_PREFIX="$BSDROOT" $TESTSH "$REPO/packaging/freebsd/post-install")
+expect "$out" 'WARNING: .*la\.cfg' "FreeBSD: an edited new config is kept"
+[ "$(cat "$BE/my-xymon-extensions/la.cfg")" = mine ] || {
+    echo "FAIL: FreeBSD: edited new config overwritten"; FAIL=1; }
+
+# rpm: the scriptlets, extracted from the spec with its macros resolved.
+# rpm itself is replaced by a stub that prints the "rpm -V" answer.
+RPMROOT="$TMP/rpmroot"
+RE="$RPMROOT/client/etc"
+scriptlet() { # scriptlet NAME OUT
+    awk -v want="%$1" '/^%/ { on = ($1 == want); next } on' "$SPEC_FILE" \
+        | sed -e "s|%{xymonhome}|$RPMROOT/client|g" \
+              -e "s|%{_localstatedir}|$RPMROOT/var|g" \
+              -e "s|%{name}|my-xymon-extensions|g" > "$2"
+}
+SPEC_FILE="$REPO/packaging/rpm/my-xymon-extensions.spec"
+scriptlet pre "$TMP/rpm-pre"
+scriptlet posttrans "$TMP/rpm-posttrans"
+mkdir -p "$TMP/rpmstub"
+printf '#!/bin/sh\ncat "%s" 2>/dev/null\n' "$TMP/rpm-verify" > "$TMP/rpmstub/rpm"
+chmod 0755 "$TMP/rpmstub/rpm"
+rpm_upgrade() { # rpm_upgrade - pre, then what rpm does to la.cfg, then posttrans
+    PATH="$TMP/rpmstub:$PATH" $TESTSH "$TMP/rpm-pre" 2
+    if [ -f "$RE/la.cfg" ]; then mv "$RE/la.cfg" "$RE/la.cfg.rpmsave"; fi
+    [ -f "$RE/my-xymon-extensions/la.cfg" ] || echo default > "$RE/my-xymon-extensions/la.cfg"
+    PATH="$TMP/rpmstub:$PATH" $TESTSH "$TMP/rpm-posttrans" 2
+}
+# Upgrade from 0.19.0: the edited old file becomes la.cfg.rpmsave.
+rm -rf "$RPMROOT"; mkdir -p "$RE/my-xymon-extensions"; : > "$TMP/rpm-verify"
+echo edited > "$RE/la.cfg"
+out=$(rpm_upgrade)
+if [ "$(cat "$RE/my-xymon-extensions/la.cfg")" = edited ] &&
+   [ "$(cat "$RE/my-xymon-extensions/la.cfg.rpmnew")" = default ] &&
+   [ ! -e "$RE/la.cfg.rpmsave" ] && [ ! -e "$RPMROOT/var/lib/rpm-state/my-xymon-extensions" ]; then
+    echo "ok:   rpm: the .rpmsave of an edited config replaces the new default"
+else
+    echo "FAIL: rpm: edited config not migrated"
+    FAIL=1
+fi
+# Upgrade from 0.20.0-0.23.0, new file untouched according to rpm -V.
+rm -rf "$RPMROOT"; mkdir -p "$RE/my-xymon-extensions"; : > "$TMP/rpm-verify"
+echo edited > "$RE/la.cfg.rpmsave"; echo default > "$RE/my-xymon-extensions/la.cfg"
+out=$(rpm_upgrade)
+if [ "$(cat "$RE/my-xymon-extensions/la.cfg")" = edited ]; then
+    echo "ok:   rpm: a host already on 0.20.0+ is repaired"
+else
+    echo "FAIL: rpm: host already on 0.20.0+ not repaired"
+    FAIL=1
+fi
+# Same, but rpm -V reports the new file as modified: never overwrite it.
+rm -rf "$RPMROOT"; mkdir -p "$RE/my-xymon-extensions"
+echo "S.5....T.  c $RE/my-xymon-extensions/la.cfg" > "$TMP/rpm-verify"
+echo edited > "$RE/la.cfg.rpmsave"; echo mine > "$RE/my-xymon-extensions/la.cfg"
+out=$(rpm_upgrade)
+expect "$out" 'WARNING: .*la\.cfg' "rpm: both files edited is reported"
+[ "$(cat "$RE/my-xymon-extensions/la.cfg")" = mine ] || {
+    echo "FAIL: rpm: edited new config overwritten"; FAIL=1; }
+
+# dpkg-maintscript-helper needs its calls in preinst, postinst AND postrm;
+# a script left out of the build silently skips half of every migration.
+for pkgdir in deb deb-server; do
+    for script in preinst postinst postrm prerm; do
+        [ -f "$REPO/packaging/$pkgdir/$script" ] || continue
+        if grep -q "$script" "$REPO/packaging/$pkgdir/build.sh"; then
+            echo "ok:   $pkgdir build ships $script"
+        else
+            echo "FAIL: packaging/$pkgdir/$script exists but build.sh does not ship it"
+            FAIL=1
+        fi
+    done
+done
+
+# The config files document where they are read from.
+while IFS= read -r n; do
+    if grep -q "etc/$n\.cfg" "$REPO/extensions/$n/$n.cfg" \
+        "$REPO/extensions/$n/README.md" "$REPO"/packaging/common/clientlaunch.d/*.cfg; then
+        echo "FAIL: $n still documents the pre-0.20.0 path etc/$n.cfg"
+        FAIL=1
+    fi
+done < "$TMP/cfg-names"
 
 # --- release metadata --------------------------------------------------
 # Two kinds of drift that stay invisible until a release is built on a
