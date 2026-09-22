@@ -112,5 +112,90 @@ checks, documented in extensions/powerline/server/README.md. The package
 ships POWERLINE_ENABLED=0; quality limits are off. Administrators must review
 the sudoers example and dry-run output before enabling the task.
 
+## Review of the implementation (2026-09-22, after e916ad0)
+
+The implementation was reviewed against the actual sources of Xymon 4.x and
+open-plc-utils rather than from memory. Confirmed correct: the
+`data HOST.trends` wire format and that "U" reaches rrdupdate unchanged
+(xymond/rrd/do_trends.c); PCRE, not POSIX regcomp, for FNPATTERN, so the
+`(?:...)` groups are valid (web/showgraph.c, pcre_compile); every field
+offset of `plcstat -d both -s 0xF8` including the unlabelled TX collision
+count (plc/LinkStatistics.c); the FEC formula's 4160 bits per PB
+(fec_bit_error_rate, 8 * 520); `-d both` and `-s 0xF8` as tool synonyms; the
+LOC BDA really being the server's own NIC (plc/Topology2.c); and tasks.d as
+the correct home for a server-only task (tasks.cfg.DIST includes the client
+list, so clientlaunch.d would run it twice).
+
+Six defects were found and fixed on top of e916ad0:
+
+1. The status page showed no graphs at all. svcstatus.cgi reads
+   GRAPHS_<column> only inside `if (rrd && graph)`, and find_xymon_rrd()
+   resolves a column from TEST2RRD alone (lib/htmllog.c, lib/xymonrrd.c).
+   The drop-in now adds the column; it is a no-op for xymond_rrd, which has
+   no handler of that name.
+2. The topology parser demanded nine fields but uses seven. CHIPSET and
+   FIRMWARE come from a second per-device request (VS_SW_VER,
+   plc/Platform.c) that prints nothing when unanswered, so one lost packet
+   on the powerline produced a failed inventory and a red status for every
+   adapter.
+3. Removing the mapping conffile the shipped config names made awk fail on
+   every poll. An absent file now means "no static mapping"; an existing but
+   unreadable one is still an error.
+4. A hosts.cfg name equal to another host's CLIENT alias aborted the whole
+   collector permanently, over an entry unrelated to the adapters. Aliases
+   are now folded in after all hosts are known, so the result no longer
+   depends on file order; a real host name wins, an alias two hosts claim is
+   dropped, and both cases are logged instead of stopping collection.
+5. stage-server.sh hardcoded /usr/lib/xymon/server/ext while every other
+   path was an argument. It now takes BINDIR, and the installed files name
+   both directories through @BINDIR@/@ETCDIR@ placeholders that it resolves,
+   so passing a different layout actually changes the installed task, sudoers
+   example, include line and mapping path.
+6. tests/run.sh built its list of server-package paths fifty lines after the
+   drop-in collision check used it, so that check had never looked at the
+   server package. The list is built where it is first needed, and an empty
+   list now fails the suite.
+
+The drop-in name collision check was widened at the same time. The names the
+stock packages claim were read from the actual Ubuntu 24.04 package contents
+(hobbit-plugins 20230301, xymon/xymon-client 4.3.30-2ubuntu0.1): 23 names in
+clientlaunch.d, 7 in graphs.d, 8 in xymonserver.d, none in rrddefinitions.d,
+and none in tasks.d - the xymon package ships that directory empty, which is
+what makes the server-only powerline task legitimate there. The previous
+check pinned only temp.cfg.
+
+Each fix is pinned by a test that was verified to fail without it.
+
+Deliberately not changed: the xymonserver.d drop-in keeps a plain `include`
+rather than `optional include`, because a missing configuration file should
+be visible as a warning in the Xymon log.
+
+## Open TODOs (not blocking, no request pending)
+
+- powerline.sh calls the privileged helper inside `while read < file` loops
+  and so passes the loop's stdin to it. A sub-process that read stdin would
+  silently truncate the loop. Add `</dev/null` to the helper invocations.
+- extensions/powerline/README.md ships in no package; only
+  server/README.md is installed. Either install it or fold it in.
+- The inventory never prunes: `for (m in known) inventory[m] = 1` keeps a
+  permanently removed adapter green forever, and its series in every trends
+  message. A retention setting would bound the state file and message size.
+- A backward system clock larger than the poll interval (VM snapshot, large
+  NTP step) is a hard failure and reds every adapter until the clock catches
+  up. Intended, but the operational consequence deserves a line in the
+  server README.
+- Because xymonserver.cfg includes powerline.cfg, all POWERLINE_* settings
+  are already environment variables, which silently override a manual
+  `--config /other/file.cfg`. The precedence is documented; the trap is not.
+- The parser treats any mismatch between the queried adapter and the MAC in
+  the plcrate response as a hard error for that adapter. The assumption that
+  a remotely addressed device answers with its own Ethernet source address
+  is standard for open-plc-utils remote management but cannot be verified
+  without hardware; if it does not hold, the adapter stays red instead of
+  merely lacking values.
+- RPM and FreeBSD server packaging do not exist. If they are ever added,
+  stage-server.sh now takes the paths as arguments, but the `tasks.d`
+  layout and the helper's fixed /usr/bin tool paths would need review.
+
 Future automatic resumption: implementation is complete; do not restart
 development from this plan without a new request.

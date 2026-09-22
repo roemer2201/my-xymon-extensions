@@ -4,9 +4,12 @@
 # the client package); the server-side file list lives here and only
 # here.
 #
-# usage: stage-server.sh DESTDIR ETCDIR DOCDIR [CFGSUFFIX]
+# usage: stage-server.sh DESTDIR BINDIR ETCDIR DOCDIR [CFGSUFFIX]
 #
 #   DESTDIR    staging root (buildroot)
+#   BINDIR     absolute path of the directory for the server-side
+#              collector programs, i.e. the server's ext/ directory
+#              (Debian/Ubuntu: /usr/lib/xymon/server/ext)
 #   ETCDIR     absolute path of the Xymon SERVER config directory,
 #              i.e. the one holding xymonserver.cfg, graphs.cfg and
 #              rrddefinitions.cfg (Debian/Ubuntu: /etc/xymon)
@@ -14,6 +17,12 @@
 #              or "-" to skip the docs
 #   CFGSUFFIX  optional suffix appended to config files
 #              (FreeBSD would use ".sample"; unused so far)
+#
+# The argument order mirrors stage.sh (staging root, program directory,
+# config directory, ..., docs). Both directories are arguments and not
+# constants here, so a packaging with a different layout only has to pass
+# its own paths: the files that name them carry @BINDIR@/@ETCDIR@
+# placeholders and are rewritten on the way into the staging tree.
 #
 # What lands where: the drop-in files of every extension go into the
 # subdirectory of ETCDIR that Xymon reads them from - xymonserver.d,
@@ -35,19 +44,32 @@
 # Must be run from the repository root.
 set -u
 
-if [ $# -lt 3 ]; then
-    echo "usage: $0 DESTDIR ETCDIR DOCDIR [CFGSUFFIX]" >&2
+if [ $# -lt 4 ]; then
+    echo "usage: $0 DESTDIR BINDIR ETCDIR DOCDIR [CFGSUFFIX]" >&2
     exit 1
 fi
 
 DESTDIR=$1
-ETCDIR=$2
-DOCDIR=$3
-SUF=${4:-}
+BINDIR=$2
+ETCDIR=$3
+DOCDIR=$4
+SUF=${5:-}
+
+case "$BINDIR" in /*) ;; *) echo "BINDIR must be absolute" >&2; exit 1 ;; esac
+case "$ETCDIR" in /*) ;; *) echo "ETCDIR must be absolute" >&2; exit 1 ;; esac
 
 # No install(1) here - same reason as in stage.sh.
 inst() { # inst MODE SRC DST
     cp "$2" "$3" && chmod "$1" "$3"
+}
+
+# Same, but resolve the @BINDIR@/@ETCDIR@ placeholders on the way. Writing
+# the output straight to the destination avoids "sed -i", which is not
+# portable. Files without placeholders pass through unchanged, so this is
+# safe to use for every config file.
+instsub() { # instsub MODE SRC DST
+    sed -e "s|@BINDIR@|$BINDIR|g" -e "s|@ETCDIR@|$ETCDIR|g" "$2" > "$3" &&
+        chmod "$1" "$3"
 }
 
 # Extensions whose drop-ins are NOT installed, because their file name
@@ -76,22 +98,21 @@ for ext in $EXTENSIONS; do
         src="extensions/$ext/server/$dropin/$ext.cfg"
         [ -f "$src" ] || continue
         mkdir -p "$DESTDIR$ETCDIR/$dropin" || exit 1
-        inst 0644 "$src" "$DESTDIR$ETCDIR/$dropin/$ext.cfg$SUF" || exit 1
+        instsub 0644 "$src" "$DESTDIR$ETCDIR/$dropin/$ext.cfg$SUF" || exit 1
     done
 done
 
 # The first server-side collector. Keep this entirely out of stage.sh so a
 # combined client/server installation never schedules the same test twice.
-POWERLINE_BIN=/usr/lib/xymon/server/ext
-mkdir -p "$DESTDIR$POWERLINE_BIN" "$DESTDIR$ETCDIR/my-xymon-extensions-server" || exit 1
+mkdir -p "$DESTDIR$BINDIR" "$DESTDIR$ETCDIR/my-xymon-extensions-server" || exit 1
 for file in powerline.sh powerline-read.sh; do
-    inst 0755 "extensions/powerline/$file" "$DESTDIR$POWERLINE_BIN/$file" || exit 1
+    inst 0755 "extensions/powerline/$file" "$DESTDIR$BINDIR/$file" || exit 1
 done
 for file in powerline-parse.awk powerline-state.awk; do
-    inst 0644 "extensions/powerline/$file" "$DESTDIR$POWERLINE_BIN/$file" || exit 1
+    inst 0644 "extensions/powerline/$file" "$DESTDIR$BINDIR/$file" || exit 1
 done
 for file in powerline.cfg powerline.map; do
-    inst 0644 "extensions/powerline/$file" "$DESTDIR$ETCDIR/my-xymon-extensions-server/$file$SUF" || exit 1
+    instsub 0644 "extensions/powerline/$file" "$DESTDIR$ETCDIR/my-xymon-extensions-server/$file$SUF" || exit 1
 done
 
 if [ "$DOCDIR" != "-" ]; then
@@ -102,7 +123,7 @@ if [ "$DOCDIR" != "-" ]; then
         inst 0644 "extensions/$ext/server/README.md" \
             "$DESTDIR$DOCDIR/$ext/README.md" || exit 1
     done
-    inst 0644 extensions/powerline/powerline.sudoers \
+    instsub 0644 extensions/powerline/powerline.sudoers \
         "$DESTDIR$DOCDIR/powerline/powerline.sudoers" || exit 1
 
     # The drop-ins that are not installed (see SKIP_EXTENSIONS) ship
@@ -112,7 +133,7 @@ if [ "$DOCDIR" != "-" ]; then
             src="extensions/$ext/server/$dropin/$ext.cfg"
             [ -f "$src" ] || continue
             mkdir -p "$DESTDIR$DOCDIR/$ext/$dropin" || exit 1
-            inst 0644 "$src" "$DESTDIR$DOCDIR/$ext/$dropin/$ext.cfg" || exit 1
+            instsub 0644 "$src" "$DESTDIR$DOCDIR/$ext/$dropin/$ext.cfg" || exit 1
         done
     done
 fi

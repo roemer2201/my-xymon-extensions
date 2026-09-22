@@ -22,6 +22,7 @@ rm -rf "$BUILD"
 mkdir -p "$ROOT/DEBIAN" || exit 1
 
 sh packaging/common/stage-server.sh "$ROOT" \
+    /usr/lib/xymon/server/ext \
     /etc/xymon \
     "/usr/share/doc/$PKG" || exit 1
 

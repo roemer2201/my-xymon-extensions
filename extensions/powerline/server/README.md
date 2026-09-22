@@ -2,9 +2,13 @@
 
 ## Install and enable
 
-The server package installs programs under /usr/lib/xymon/server/ext,
-configuration under /etc/xymon/my-xymon-extensions-server, and drop-ins in
-xymonserver.d, graphs.d and tasks.d. No clientlaunch.d entry is installed.
+The Debian/Ubuntu server package installs programs under
+/usr/lib/xymon/server/ext, configuration under
+/etc/xymon/my-xymon-extensions-server, and drop-ins in xymonserver.d,
+graphs.d and tasks.d. No clientlaunch.d entry is installed. Those two
+directories are packaging arguments (stage-server.sh BINDIR/ETCDIR) and the
+installed task, sudoers example and include line follow them, so the paths
+below are the ones this package uses, not ones the collector assumes.
 It does not install open-plc-utils, grant sudo, modify stock configs, or restart
 Xymon. POWERLINE_ENABLED=0 prevents collection until setup is complete.
 
