@@ -17,6 +17,13 @@ systems monitor. Every extension must run unmodified on:
 From this repository, native **deb**, **rpm**, **FreeBSD pkg** and
 **opkg (.ipk)** packages are built.
 
+Exception: powerline is a Linux server-only collector, installed exclusively
+by stage-server.sh in my-xymon-extensions-server. It uses tasks.d (never
+clientlaunch.d), server/ext programs and my-xymon-extensions-server config.
+It remains POSIX sh/awk and is tested with dash and BusyBox; iproute2, flock
+and the fixed privileged helper target the approved Ubuntu server. Its RRDs
+use native trends messages to preserve explicit unknown values, not NCV.
+
 ## Hard portability rules
 
 These rules are non-negotiable. Violating any of them breaks at least one
@@ -133,14 +140,18 @@ target platform.
   is not complete until all package definitions are consistent —
   `tests/run.sh` pins this and fails on a mismatch.
 - Xymon's drop-in directories (`clientlaunch.d`, `graphs.d`,
-  `xymonserver.d`, `rrddefinitions.d`) are shared with other packages,
-  and dpkg refuses two packages claiming one path. Debian's
-  `hobbit-plugins` ships `temp.cfg` in three of them, so **no package
-  here installs those paths**: the `temp` drop-ins ship as
-  documentation and are copied in by hand (`SKIP_SNIPPETS` in
-  `stage.sh`, `SKIP_EXTENSIONS` in `stage-server.sh`). Before adding a
-  new drop-in, check `dpkg -S /etc/xymon/<dir>/<name>.cfg` on a Debian
-  server. `tests/run.sh` pins the known-taken paths.
+  `xymonserver.d`, `rrddefinitions.d`, `tasks.d`) are shared with other
+  packages, and dpkg refuses two packages claiming one path. Debian's
+  `hobbit-plugins` claims 23 names in `clientlaunch.d` and 7-8 in
+  `graphs.d`/`xymonserver.d` — `temp.cfg` is only the one that bit us —
+  so **no package here installs any of them**: the `temp` drop-ins ship
+  as documentation and are copied in by hand (`SKIP_SNIPPETS` in
+  `stage.sh`, `SKIP_EXTENSIONS` in `stage-server.sh`). `tasks.d` and
+  `rrddefinitions.d` are free: `xymon` ships the former empty and nobody
+  ships the latter. Before adding a new drop-in, check
+  `dpkg -S /etc/xymon/<dir>/<name>.cfg` on a Debian server.
+  `tests/run.sh` pins the full known-taken name list per directory, with
+  the package versions it was taken from.
 - Read order matters where two packages configure one column: the
   first `TEST2RRD` entry wins (prepend with
   `TEST2RRD="x=ncv,$TEST2RRD"` to be independent of it), while for

@@ -19,3 +19,8 @@
 /etc/xymon/graphs.d/lxc.cfg
 /etc/xymon/graphs.d/xymonext.cfg
 /etc/xymon/rrddefinitions.d/if_link.cfg
+/etc/xymon/xymonserver.d/powerline.cfg
+/etc/xymon/graphs.d/powerline.cfg
+/etc/xymon/tasks.d/powerline.cfg
+/etc/xymon/my-xymon-extensions-server/powerline.cfg
+/etc/xymon/my-xymon-extensions-server/powerline.map

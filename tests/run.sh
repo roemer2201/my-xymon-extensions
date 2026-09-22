@@ -2593,6 +2593,8 @@ done
 (cd "$REPO" && find extensions -type f) | grep '/server/' \
     | sed 's|^extensions/||' | sort > "$TMP/server-files"
 while read -r rel; do
+    # Server-only collectors do not ship in any client package.
+    case "$rel" in powerline/*) continue ;; esac
     if [ -f "$PKGSTAGE$DOCROOT/$rel" ]; then
         echo "ok:   stage.sh installs $rel"
     else
@@ -2619,11 +2621,12 @@ fi
 # the deb conffiles list must name exactly the installed config files.
 
 SRVSTAGE="$TMP/srvstage"
+SRVBIN=/usr/lib/xymon/server/ext
 SRVETC=/etc/xymon
 SRVDOC=/usr/share/doc/my-xymon-extensions-server
 
 if (cd "$REPO" && sh packaging/common/stage-server.sh "$SRVSTAGE" \
-        "$SRVETC" "$SRVDOC" >/dev/null); then
+        "$SRVBIN" "$SRVETC" "$SRVDOC" >/dev/null); then
     echo "ok:   stage-server.sh runs"
 else
     echo "FAIL: stage-server.sh failed"
@@ -2645,6 +2648,64 @@ grep '/server/.*\.d/' "$TMP/server-files" | grep -v '^temp/' | while read -r rel
 done
 [ -f "$TMP/srv-missing" ] && FAIL=1
 
+# The server package alone owns both executables, private AWK modules and
+# configuration; no duplicate client scheduler/program is allowed.
+for file in powerline.sh powerline-read.sh; do
+    if [ ! -x "$SRVSTAGE$SRVBIN/$file" ]; then
+        echo "FAIL: missing server executable $file"; FAIL=1
+    fi
+done
+for file in powerline-parse.awk powerline-state.awk; do
+    if [ ! -f "$SRVSTAGE$SRVBIN/$file" ]; then
+        echo "FAIL: missing server module $file"; FAIL=1
+    fi
+done
+
+# BINDIR and ETCDIR are arguments, so nothing installed may still name a
+# path of its own: an unresolved placeholder or a second, hardcoded copy of
+# the Debian layout would both silently ignore what the packaging asked for.
+altstage="$TMP/srvstage-alt"
+if (cd "$REPO" && sh packaging/common/stage-server.sh "$altstage" \
+        /opt/xymon/ext /opt/xymon/etc /opt/xymon/doc >/dev/null) &&
+        [ -x "$altstage/opt/xymon/ext/powerline.sh" ] &&
+        grep -q '^    CMD /opt/xymon/ext/powerline\.sh$' \
+            "$altstage/opt/xymon/etc/tasks.d/powerline.cfg" &&
+        grep -q '^include /opt/xymon/etc/my-xymon-extensions-server/powerline\.cfg$' \
+            "$altstage/opt/xymon/etc/xymonserver.d/powerline.cfg"; then
+    echo "ok:   stage-server.sh honours BINDIR/ETCDIR in the files it installs"
+else
+    echo "FAIL: stage-server.sh ignores BINDIR/ETCDIR somewhere"
+    FAIL=1
+fi
+if (cd "$altstage" && find . -type f -exec grep -l '@BINDIR@\|@ETCDIR@' {} +) \
+        | grep -q .; then
+    echo "FAIL: unresolved path placeholder in the staged server package"
+    FAIL=1
+else
+    echo "ok:   no unresolved path placeholders are installed"
+fi
+if [ -f "$PKGSTAGE/ext/powerline.sh" ] || [ -f "$PKGSTAGE/etc/clientlaunch.d/powerline.cfg" ]; then
+    echo "FAIL: server-only powerline was installed in the client package"; FAIL=1
+fi
+for file in README.md powerline.sudoers; do
+    if [ ! -f "$SRVSTAGE$SRVDOC/powerline/$file" ]; then
+        echo "FAIL: missing server-only Powerline documentation $file"; FAIL=1
+    fi
+done
+
+# svcstatus.cgi reads GRAPHS_<column> only after find_xymon_rrd() resolved the
+# column, and that one knows nothing but TEST2RRD (lib/xymonrrd.c,
+# lib/htmllog.c). Without this entry the status page stays graphless even
+# though the RRD files are written and the trends page works.
+if grep -q '^TEST2RRD+=",powerline"$' \
+        "$SRVSTAGE$SRVETC/xymonserver.d/powerline.cfg"; then
+    echo "ok:   powerline registers its column in TEST2RRD"
+else
+    echo "FAIL: powerline drop-in does not add the column to TEST2RRD -"
+    echo "      GRAPHS_powerline is then never read by svcstatus.cgi"
+    FAIL=1
+fi
+
 (cd "$SRVSTAGE" && find . -type f) | sed 's|^\.||' | grep "^$SRVETC/" \
     | sort > "$TMP/srv-etc"
 sort < "$REPO/packaging/deb-server/conffiles" > "$TMP/srv-conffiles"
@@ -2665,6 +2726,10 @@ CLIENTSTAGE="$TMP/pkgstage-deb"
 (cd "$REPO" && sh packaging/common/stage.sh "$CLIENTSTAGE" \
     /usr/lib/xymon/client/ext /etc/xymon /etc/xymon/clientlaunch.d - >/dev/null)
 (cd "$CLIENTSTAGE" && find . -type f) | sed 's|^\.||' | sort > "$TMP/client-paths"
+# Built here, not further down: the collision check below needs it too, and
+# used to run against a file that did not exist yet - so it never looked at
+# the server package at all.
+(cd "$SRVSTAGE" && find . -type f) | sed 's|^\.||' | sort > "$TMP/server-paths"
 
 # The deb conffiles list must name exactly the config files the client
 # package installs - the same guard the server package already has. It
@@ -2699,23 +2764,54 @@ else
     echo "ok:   launch snippets go to clientlaunch.d, nothing into tasks.d"
 fi
 
-# Xymon's drop-in directories belong to no one package. Debian's
-# hobbit-plugins ships temp.cfg in three of them, and dpkg refuses to
-# install two packages that claim the same path - that is what broke
-# the server package once. Neither of our packages may ship any of
-# those paths; the temp configuration is shipped as documentation and
-# put in place by hand instead (see extensions/temp/server/README.md).
+# Xymon's drop-in directories belong to no one package, and dpkg refuses
+# to install two packages that claim the same path - that is what broke
+# the server package once (hobbit-plugins' temp.cfg). Neither of our
+# packages may ship a file name another package already owns; the temp
+# configuration is shipped as documentation and put in place by hand
+# instead (see extensions/temp/server/README.md).
+#
+# The lists below are the *.cfg names the stock packages on the target
+# platform install into each shared directory, from the package contents of
+# Ubuntu 24.04 noble (hobbit-plugins 20230301, xymon and xymon-client
+# 4.3.30-2ubuntu0.1) - the "dpkg -S" check CLAUDE.md asks for, done once and
+# pinned here. Update them when a newer hobbit-plugins appears.
+#
+# tasks.d is listed with no names on purpose: the xymon package ships that
+# directory empty, which is why the server-only powerline task may live
+# there. rrddefinitions.d is not shipped by anyone at all.
+CLIENTLAUNCH_TAKEN="apt backuppc cciss cntrk dirtyetc dirtyvcs dnsq entropy
+ipmi kern libs mailman mdstat megaraid misc mq net netstats ntpq postgres
+sftbnc temp yum"
+GRAPHS_TAKEN="entropy mq netstats ntpq pgbouncer postgres temp"
+XYMONSERVER_TAKEN="conn6 entropy ircbot netstats ntpq pgbouncer postgres temp"
+RRDDEFINITIONS_TAKEN=""
+TASKS_TAKEN=""
+
 cat "$TMP/client-paths" "$TMP/server-paths" > "$TMP/all-paths"
-for taken in /etc/xymon/clientlaunch.d/temp.cfg \
-             /etc/xymon/graphs.d/temp.cfg \
-             /etc/xymon/xymonserver.d/temp.cfg; do
-    if grep -qx "$taken" "$TMP/all-paths"; then
-        echo "FAIL: ships $taken, which hobbit-plugins already owns"
-        FAIL=1
-    else
-        echo "ok:   does not claim $taken (hobbit-plugins owns it)"
-    fi
+if [ ! -s "$TMP/client-paths" ] || [ ! -s "$TMP/server-paths" ]; then
+    echo "FAIL: staged path lists are empty - the collision check below is vacuous"
+    FAIL=1
+fi
+collisions=0
+for dropin in clientlaunch.d graphs.d xymonserver.d rrddefinitions.d tasks.d; do
+    case "$dropin" in
+        clientlaunch.d)    names=$CLIENTLAUNCH_TAKEN ;;
+        graphs.d)          names=$GRAPHS_TAKEN ;;
+        xymonserver.d)     names=$XYMONSERVER_TAKEN ;;
+        rrddefinitions.d)  names=$RRDDEFINITIONS_TAKEN ;;
+        tasks.d)           names=$TASKS_TAKEN ;;
+    esac
+    for name in $names; do
+        if grep -qx "/etc/xymon/$dropin/$name.cfg" "$TMP/all-paths"; then
+            echo "FAIL: ships /etc/xymon/$dropin/$name.cfg, which a stock package owns"
+            FAIL=1
+            collisions=1
+        fi
+    done
 done
+[ "$collisions" -eq 0 ] &&
+    echo "ok:   claims no drop-in file name a stock Ubuntu/Debian package owns"
 
 # ... and the files it does not install must still be shipped as docs,
 # otherwise the manual step in the README has nothing to copy.
@@ -2747,7 +2843,6 @@ for script in preinst postinst postrm; do
         FAIL=1
     fi
 done
-(cd "$SRVSTAGE" && find . -type f) | sed 's|^\.||' | sort > "$TMP/server-paths"
 overlap=$(grep -Fxf "$TMP/client-paths" "$TMP/server-paths" || true)
 if [ -z "$overlap" ]; then
     echo "ok:   client and server package share no file path in /etc/xymon"
@@ -2792,6 +2887,9 @@ expect_not "$out" ' ok: ' "postinst: nothing reported as wired up"
 # Any other dpkg action must be a no-op.
 out=$(XYMONETCDIR="$TMP/xymonetc-bare" $TESTSH "$SRVPOSTINST" abort-upgrade 1.0)
 expect_not "$out" '.' "postinst: silent for actions other than configure"
+
+# The server-only collector has its own isolated replay/privilege tests.
+if ! sh "$TESTDIR/powerline/run.sh"; then FAIL=1; fi
 
 echo ""
 if [ "$FAIL" -eq 0 ]; then

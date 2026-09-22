@@ -1,0 +1,4 @@
+#!/bin/sh
+# Tests never write to the host's syslog.
+set -u
+exit 0

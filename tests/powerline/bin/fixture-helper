@@ -1,0 +1,26 @@
+#!/bin/sh
+# Deterministic read-only PLC stand-in. No networking or privilege changes.
+set -u
+base=${PL_FIXTURES:?}
+case "${1}" in
+    topology)
+        case "${PL_TOPOLOGY:-both}" in
+            both) cat "${base}/topology" ;;
+            local) sed '/ REM /d' "${base}/topology" ;;
+            empty) exit 0 ;;
+            broken) printf '%s\n' 'unexpected output'; exit 0 ;;
+            denied) printf '%s\n' 'Operation not permitted' >&2; exit 1 ;;
+        esac ;;
+    rates)
+        [ "${PL_EMPTY_RATES:-0}" = 0 ] || exit 0
+        case "${3}" in
+            f0:b0:14:84:c5:3c) peer=e8:df:70:1d:65:a6 ;;
+            *) peer=f0:b0:14:84:c5:3c ;;
+        esac
+        printf '%s %s %s TX 152 mbps Primary\n' "${2}" "${3}" "${peer}"
+        printf '%s %s %s RX 145 mbps Primary\n' "${2}" "${3}" "${peer}" ;;
+    stats)
+        [ "${PL_EMPTY_STATS:-0}" = 0 ] || exit 0
+        cat "${base}/${PL_STATS:-stats1}" ;;
+    *) exit 2 ;;
+esac

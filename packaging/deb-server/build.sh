@@ -2,8 +2,8 @@
 # Build the .deb of the SERVER package with dpkg-deb (no debhelper).
 # Debian/Ubuntu layout: the Xymon server keeps its configuration in
 # /etc/xymon - the same directory the client uses, which is why this
-# package only ever writes into the three drop-in directories that
-# belong to the server (xymonserver.d, graphs.d, rrddefinitions.d).
+# package uses server-owned drop-ins and the separate
+# my-xymon-extensions-server configuration and server/ext program paths.
 set -u
 
 cd "$(dirname "$0")/../.." || exit 1
@@ -22,6 +22,7 @@ rm -rf "$BUILD"
 mkdir -p "$ROOT/DEBIAN" || exit 1
 
 sh packaging/common/stage-server.sh "$ROOT" \
+    /usr/lib/xymon/server/ext \
     /etc/xymon \
     "/usr/share/doc/$PKG" || exit 1
 

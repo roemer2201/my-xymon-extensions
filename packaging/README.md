@@ -108,13 +108,17 @@ must stay disjoint:
 - server: only the three drop-in directories above
 
 The same applies to **other** packages: `clientlaunch.d`, `graphs.d`,
-`xymonserver.d` and `rrddefinitions.d` belong to no one package.
-Debian's `hobbit-plugins` ships a `temp.cfg` in three of them, so
-neither package installs those three paths — the `temp` configuration
-ships as documentation and is put in place by hand (see
-`extensions/temp/server/README.md`). `tests/run.sh` fails if one of
-those paths ever reappears in a package, and checks that the files are
-still shipped as documentation.
+`xymonserver.d`, `rrddefinitions.d` and `tasks.d` belong to no one
+package. Debian's `hobbit-plugins` claims a long list of names in the
+first three — `temp.cfg` is in all three, which is the one that bit us —
+so neither package installs any of them; the `temp` configuration ships
+as documentation and is put in place by hand (see
+`extensions/temp/server/README.md`). `tasks.d` is free: the `xymon`
+package ships it as an empty directory, which is why the server-only
+`powerline` task may live there. `tests/run.sh` carries the full list per
+directory (taken from the Ubuntu 24.04 package contents) and fails if a
+package ever claims one of those names, and checks that the `temp` files
+are still shipped as documentation.
 
 `tests/run.sh` stages both with the Debian paths and fails if a single
 path appears in both; the CI job additionally installs both packages
@@ -159,7 +163,10 @@ these files and that `freebsd/pkg-plist` lists exactly the staged set.
   packages install where; called by all four client builds with
   platform-specific paths.
 - `common/stage-server.sh` — the same for the **server** package
-  (currently only `deb-server`).
+  (currently only `deb-server`). Its program and config directories are
+  arguments like `stage.sh`'s; the installed files name them through
+  `@BINDIR@`/`@ETCDIR@` placeholders that it resolves on the way into
+  the staging tree.
 - `common/clientlaunch.d/*.cfg` — xymonlaunch task snippets shipped by
   all client packages (one per extension), installed into the client's
   `clientlaunch.d` drop-in directory.

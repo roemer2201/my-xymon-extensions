@@ -1,6 +1,6 @@
 #!/bin/sh
 set -e
-# Post-install for the server package: report whether the three
+# Post-install for the server package: report whether the server
 # drop-in directories this package writes into are actually read by
 # the stock Xymon configuration, and how to fix it if not.
 #
@@ -66,6 +66,13 @@ case "${1:-}" in
         todo=0
 
         echo "my-xymon-extensions-server: drop-in configuration installed."
+        echo " NOTE: powerline is disabled by default. See powerline/README.md"
+        echo "       before enabling PLC collection or installing its sudoers example."
+        if ! wired "$ETC/tasks.cfg" 'tasks-include\.cfg|tasks\.d'; then
+            echo " TODO: tasks.cfg does not read $ETC/tasks.d/ - add"
+            echo "         optional directory $ETC/tasks.d"
+            todo=1
+        fi
 
         # Debian's init script regenerates one "include" line per *.cfg
         # in /var/run/xymon/{xymonserver,graphs}-include.cfg at every

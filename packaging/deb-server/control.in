@@ -3,11 +3,11 @@ Version: @VERSION@-1
 Section: net
 Priority: optional
 Architecture: all
-Depends: xymon
+Depends: xymon, iproute2, util-linux, coreutils, sudo
 Suggests: my-xymon-extensions
 Maintainer: roemer2201 <r.oliver@web.de>
 Homepage: https://github.com/roemer2201/my-xymon-extensions
-Description: Xymon server configuration for my-xymon-extensions
+Description: Xymon server extensions and graph configuration
  Server-side configuration for the extensions in the
  my-xymon-extensions package: the settings that turn their status and
  data messages into RRD files and trend graphs.
@@ -31,6 +31,9 @@ Description: Xymon server configuration for my-xymon-extensions
     is missing.
  .
  Covered extensions: smart, temp, la, memory, opkg, fritzdsl,
- fritzwan, wifi, if_link, lxc and xymonext. The disk extension needs no
+ fritzwan, wifi, if_link, lxc and xymonext. The server-only powerline
+ collector is included but disabled until configured with open-plc-utils
+ and a restricted sudoers rule. It uses tasks.d and the separate
+ my-xymon-extensions-server config directory. The disk extension needs no
  server-side configuration - it reports into the standard disk column,
  which the server parses itself.

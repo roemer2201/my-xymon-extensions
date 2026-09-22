@@ -1,0 +1,11 @@
+#!/bin/sh
+# Passive neighbor fixture. The local adapter's BDA points at the server.
+set -u
+[ "${PL_NO_NEIGHBORS:-0}" = 0 ] || exit 0
+printf '%s\n' '192.168.5.251 lladdr f0:b0:14:84:c5:3c REACHABLE' \
+    '192.168.5.6 lladdr ee:df:70:1d:65:a3 STALE' \
+    '192.168.5.33 lladdr 52:3f:1f:31:6c:db REACHABLE' \
+    '192.168.5.5 INCOMPLETE'
+if [ "${PL_EXTRA_IP:-0}" = 1 ]; then
+    printf '%s\n' '192.168.5.7 lladdr ee:df:70:1d:65:a3 REACHABLE'
+fi

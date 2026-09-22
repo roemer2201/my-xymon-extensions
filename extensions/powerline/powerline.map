@@ -1,0 +1,5 @@
+# Optional explicit PLC-MAC (preferred) or REM BDA -> canonical Xymon host.
+# Exactly two fields per entry; no trailing comments. Multiple adapters
+# mapping to one host aggregate by worst color, preserving per-MAC metrics.
+# F0:B0:14:84:C5:3C powerline1.lan
+# E8:DF:70:1D:65:A6 powerline3.lan

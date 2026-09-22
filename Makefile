@@ -10,9 +10,14 @@ test: shellcheck unittest
 
 shellcheck:
 	shellcheck --shell=sh extensions/*/*.sh standalone/*.sh tests/run.sh tests/smart/fakesmartctl tests/smart/fakemmc tests/fritzdsl/fakecurl tests/fritzwan/fakecurl tests/disk/fakedf tests/opkg/fakeopkg tests/wifi/fakeiw tests/wifi/fakeubus tests/wifi/fakeiwinfo tests/lxc/fakelxc-ls tests/lxc/fakelxc-info tests/lxc/fakelxc-autostart packaging/*/*.sh packaging/deb/postinst packaging/deb-server/postinst packaging/opkg/postinst
+	shellcheck --shell=sh tests/powerline/run.sh tests/powerline/bin/*
 
 unittest:
 	sh tests/run.sh
+
+# Optional real-RRD smoke test; collector runtime does not require Python.
+graphcheck:
+	python3 tests/powerline/check-graphs.py
 
 # Packaging targets only work on the matching platform (see CLAUDE.md
 # and packaging/README.md). Output lands in build/.
@@ -37,4 +42,4 @@ opkg:
 clean:
 	rm -rf build
 
-.PHONY: all test shellcheck unittest deb deb-server rpm freebsd opkg clean
+.PHONY: all test shellcheck unittest graphcheck deb deb-server rpm freebsd opkg clean
