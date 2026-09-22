@@ -1,0 +1,5 @@
+# EXAMPLE ONLY: inspect, then install root:root mode 0440 under /etc/sudoers.d.
+# The root-owned helper validates operation/interface/MAC and fixes tool args.
+# Its file and every parent directory must be unwritable by xymon.
+# Never grant sudo for the collector, arbitrary shell, or unrestricted plctool.
+xymon ALL=(root) NOPASSWD: /usr/lib/xymon/server/ext/powerline-read.sh

@@ -53,8 +53,10 @@ RX slot fields are not TX slot statistics. BER ERR is a ratio of two BER
 sums, not the final FEC bit error rate. Do not sum ALL and slots together.
 Compute interval differences/rates from snapshots with actual timestamps;
 first sample, counter resets, gaps and no-traffic ratios are unknown.
-Use stable peer/slot metric keys and split NCV; keep snapshots and interval
+Use stable peer/slot metric keys and native trends data; keep snapshots and interval
 metrics distinct. Unknown measurements must remain graph gaps, not zeros.
+Implementation correction: Xymon's do_trends.c accepts RRD U values directly;
+the NCV parser does not. Native trends avoids sentinel-value consolidation bugs.
 Provide PHY overview and grouped detail graphs on status and trends pages.
 Treat plcrate values as PHY rate, not measured application throughput.
 
@@ -84,7 +86,31 @@ Commit implementation separately from this plan; push, do not merge.
 
 ## Progress / resumption
 
-Plan committed before implementation. Continue on this branch, inspect git
-status and history before editing, and preserve any newer work. No merge or
-production deployment authorized. Once implementation is complete, replace
-this paragraph with validation results and remaining installation steps.
+Implementation complete on 2026-09-22; version 0.21.0. Plan was committed
+before implementation. Server-only collector, privileged read-only helper,
+persistent per-adapter state, identity resolution, thresholds, native trends,
+11 graph definitions, packaging and installation documentation are included.
+
+Validation completed:
+- make test with ShellCheck 0.10.0 and dash: passed (including 95 Powerline
+  assertions plus negative-input tests and the existing repository suite).
+- Full suite under BusyBox 1.36.1 sh and userland: passed.
+- make graphcheck with RRDtool 1.7.2: all 11 graphs rendered; explicit U
+  samples verified as unknown, not zero.
+- make deb, make deb-server, make opkg: passed. Client/server file-ownership,
+  conffiles, executable placement and no duplicate client task checked.
+- Changed Powerline shell files also pass ShellCheck 0.11.0. Its new SC2329
+  warning flags existing unrelated smart.sh functions in the full repository;
+  the full-suite check uses the Ubuntu-aligned 0.10.0 instead.
+- git diff --check and ASCII checks for all new code: passed.
+
+No real PLC commands were run and no production installation, sudo grant,
+server restart or merge was performed. RPM and native FreeBSD builds were
+not run in this Linux environment. Actual Xymon include wiring, ghost-list
+display, hardware measurements and live web graphs remain installation-time
+checks, documented in extensions/powerline/server/README.md. The package
+ships POWERLINE_ENABLED=0; quality limits are off. Administrators must review
+the sudoers example and dry-run output before enabling the task.
+
+Future automatic resumption: implementation is complete; do not restart
+development from this plan without a new request.

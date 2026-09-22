@@ -3,10 +3,14 @@
 A collection of extensions (custom tests) for the [Xymon](https://xymon.sourceforge.io/)
 systems and network monitor.
 
-All extensions are written to be **portable**: they run unmodified on
+Client extensions are written to be **portable**: they run unmodified on
 **Ubuntu**, **Rocky Linux** (and other EL derivatives) and **FreeBSD**.
 Native packages (`.deb`, `.rpm` and FreeBSD `.pkg`) can be built from this
 repository.
+
+The server-only [powerline collector](extensions/powerline/server/README.md)
+targets Linux/Xymon servers on the same Ethernet segment as the adapters.
+It ships in my-xymon-extensions-server, disabled until configured.
 
 ## Repository layout
 
@@ -39,6 +43,7 @@ my-xymon-extensions/
 
 | Name | Column | Description |
 |------|--------|-------------|
+| [powerline](extensions/powerline/) | `powerline` | Server-side open-plc-utils collection: per-adapter PHY and PB/MPDU/receive-slot graphs, persistent topology warnings and 180-minute state-flapping escalation; quality thresholds opt-in |
 | [smart](extensions/smart/) | `smart` | SMART disk health for SATA/ATA, NVMe and (basic) SAS disks plus eMMC wear/pre-EOL health (Linux, via mmc-utils): vendor-normalized metrics, thresholds/alerts and per-disk RRD graphs |
 | [temp](extensions/temp/) | `temp` | All hardware temperature sensors from the Linux hwmon sysfs (fallback: thermal zones) — e.g. CPU/SoC and switch sensors on a Turris Omnia — with per-sensor thresholds and RRD graphs |
 | [la](extensions/la/) | `la` | Load average (1/5/15 min) with thresholds per CPU core; for clientless hosts — the task ships disabled where a full Xymon client runs |
@@ -65,6 +70,7 @@ ships them as ready-made drop-in files under
 | `server/xymonserver.d/<name>.cfg` | `xymonserver.d/` | `TEST2RRD`, `NCV_*`/`SPLITNCV_*`, `GRAPHS*` |
 | `server/graphs.d/<name>.cfg` | `graphs.d/` | the `[graphname]` graph definitions |
 | `server/rrddefinitions.d/<name>.cfg` | `rrddefinitions.d/` | RRA archive layout (only `if_link` so far) |
+| `server/tasks.d/powerline.cfg` | `tasks.d/` | Server-only Powerline task, every 5 minutes; separate configuration in `my-xymon-extensions-server/` |
 
 These directories are shared with other packages. Debian's
 `hobbit-plugins` ships a `temp.cfg` in `graphs.d`, `xymonserver.d`

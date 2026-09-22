@@ -10,9 +10,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Install shellcheck
-        run: sudo apt-get update && sudo apt-get install -y shellcheck
+      - name: Install shellcheck and RRDtool
+        run: sudo apt-get update && sudo apt-get install -y shellcheck rrdtool
       - run: make test
+      - run: make graphcheck
 
   busybox:
     name: unit tests under BusyBox (OpenWrt-like)

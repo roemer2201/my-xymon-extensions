@@ -17,6 +17,13 @@ systems monitor. Every extension must run unmodified on:
 From this repository, native **deb**, **rpm**, **FreeBSD pkg** and
 **opkg (.ipk)** packages are built.
 
+Exception: powerline is a Linux server-only collector, installed exclusively
+by stage-server.sh in my-xymon-extensions-server. It uses tasks.d (never
+clientlaunch.d), server/ext programs and my-xymon-extensions-server config.
+It remains POSIX sh/awk and is tested with dash and BusyBox; iproute2, flock
+and the fixed privileged helper target the approved Ubuntu server. Its RRDs
+use native trends messages to preserve explicit unknown values, not NCV.
+
 ## Hard portability rules
 
 These rules are non-negotiable. Violating any of them breaks at least one

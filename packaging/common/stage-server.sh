@@ -17,16 +17,19 @@
 #
 # What lands where: the drop-in files of every extension go into the
 # subdirectory of ETCDIR that Xymon reads them from - xymonserver.d,
-# graphs.d, rrddefinitions.d. Nothing is written into a stock Xymon
+# graphs.d, rrddefinitions.d, tasks.d. The server-only powerline collector,
+# its private config and read-only helper are staged here as well.
+# Nothing is written into a stock Xymon
 # config file; whether those directories are actually read is the
 # packaging's business (see packaging/deb-server/postinst).
 #
 # Note for Debian/Ubuntu: ETCDIR is /etc/xymon for both the server and
 # the client, so this must never install anything the client package
-# - or any other package - also ships. It stays inside the three
+# - or any other package - also ships. It uses the server
 # drop-in directories above, which belong to the server alone (the
 # client uses clientlaunch.d and xymonclient.d), and skips the file
-# names another package already claims (SKIP_EXTENSIONS below);
+# names another package already claims (SKIP_EXTENSIONS below). Powerline's
+# config uses my-xymon-extensions-server, never the client's package directory;
 # tests/run.sh asserts both.
 #
 # Must be run from the repository root.
@@ -58,7 +61,7 @@ SKIP_EXTENSIONS="temp"
 # Every extension that produces RRD graphs. "disk" is missing on
 # purpose: it reports into the standard disk column and is handled by
 # the server's built-in parser, so it needs no server-side config.
-EXTENSIONS="smart temp la memory opkg fritzdsl fritzwan wifi if_link lxc xymonext"
+EXTENSIONS="smart temp la memory opkg fritzdsl fritzwan wifi if_link lxc xymonext powerline"
 
 skipped() { # skipped NAME
     for skip in $SKIP_EXTENSIONS; do
@@ -69,12 +72,26 @@ skipped() { # skipped NAME
 
 for ext in $EXTENSIONS; do
     skipped "$ext" && continue
-    for dropin in xymonserver.d graphs.d rrddefinitions.d; do
+    for dropin in xymonserver.d graphs.d rrddefinitions.d tasks.d; do
         src="extensions/$ext/server/$dropin/$ext.cfg"
         [ -f "$src" ] || continue
         mkdir -p "$DESTDIR$ETCDIR/$dropin" || exit 1
         inst 0644 "$src" "$DESTDIR$ETCDIR/$dropin/$ext.cfg$SUF" || exit 1
     done
+done
+
+# The first server-side collector. Keep this entirely out of stage.sh so a
+# combined client/server installation never schedules the same test twice.
+POWERLINE_BIN=/usr/lib/xymon/server/ext
+mkdir -p "$DESTDIR$POWERLINE_BIN" "$DESTDIR$ETCDIR/my-xymon-extensions-server" || exit 1
+for file in powerline.sh powerline-read.sh; do
+    inst 0755 "extensions/powerline/$file" "$DESTDIR$POWERLINE_BIN/$file" || exit 1
+done
+for file in powerline-parse.awk powerline-state.awk; do
+    inst 0644 "extensions/powerline/$file" "$DESTDIR$POWERLINE_BIN/$file" || exit 1
+done
+for file in powerline.cfg powerline.map; do
+    inst 0644 "extensions/powerline/$file" "$DESTDIR$ETCDIR/my-xymon-extensions-server/$file$SUF" || exit 1
 done
 
 if [ "$DOCDIR" != "-" ]; then
@@ -85,6 +102,8 @@ if [ "$DOCDIR" != "-" ]; then
         inst 0644 "extensions/$ext/server/README.md" \
             "$DESTDIR$DOCDIR/$ext/README.md" || exit 1
     done
+    inst 0644 extensions/powerline/powerline.sudoers \
+        "$DESTDIR$DOCDIR/powerline/powerline.sudoers" || exit 1
 
     # The drop-ins that are not installed (see SKIP_EXTENSIONS) ship
     # here instead, so they can be put in place by hand.

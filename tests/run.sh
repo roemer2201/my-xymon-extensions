@@ -2593,6 +2593,8 @@ done
 (cd "$REPO" && find extensions -type f) | grep '/server/' \
     | sed 's|^extensions/||' | sort > "$TMP/server-files"
 while read -r rel; do
+    # Server-only collectors do not ship in any client package.
+    case "$rel" in powerline/*) continue ;; esac
     if [ -f "$PKGSTAGE$DOCROOT/$rel" ]; then
         echo "ok:   stage.sh installs $rel"
     else
@@ -2644,6 +2646,27 @@ grep '/server/.*\.d/' "$TMP/server-files" | grep -v '^temp/' | while read -r rel
     fi
 done
 [ -f "$TMP/srv-missing" ] && FAIL=1
+
+# The server package alone owns both executables, private AWK modules and
+# configuration; no duplicate client scheduler/program is allowed.
+for file in powerline.sh powerline-read.sh; do
+    if [ ! -x "$SRVSTAGE/usr/lib/xymon/server/ext/$file" ]; then
+        echo "FAIL: missing server executable $file"; FAIL=1
+    fi
+done
+for file in powerline-parse.awk powerline-state.awk; do
+    if [ ! -f "$SRVSTAGE/usr/lib/xymon/server/ext/$file" ]; then
+        echo "FAIL: missing server module $file"; FAIL=1
+    fi
+done
+if [ -f "$PKGSTAGE/ext/powerline.sh" ] || [ -f "$PKGSTAGE/etc/clientlaunch.d/powerline.cfg" ]; then
+    echo "FAIL: server-only powerline was installed in the client package"; FAIL=1
+fi
+for file in README.md powerline.sudoers; do
+    if [ ! -f "$SRVSTAGE$SRVDOC/powerline/$file" ]; then
+        echo "FAIL: missing server-only Powerline documentation $file"; FAIL=1
+    fi
+done
 
 (cd "$SRVSTAGE" && find . -type f) | sed 's|^\.||' | grep "^$SRVETC/" \
     | sort > "$TMP/srv-etc"
@@ -2792,6 +2815,9 @@ expect_not "$out" ' ok: ' "postinst: nothing reported as wired up"
 # Any other dpkg action must be a no-op.
 out=$(XYMONETCDIR="$TMP/xymonetc-bare" $TESTSH "$SRVPOSTINST" abort-upgrade 1.0)
 expect_not "$out" '.' "postinst: silent for actions other than configure"
+
+# The server-only collector has its own isolated replay/privilege tests.
+if ! sh "$TESTDIR/powerline/run.sh"; then FAIL=1; fi
 
 echo ""
 if [ "$FAIL" -eq 0 ]; then
