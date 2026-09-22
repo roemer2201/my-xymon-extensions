@@ -71,11 +71,8 @@ IF_LINK_YELLOW="${IF_LINK_YELLOW:-}"          # global yellow threshold
 IF_LINK_RED="${IF_LINK_RED:-}"                # global red threshold
 IF_LINK_THRESHOLDS="${IF_LINK_THRESHOLDS:-}"  # per-interface overrides
 
-# The config file lives in a directory of this package's own: on
-# Debian/Ubuntu the Xymon client, the server and hobbit-plugins all
-# share $XYMONHOME/etc, where these generically named files sat until
-# 0.19.0. One left behind there is still read, so an installation
-# that was never migrated keeps working.
+# Own subdirectory since 0.20.0 ($XYMONHOME/etc is shared with the
+# Xymon server and hobbit-plugins); the old place is the fallback.
 CFGFILE="${IF_LINK_CFG:-}"
 if [ -z "$CFGFILE" ] && [ -n "$XYMONHOME" ]; then
     CFGFILE="$XYMONHOME/etc/my-xymon-extensions/if_link.cfg"

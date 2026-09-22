@@ -2499,12 +2499,10 @@ unset CLAUDE_PASSWD CLAUDE_HELPER CLAUDE_SUDO CLAUDE_ACCOUNTS 2>/dev/null || tru
 # ----------------------------------------------------------------------
 echo "--- config file lookup ---"
 
-# Since 0.20.0 the per-extension config lives in
-# $XYMONHOME/etc/my-xymon-extensions/<name>.cfg. A file left in the old
-# place ($XYMONHOME/etc/<name>.cfg) must still be read - on rpm and
-# FreeBSD nothing moves it, and an extension that silently fell back to
-# its built-in defaults would be the worst possible outcome of this
-# move. Driven through "la", whose thresholds are visible in the status.
+# Since 0.20.0: $XYMONHOME/etc/my-xymon-extensions/<name>.cfg, falling
+# back to $XYMONHOME/etc/<name>.cfg when the new file is missing (tarball
+# installs; packages migrate, see "config migration"). Driven through
+# "la", whose thresholds show in the status.
 CFGHOME="$TMP/cfghome"
 mkdir -p "$CFGHOME/etc/my-xymon-extensions"
 unset LA_CFG LA_WARN LA_CRIT LA_LOADAVG 2>/dev/null || true
@@ -2540,8 +2538,7 @@ rm -f "$CFGHOME/etc/la.cfg" "$CFGHOME/etc/my-xymon-extensions/la.cfg"
 out=$(cfg_run)
 expect "$out" 'yellow >= 1\.5' "without any config file the built-in defaults apply"
 
-# Every extension must look in both places - one forgotten script would
-# quietly lose its configuration on upgrade.
+# Every extension must look in both places.
 for script in "$REPO"/extensions/*/*.sh; do
     ext=$(basename "$script" .sh)
     grep -q 'CFGFILE=' "$script" || continue
@@ -2866,22 +2863,11 @@ else
     echo "ok:   launch snippets go to clientlaunch.d, nothing into tasks.d"
 fi
 
-# Xymon's drop-in directories belong to no one package, and dpkg refuses
-# to install two packages that claim the same path - that is what broke
-# the server package once (hobbit-plugins' temp.cfg). Neither of our
-# packages may ship a file name another package already owns; the temp
-# configuration is shipped as documentation and put in place by hand
-# instead (see extensions/temp/server/README.md).
-#
-# The lists below are the *.cfg names the stock packages on the target
-# platform install into each shared directory, from the package contents of
-# Ubuntu 24.04 noble (hobbit-plugins 20230301, xymon and xymon-client
-# 4.3.30-2ubuntu0.1) - the "dpkg -S" check CLAUDE.md asks for, done once and
-# pinned here. Update them when a newer hobbit-plugins appears.
-#
-# tasks.d is listed with no names on purpose: the xymon package ships that
-# directory empty, which is why the server-only powerline task may live
-# there. rrddefinitions.d is not shipped by anyone at all.
+# dpkg refuses two packages claiming one path, so neither package may ship
+# a drop-in name a stock package owns (temp ships as documentation). Names
+# from Ubuntu 24.04 (hobbit-plugins 20230301, xymon/xymon-client
+# 4.3.30-2ubuntu0.1); update them for a newer hobbit-plugins. tasks.d ships
+# empty and nobody ships rrddefinitions.d.
 CLIENTLAUNCH_TAKEN="apt backuppc cciss cntrk dirtyetc dirtyvcs dnsq entropy
 ipmi kern libs mailman mdstat megaraid misc mq net netstats ntpq postgres
 sftbnc temp yum"
@@ -3192,14 +3178,9 @@ done < "$TMP/cfg-names"
 # Two kinds of drift that stay invisible until a release is built on a
 # real host, and that produced exactly one incident each.
 #
-# The execute bit: four of the five packaging/*/build.sh carried it,
-# packaging/deb-server/build.sh did not. Running it as ./build.sh therefore
-# needed a local chmod +x, that uncommitted mode change made git pull refuse
-# the merge, the tree stayed on an older commit, and the .deb built from it
-# carried that older version - indistinguishable from a forgotten version
-# bump. Every .sh here is meant to be run, so every .sh is executable. A
-# sourced library (extensions/lib/common.sh, see CLAUDE.md) would be the one
-# legitimate exception to add.
+# The execute bit: a missing one led to a local chmod +x, which made git
+# pull refuse to merge and built a .deb from a stale tree. A sourced
+# library would be the one exception.
 (cd "$REPO" && find . -path ./build -prune -o -path ./.git -prune -o \
     -name '*.sh' -type f -print) | sed 's|^\./||' | sort > "$TMP/shfiles"
 notexec=""
@@ -3213,11 +3194,8 @@ else
     FAIL=1
 fi
 
-# The rpm %changelog is the only place in this repository where a version is
-# written by hand - everything else derives from the VERSION file. The 0.21.0
-# release forgot the entry, so rpmbuild produced a 0.21.0-1 package whose
-# newest changelog entry still read 0.20.0-1. Anchor on the %changelog
-# section: the %description above it lists the extensions with "* " too.
+# The rpm %changelog is the only hand-written version (0.21.0 forgot it).
+# Anchored on %changelog: %description lists extensions with "* " too.
 SPEC="$REPO/packaging/rpm/my-xymon-extensions.spec"
 specver=$(awk '/^%changelog/ { inlog = 1; next }
                inlog && /^\* / { print $NF; exit }' "$SPEC")

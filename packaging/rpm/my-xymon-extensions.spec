@@ -267,7 +267,10 @@ EOF
   --config; the task passes --config instead. The privileged helper gets
   /dev/null as stdin. An adapter absent for POWERLINE_RETENTION_DAYS
   (default 30) is forgotten, so state and messages stop growing. Every
-  status carries a legend for PB, MPDU and BER
+  status carries a legend for PB, MPDU and BER, and every graph prints
+  min next to cur and max
+- comments and documentation of the claude extension, the config move
+  and powerline shortened
 
 * Tue Sep 22 2026 roemer2201 <r.oliver@web.de> - 0.23.0-1
 - no change to this package. The server package restructures the powerline

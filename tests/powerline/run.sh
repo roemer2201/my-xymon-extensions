@@ -4,7 +4,6 @@
 # protocol messages, then check failure isolation and privileged argv guards.
 # Usage: sh tests/powerline/run.sh [--help]
 # Env: TESTSH selects shell under test (e.g. "busybox sh").
-# Version: 1.0.0 (2026-09-22)
 set -u
 case "${1:-}" in -h|--help) printf '%s\n' 'Usage: run.sh; TESTSH selects the collector shell. No PLC access.'; exit 0 ;; esac
 HERE=$(CDPATH='' cd -- "$(dirname -- "${0}")" && pwd) || exit 1
@@ -294,16 +293,9 @@ if sh "${REPO}/extensions/powerline/powerline-read.sh" topology eth0 extra >/dev
     printf '%s\n' 'FAIL: helper accepted extra argument'; FAIL=1
 fi
 # --- graph coverage ----------------------------------------------------
-# Every RRD the collector emits must be drawn by exactly one graph, and no
-# graph may be left without an RRD. A ".+" pattern produced both failures at
-# once before 0.23.0: 38 series crammed into one unreadable graph, while 28
-# per-second RRDs were written for months and drawn by nothing.
-#
-# FNPATTERN is PCRE. The only PCRE-ism used in the shipped file is the
-# non-capturing group, so "(?:" -> "(" turns each pattern into valid ERE for
-# grep -E, which BusyBox has and grep -P is not. That shifts capture
-# numbering - which matters to Xymon's @RRDPARAM@, not to whether a name
-# matches.
+# Every emitted RRD is drawn by exactly one graph, and every graph draws at
+# least one RRD. FNPATTERN is PCRE; its only PCRE-ism is "(?:", so turning
+# that into "(" gives ERE for grep -E (BusyBox has no grep -P).
 ok poll 300000 both
 GRAPHCFG=${REPO}/extensions/powerline/server/graphs.d/powerline.cfg
 awk '/^\[/ { name = substr($0, 2, length($0) - 2) }

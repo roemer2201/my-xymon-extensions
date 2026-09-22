@@ -1,6 +1,5 @@
 # Normalize verified open-plc-utils stdout; never parse stderr as data.
 # Modes: topology, rates, stats. Output is pipe-delimited ASCII records.
-# Version: 1.0.0 (2026-09-22)
 
 function mac(s, t) {
     t = tolower(s); gsub(/:/, "", t)

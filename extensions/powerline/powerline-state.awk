@@ -1,7 +1,6 @@
 # Pure state/identity/metric engine; no commands, networking or config eval.
 # Input: validated records from powerline.sh plus the previous state file.
 # Output: per-host messages, a delivery manifest, and a new atomic snapshot.
-# Version: 1.0.0 (2026-09-22)
 
 BEGIN { FS = "|"; OFS = "|"; now = ENVIRON["POWERLINE_NOW"] + 0
     hold = ENVIRON["POWERLINE_CHANGE_MINUTES"] * 60

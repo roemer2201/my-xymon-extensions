@@ -2,40 +2,29 @@
 #
 # claude-expiry.sh -- privileged helper for the Xymon "claude" extension
 #
-# Prints when the Claude Code login of ONE account expires. Claude Code
-# keeps its OAuth tokens in $HOME/.claude/.credentials.json with mode
-# 0600, so the Xymon client - which runs as an unprivileged user - can
-# not read the file of another account. This helper is the only part
-# that needs root, and it is deliberately kept small and dumb:
-#
-#   - It takes exactly one argument, a USER NAME, never a path. The
-#     sudoers rule can therefore pin down which accounts may be asked
-#     about, and no file outside those accounts can be reached through
-#     the argument.
-#   - It prints the two expiry timestamps and the subscription type,
-#     and nothing else. Token material never leaves this script, not
-#     even truncated.
+# Prints when the Claude Code login of ONE account expires. It is the only
+# part that needs root, and kept minimal on purpose: the argument is a
+# user name, never a path (so the sudoers rule pins the accounts), and
+# only timestamps and the subscription type are printed, never tokens.
 #
 # usage: claude-expiry.sh [-h|--help] USERNAME
 #
 # Program flow:
-#   1. parse and validate the argument (user name characters only)
-#   2. look up the account's home directory (getent, else /etc/passwd)
-#   3. locate $HOME/.claude/.credentials.json
-#   4. extract expiresAt, refreshTokenExpiresAt and subscriptionType
-#   5. print them as key=value lines, with status= saying what happened
+#   1. validate the argument (user name characters only)
+#   2. look up the home directory (getent, else /etc/passwd)
+#   3. extract expiresAt, refreshTokenExpiresAt, subscriptionType from
+#      $HOME/.claude/.credentials.json
+#   4. print key=value lines
 #
-# Output (exit code 0 for every handled case, 2 on a usage error):
+# Output (exit 0 for every handled case, 2 on a usage error):
 #   user=<name>
 #   path=<credentials file>            (empty when the account is unknown)
 #   status=ok|nofile|noread|nouser|badfile
-#   expires=<epoch milliseconds>       (status=ok)
-#   refreshexpires=<epoch milliseconds>(status=ok)
-#   subscription=<word>                (status=ok, when the field exists)
+#   expires=<epoch ms>, refreshexpires=<epoch ms>, subscription=<word>
+#                                      (status=ok, where present)
 #
-# CLAUDE_PASSWD overrides /etc/passwd; the test suite uses it. sudo
-# resets the environment, so it cannot be injected through the sudo
-# call the extension makes.
+# CLAUDE_PASSWD overrides /etc/passwd for the tests; sudo resets the
+# environment, so it cannot be injected in production.
 
 set -u
 
@@ -91,12 +80,9 @@ lookup_home() { # lookup_home <user> -> home directory, empty if unknown
 
 # json_field <key> <file> <value-pattern>
 #
-# The credentials file is JSON written by Claude Code, either on one
-# line or pretty printed. Braces and blanks are dropped and commas
-# turned into newlines, which leaves one "key":value per line in both
-# cases; the anchored expression then picks the wanted key only (so
-# "expiresAt" never matches "refreshTokenExpiresAt"). No jq: it does
-# not exist on a stock OpenWrt or FreeBSD host.
+# Works for one-line and pretty-printed JSON: drop braces and blanks,
+# split at commas, then match the anchored key (so "expiresAt" never
+# matches "refreshTokenExpiresAt"). No jq on stock OpenWrt/FreeBSD.
 json_field() {
     tr -d '{} \t\r' < "$2" | tr ',' '\n' \
         | sed -n "s/^\"$1\":\($3\)\$/\1/p" | head -1

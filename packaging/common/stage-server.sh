@@ -1,49 +1,22 @@
 #!/bin/sh
 # stage-server.sh - copy all installable files of the SERVER package
-# into a package staging tree. Counterpart of stage.sh (which stages
-# the client package); the server-side file list lives here and only
-# here.
+# into a staging tree. Counterpart of stage.sh; the server file list
+# lives here and only here.
 #
 # usage: stage-server.sh DESTDIR BINDIR ETCDIR DOCDIR SUDOERSDIR [CFGSUFFIX]
 #
-#   DESTDIR    staging root (buildroot)
-#   BINDIR     absolute path of the directory for the server-side
-#              collector programs, i.e. the server's ext/ directory
-#              (Debian/Ubuntu: /usr/lib/xymon/server/ext)
-#   ETCDIR     absolute path of the Xymon SERVER config directory,
-#              i.e. the one holding xymonserver.cfg, graphs.cfg and
-#              rrddefinitions.cfg (Debian/Ubuntu: /etc/xymon)
-#   DOCDIR     absolute path of the documentation directory,
-#              or "-" to skip the docs
-#   SUDOERSDIR absolute path of the sudoers.d directory (Debian/Ubuntu:
-#              /etc/sudoers.d), or "-" to skip the sudo rule. It is an
-#              argument like the others because it is NOT below ETCDIR:
-#              sudo reads /etc/sudoers.d, not /etc/xymon/sudoers.d.
-#   CFGSUFFIX  optional suffix appended to config files
-#              (FreeBSD would use ".sample"; unused so far)
+#   DESTDIR    staging root
+#   BINDIR     server ext/ directory (Debian: /usr/lib/xymon/server/ext)
+#   ETCDIR     server config directory (Debian: /etc/xymon)
+#   DOCDIR     documentation directory, or "-"
+#   SUDOERSDIR sudoers.d (Debian: /etc/sudoers.d), or "-"; not below ETCDIR
+#   CFGSUFFIX  optional config file suffix (unused so far)
 #
-# The argument order mirrors stage.sh (staging root, program directory,
-# config directory, ..., docs). Both directories are arguments and not
-# constants here, so a packaging with a different layout only has to pass
-# its own paths: the files that name them carry @BINDIR@/@ETCDIR@
-# placeholders and are rewritten on the way into the staging tree.
-#
-# What lands where: the drop-in files of every extension go into the
-# subdirectory of ETCDIR that Xymon reads them from - xymonserver.d,
-# graphs.d, rrddefinitions.d, tasks.d. The server-only powerline collector,
-# its private config and read-only helper are staged here as well.
-# Nothing is written into a stock Xymon
-# config file; whether those directories are actually read is the
-# packaging's business (see packaging/deb-server/postinst).
-#
-# Note for Debian/Ubuntu: ETCDIR is /etc/xymon for both the server and
-# the client, so this must never install anything the client package
-# - or any other package - also ships. It uses the server
-# drop-in directories above, which belong to the server alone (the
-# client uses clientlaunch.d and xymonclient.d), and skips the file
-# names another package already claims (SKIP_EXTENSIONS below). Powerline's
-# config uses my-xymon-extensions-server, never the client's package directory;
-# tests/run.sh asserts both.
+# Files naming these paths carry @BINDIR@/@ETCDIR@ and are rewritten on
+# the way. Drop-ins go to xymonserver.d, graphs.d, rrddefinitions.d and
+# tasks.d; nothing touches a stock config file. On Debian the client
+# shares /etc/xymon, so nothing here may be a path the client package or
+# another package ships (see SKIP_EXTENSIONS; tests/run.sh checks it).
 #
 # Must be run from the repository root.
 set -u
@@ -72,10 +45,7 @@ inst() { # inst MODE SRC DST
     cp "$2" "$3" && chmod "$1" "$3"
 }
 
-# Same, but resolve the @BINDIR@/@ETCDIR@ placeholders on the way. Writing
-# the output straight to the destination avoids "sed -i", which is not
-# portable. Files without placeholders pass through unchanged, so this is
-# safe to use for every config file.
+# Same, resolving @BINDIR@/@ETCDIR@ (no "sed -i": not portable).
 instsub() { # instsub MODE SRC DST
     sed -e "s|@BINDIR@|$BINDIR|g" -e "s|@ETCDIR@|$ETCDIR|g" "$2" > "$3" &&
         chmod "$1" "$3"
@@ -111,8 +81,8 @@ for ext in $EXTENSIONS; do
     done
 done
 
-# The first server-side collector. Keep this entirely out of stage.sh so a
-# combined client/server installation never schedules the same test twice.
+# The server-only powerline collector; never in stage.sh, or a combined
+# client/server host would run it twice.
 mkdir -p "$DESTDIR$BINDIR" "$DESTDIR$ETCDIR/my-xymon-extensions-server" || exit 1
 for file in powerline.sh powerline-read.sh; do
     inst 0755 "extensions/powerline/$file" "$DESTDIR$BINDIR/$file" || exit 1
@@ -124,13 +94,9 @@ for file in powerline.cfg powerline.map; do
     instsub 0644 "extensions/powerline/$file" "$DESTDIR$ETCDIR/my-xymon-extensions-server/$file$SUF" || exit 1
 done
 
-# The sudo rule for powerline's privileged helper. It is installed with the
-# rule commented out - powerline ships disabled, and a package has no
-# business handing out a root privilege for a collector that is not running
-# yet. Mode 0440 is what sudo insists on; the file name has no dot in it
-# because sudo ignores every name in sudoers.d containing "." or ending
-# in "~". hobbit-plugins owns /etc/sudoers.d/xymon there, so this one is
-# named after the package instead; tests/run.sh pins both facts.
+# powerline's sudo rule, installed with the rule commented out (powerline
+# ships disabled). Mode 0440; no dot in the name (sudo would ignore it);
+# not "xymon", which hobbit-plugins owns.
 if [ "$SUDOERSDIR" != "-" ]; then
     mkdir -p "$DESTDIR$SUDOERSDIR" || exit 1
     instsub 0440 extensions/powerline/powerline.sudoers \
@@ -145,9 +111,7 @@ if [ "$DOCDIR" != "-" ]; then
         inst 0644 "extensions/$ext/server/README.md" \
             "$DESTDIR$DOCDIR/$ext/README.md" || exit 1
     done
-    # Reference copy of the same file. On Debian/Ubuntu the one to edit is
-    # the conffile in SUDOERSDIR; this copy documents the rule and survives
-    # if that file is ever removed.
+    # Reference copy of the sudo rule.
     instsub 0644 extensions/powerline/powerline.sudoers \
         "$DESTDIR$DOCDIR/powerline/powerline.sudoers" || exit 1
 

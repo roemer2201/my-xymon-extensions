@@ -61,20 +61,14 @@ wired() {
     grep -Eq "$2" "$1"
 }
 
-# The sudo rule this package installs is only as safe as the helper's path:
-# if the xymon user can write the helper, or ANY directory on the way to
-# it, the rule is a root shell rather than a read-only PLC query. Report
-# every component xymon could replace - owned by xymon, world-writable, or
-# group-writable with xymon as the group.
-#
-# The override exists so the test suite can point the check at a fixture.
+# The sudo rule is only as safe as the helper's path: list every path
+# component xymon could replace (world-writable, group-writable for
+# xymon, or owned by xymon). Overridable for the tests.
 HELPER=${POWERLINEHELPER:-/usr/lib/xymon/server/ext/powerline-read.sh}
 SUDOERS=${SUDOERSFILE:-/etc/sudoers.d/my-xymon-extensions-server}
 
-# Three independent tests, deliberately not one find expression: "-user
-# xymon" makes find abort when that account does not exist, and in a
-# combined expression that would silently take the permission tests down
-# with it - a security check that reports nothing is worse than none.
+# Three separate finds: "-user xymon" aborts find when the account does
+# not exist, and must not take the permission tests down with it.
 unsafe_for_xymon() { # unsafe_for_xymon PATH
     [ -n "$(find "$1" -maxdepth 0 -perm -0002 2>/dev/null)" ] && return 0
     [ -n "$(find "$1" -maxdepth 0 -perm -0020 -group xymon 2>/dev/null)" ] && return 0

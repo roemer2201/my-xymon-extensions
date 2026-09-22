@@ -1,40 +1,18 @@
 # sudo rule for the Xymon "powerline" server collector.
 #
-# The Debian/Ubuntu server package installs this file as
-#   /etc/sudoers.d/my-xymon-extensions-server    root:root, mode 0440
-# with the rule at the bottom COMMENTED OUT, because powerline itself
-# ships disabled (POWERLINE_ENABLED=0). A package should not hand out a
-# root privilege for a collector that is not running yet. The file is a
-# dpkg conffile, so your edit survives package upgrades.
-#
-# To activate: remove the "#" from the last line. Nothing else needs
-# changing - the helper path below is filled in by the packaging, so it
-# matches wherever this package actually installed the helper.
-#
-# The file name carries no dot on purpose: sudo silently ignores every
-# file in sudoers.d whose name contains a "." or ends in "~". A copy
-# saved as "my-xymon-extensions-server.bak" is therefore not a backup,
-# it is an inactive file - and one saved as "...-server.conf" would
-# never be read at all.
-#
-# Other packagings (rpm, FreeBSD) do not install this file. Put it in
-# place yourself, and validate before and after:
-#
+# Debian/Ubuntu installs this as /etc/sudoers.d/my-xymon-extensions-server
+# (root:root 0440, a conffile) with the rule COMMENTED OUT, because
+# powerline ships disabled. To grant it, remove the "#" from the last line
+# and run visudo -c. Elsewhere, install it yourself:
 #   visudo -c -f powerline.sudoers
 #   install -o root -g root -m 0440 powerline.sudoers \
 #       /etc/sudoers.d/my-xymon-extensions-server
+# Keep the file name free of dots: sudo ignores such files in sudoers.d.
 #
-# WHAT THE RULE GRANTS. powerline-read.sh is the only privileged part of
-# the collector. It is root-owned, validates operation, interface and
-# MAC, fixes the paths of plcstat and plcrate, clears the tool
-# environment and permits only topology, PHY and peer-statistics reads,
-# each with a fixed 15-second timeout.
-#
-# It is only as safe as its own path: if the xymon user can write the
-# helper, or ANY directory on the way to it, this rule is a root shell.
-# The server package's postinst checks that and reports what it finds.
-#
-# Never grant sudo for powerline.sh itself, for a shell, or for
-# unrestricted plctool / open-plc-utils commands.
+# powerline-read.sh allows only fixed read-only plcstat/plcrate queries
+# with validated arguments. The rule is only as safe as the helper's path:
+# if xymon can write the helper or any parent directory, it is a root
+# shell (postinst checks this). Never grant powerline.sh, a shell or the
+# plc tools themselves.
 
 #xymon ALL=(root) NOPASSWD: @BINDIR@/powerline-read.sh
