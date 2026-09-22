@@ -204,12 +204,30 @@ ok poll 212400 both
 ok has '^status\+15 powerline3,lan.powerline green '
 unset PL_EXTRA_IP
 
-# Alias collisions are fatal rather than input-order dependent.
-cp "${POWERLINE_STATE_DIR}/state" "${TMP}/saved"
+# An unrelated name collision in hosts.cfg must not stop the collector: the
+# real host name wins over another host's CLIENT alias, whatever the order.
 printf '%s\n' '192.168.5.7 adapter3 #' >>"${POWERLINE_HOSTS}"
-if poll 212700 both; then printf '%s\n' 'FAIL: ambiguous alias accepted'; FAIL=1; fi
-ok unchanged
+ok poll 212700 both
+ok has '^status\+15 powerline3,lan.powerline green '
+ok grep -q 'Ignoring CLIENT alias adapter3' "${TMP}/stderr"
+
+# An alias two hosts claim resolves to neither - and costs only that name.
+POWERLINE_HOSTS=${TMP}/alias-hosts; export POWERLINE_HOSTS
+cp "${HERE}/hosts" "${POWERLINE_HOSTS}"
+printf '%s\n' '192.168.5.9 fourth.lan # CLIENT:adapter3' >>"${POWERLINE_HOSTS}"
+printf '%s\n' 'E8:DF:70:1D:65:A6 adapter3' >"${POWERLINE_MAPPING}"
+ok poll 212800 both
+ok has '^status\+15 powerline-unknown-e8df701d65a6.powerline red '
+ok has 'ambiguous CLIENT alias'
+ok has '^status\+15 powerline1,lan.powerline green '
+
+# A configured but absent mapping file means "no mapping", not a failed poll.
+POWERLINE_MAPPING=${TMP}/absent-map; export POWERLINE_MAPPING
 POWERLINE_HOSTS=${HERE}/hosts; export POWERLINE_HOSTS
+ok poll 212900 both
+ok has '^status\+15 powerline3,lan.powerline green '
+POWERLINE_MAPPING=''; export POWERLINE_MAPPING
+cp "${POWERLINE_STATE_DIR}/state" "${TMP}/saved"
 
 # Includes must not be silently ignored when xymoncfg is unavailable.
 POWERLINE_HOSTS=${TMP}/include-hosts; export POWERLINE_HOSTS
@@ -226,6 +244,15 @@ cp "${TMP}/saved" "${POWERLINE_STATE_DIR}/state"
 # Untrusted PLC stdout and privileged arguments cannot become code or options.
 if printf '%s\n' 'TX 1 2 3% 4 5 6 0%' | awk -v mode=stats -f "${REPO}/extensions/powerline/powerline-parse.awk" >/dev/null; then
     printf '%s\n' 'FAIL: incomplete statistics accepted'; FAIL=1
+fi
+# An unanswered VS_SW_VER drops CHIPSET/FIRMWARE from a topology line. Those
+# two fields are unused, so the inventory must survive without them.
+if ! printf '%s\n' \
+    ' LOC CCO 001 F0:B0:14:84:C5:3C 52:3F:1F:31:6C:DB n/a n/a' \
+    ' REM STA 004 E8:DF:70:1D:65:A6 EE:DF:70:1D:65:A3 152 145' \
+    | awk -v mode=topology -f "${REPO}/extensions/powerline/powerline-parse.awk" \
+    | grep -q '^edge|f0b01484c53c|e8df701d65a6$'; then
+    printf '%s\n' 'FAIL: topology without chipset/firmware rejected'; FAIL=1
 fi
 for iface in --help 'eth0;id' '../eth0' ''; do
     if sh "${REPO}/extensions/powerline/powerline-read.sh" topology "${iface}" >/dev/null 2>&1; then

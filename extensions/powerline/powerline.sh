@@ -30,7 +30,8 @@ Usage: powerline.sh [--config FILE] [--interface IFACE] [--set KEY=VALUE]
     POWERLINE_ENABLED (1), POWERLINE_IFACE (eth0), POWERLINE_LIFETIME (15)
     POWERLINE_CHANGE_MINUTES (60), POWERLINE_FLAP_MINUTES (180)
     POWERLINE_MAX_SAMPLE_GAP (900 seconds)
-    POWERLINE_STATE_DIR (XYMONVAR/powerline), POWERLINE_MAPPING (optional file)
+    POWERLINE_STATE_DIR (XYMONVAR/powerline)
+    POWERLINE_MAPPING (optional file; a missing file just means no mapping)
     POWERLINE_HOSTS (HOSTSCFG), POWERLINE_XYMONCFG (XYMONHOME/bin/xymoncfg)
     POWERLINE_HELPER (adjacent powerline-read.sh), POWERLINE_SUDO (sudo)
     POWERLINE_IP (ip), POWERLINE_COLLECTOR_HOST (MACHINEDOTS/MACHINE)
@@ -205,9 +206,15 @@ awk '{for(i=2;i<NF;i++) if($i=="lladdr") {
     mac=tolower($(i+1)); gsub(/:/,"",mac)
     if(length(mac)==12 && mac~/^[0-9a-f]+$/) print "neighbor|" $1 "|" mac
 }}' "${work}/neighbors" >>"${work}/identity" || fail 'Cannot parse neighbors'
-if [ -n "${POWERLINE_MAPPING}" ]; then
+# The shipped config names a mapping file the package installs as a conffile.
+# An absent file means "no static mapping", not a broken collector - only an
+# existing but unusable one is an error worth turning every adapter red.
+if [ -n "${POWERLINE_MAPPING}" ] && [ -e "${POWERLINE_MAPPING}" ]; then
+    [ -r "${POWERLINE_MAPPING}" ] || fail 'Static mapping exists but is not readable'
     awk 'NF && $1!~/^#/ {if(NF!=2) exit 1; m=tolower($1); gsub(/:/,"",m); print "map|" m "|" $2}' \
         "${POWERLINE_MAPPING}" >>"${work}/identity" || fail 'Cannot parse static mapping'
+elif [ -n "${POWERLINE_MAPPING}" ]; then
+    log debug "No static mapping file at ${POWERLINE_MAPPING}; using discovery only"
 fi
 
 # Execute fixed operations through sudo -n; argv cannot contain extra options.

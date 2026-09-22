@@ -21,9 +21,13 @@ function counts(prefix, pass, fail, err) {
 
 # Topology is grouped by the queried LOC adapter. Deduplicate discoveries
 # later, retaining every observed local/remote link.
+# Only the first seven fields are used. The trailing CHIPSET and FIRMWARE
+# come from a second request per device (VS_SW_VER, plc/Platform.c), which
+# prints nothing at all when it is not answered; demanding them would turn
+# one lost packet on the powerline into a failed inventory for every adapter.
 mode == "topology" && ($1 == "LOC" || $1 == "REM") {
     m = mac($4); b = mac($5)
-    if (NF < 9 || m == "" || b == "" || ($2 != "CCO" && $2 != "STA")) {
+    if (NF < 7 || m == "" || b == "" || ($2 != "CCO" && $2 != "STA")) {
         bad = 1; next
     }
     if ($1 == "LOC") { loc = m; locals++ }

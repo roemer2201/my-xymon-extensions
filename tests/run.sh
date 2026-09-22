@@ -2668,6 +2668,19 @@ for file in README.md powerline.sudoers; do
     fi
 done
 
+# svcstatus.cgi reads GRAPHS_<column> only after find_xymon_rrd() resolved the
+# column, and that one knows nothing but TEST2RRD (lib/xymonrrd.c,
+# lib/htmllog.c). Without this entry the status page stays graphless even
+# though the RRD files are written and the trends page works.
+if grep -q '^TEST2RRD+=",powerline"$' \
+        "$SRVSTAGE$SRVETC/xymonserver.d/powerline.cfg"; then
+    echo "ok:   powerline registers its column in TEST2RRD"
+else
+    echo "FAIL: powerline drop-in does not add the column to TEST2RRD -"
+    echo "      GRAPHS_powerline is then never read by svcstatus.cgi"
+    FAIL=1
+fi
+
 (cd "$SRVSTAGE" && find . -type f) | sed 's|^\.||' | grep "^$SRVETC/" \
     | sort > "$TMP/srv-etc"
 sort < "$REPO/packaging/deb-server/conffiles" > "$TMP/srv-conffiles"

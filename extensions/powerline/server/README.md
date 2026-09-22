@@ -56,6 +56,13 @@ PLC-MAC canonical-hostname. Examples for the supplied devices are commented
 in powerline.map. This also handles adapters with downstream switched clients:
 one PLC link cannot measure the individual IP clients' throughput.
 
+A hosts.cfg name that is also another host's CLIENT alias is not an error:
+the real host name wins and the alias is dropped, whatever the file order.
+An alias two hosts claim resolves to neither. Both cases are reported in
+$XYMONSERVERLOGS/powerline.log and cost only that one name - the collector
+keeps running. A static mapping pointing at such a name is red, however.
+An absent POWERLINE_MAPPING file simply means no static mapping.
+
 Unknown/conflicting identities use powerline-unknown-MAC, avoiding real-name
 collisions. Status is still sent. With xymond's default --ghosts=log, it is
 dropped and recorded in the native ghost list (ghostlist.cgi); --ghosts=allow
@@ -117,9 +124,12 @@ unlike NCV, no numeric sentinel, fake zero, or graph masking is required.
 Default Xymon RRA retention applies; no extra RRD template is needed.
 
 The [powerline] overview is registered in GRAPHS so the trends page can
-discover it from filenames. GRAPHS_powerline adds PB, MPDU, slot PHY,
-slot PB, BER, FEC, reported/interval ratios, cumulative counters and presence
-graphs to the status page. Retained RRD history is not deleted when a device
+discover it from filenames; the trends page matches graph names against the
+start of the RRD file name, so only that one can appear there. GRAPHS_powerline
+adds PB, MPDU, slot PHY, slot PB, BER, FEC, reported/interval ratios,
+cumulative counters and presence graphs to the status page. TEST2RRD carries
+the column as well: it is what makes svcstatus.cgi look at GRAPHS_powerline at
+all, and it does not route the status message to any xymond_rrd parser. Retained RRD history is not deleted when a device
 leaves. Check both the status graph list and trends after two successful polls.
 
 ## References and validation boundary

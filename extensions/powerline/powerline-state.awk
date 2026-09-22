@@ -17,8 +17,9 @@ function severity(m, n, s) { if (n > color[m]) color[m] = n; if (s != "") note(m
 function canonical(h) { h = tolower(h); return (h in names) ? names[h] : "" }
 function ghost(m, h) {
     h = "powerline-unknown-" m
-    # Prefix collisions must not attach an unknown adapter to a real host.
-    while (h in names) h = "unknown-" h
+    # Prefix collisions must not attach an unknown adapter to a real host,
+    # nor to a name that hosts.cfg claims but we refused to resolve.
+    while (h in claimed) h = "unknown-" h
     return h
 }
 function resolve(m, key, i, parts, h, candidate, conflict, explicit, ip) {
@@ -27,7 +28,13 @@ function resolve(m, key, i, parts, h, candidate, conflict, explicit, ip) {
     else if (role[m] != "LOC" && bda[m] in mapping) explicit = mapping[bda[m]]
     if (explicit != "") {
         h = canonical(explicit)
-        if (h == "") { severity(m, 2, "Mapping target is not a known Xymon host."); return ghost(m) }
+        if (h == "") {
+            if (explicit in ambiguous)
+                severity(m, 2, "Mapping target " explicit " is an ambiguous CLIENT alias; map to the canonical host name.")
+            else
+                severity(m, 2, "Mapping target is not a known Xymon host.")
+            return ghost(m)
+        }
         return h
     }
     # LOC BDA can identify this Xymon server: never use it for local identity.
@@ -65,17 +72,22 @@ $1 == "baseline" {
     if (NF != 2 || $2 != 1 || baseline) fatal = "Invalid baseline marker"
     baseline = 1; next
 }
+# Host names are canonical; a CLIENT alias is only a second name for one of
+# them. Collect the aliases separately and fold them in once every host is
+# known (see END), so the outcome does not depend on the order of hosts.cfg.
+# An unusable alias is dropped, never fatal: it usually has nothing to do
+# with the adapters being monitored, and aborting would stop the whole
+# collector over an unrelated entry.
 $1 == "host" {
     if (!safehost($3)) { fatal = "Unsafe hostname in hosts configuration"; next }
     h = tolower($3)
-    if (h in names && names[h] != h) fatal = "Host name conflicts with an alias"
-    names[h] = h
+    names[h] = h; claimed[h] = 1
     if (index("," iphosts[$2] ",", "," h ",") == 0)
         iphosts[$2] = iphosts[$2] (iphosts[$2] == "" ? "" : ",") h
     if ($4 != "") {
-        alias = tolower($4)
-        if (alias in names && names[alias] != h) fatal = "Conflicting host alias"
-        names[alias] = h
+        alias = tolower($4); claimed[alias] = 1
+        if (!(alias in aliashost)) aliashost[alias] = h
+        else if (aliashost[alias] != h) aliashost[alias] = ""
     }
     next
 }
@@ -129,6 +141,19 @@ $1 == "sample" {
 NF { fatal = "Unknown normalized/state record" }
 END {
     if (fatal != "") { print fatal > "/dev/stderr"; exit 1 }
+    # A name that is a host of its own, or that two hosts claim as an alias,
+    # resolves to nothing. Report it on stderr (the task log) and carry on.
+    for (aname in aliashost) {
+        if (aname in names) {
+            if (names[aname] != aliashost[aname])
+                print "Ignoring CLIENT alias " aname ": it is also a host name" > "/dev/stderr"
+        }
+        else if (aliashost[aname] == "") {
+            ambiguous[aname] = 1
+            print "Ignoring CLIENT alias " aname ": claimed by more than one host" > "/dev/stderr"
+        }
+        else names[aname] = aliashost[aname]
+    }
     for (m in present) inventory[m] = 1
     for (m in known) inventory[m] = 1
     print "baseline|1" > snapshot
