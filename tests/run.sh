@@ -2888,6 +2888,47 @@ expect_not "$out" ' ok: ' "postinst: nothing reported as wired up"
 out=$(XYMONETCDIR="$TMP/xymonetc-bare" $TESTSH "$SRVPOSTINST" abort-upgrade 1.0)
 expect_not "$out" '.' "postinst: silent for actions other than configure"
 
+# --- release metadata --------------------------------------------------
+# Two kinds of drift that stay invisible until a release is built on a
+# real host, and that produced exactly one incident each.
+#
+# The execute bit: four of the five packaging/*/build.sh carried it,
+# packaging/deb-server/build.sh did not. Running it as ./build.sh therefore
+# needed a local chmod +x, that uncommitted mode change made git pull refuse
+# the merge, the tree stayed on an older commit, and the .deb built from it
+# carried that older version - indistinguishable from a forgotten version
+# bump. Every .sh here is meant to be run, so every .sh is executable. A
+# sourced library (extensions/lib/common.sh, see CLAUDE.md) would be the one
+# legitimate exception to add.
+(cd "$REPO" && find . -path ./build -prune -o -path ./.git -prune -o \
+    -name '*.sh' -type f -print) | sed 's|^\./||' | sort > "$TMP/shfiles"
+notexec=""
+while IFS= read -r shfile; do
+    [ -x "$REPO/$shfile" ] || notexec="$notexec $shfile"
+done < "$TMP/shfiles"
+if [ -z "$notexec" ]; then
+    echo "ok:   every .sh file is executable"
+else
+    echo "FAIL: missing the execute bit:$notexec"
+    FAIL=1
+fi
+
+# The rpm %changelog is the only place in this repository where a version is
+# written by hand - everything else derives from the VERSION file. The 0.21.0
+# release forgot the entry, so rpmbuild produced a 0.21.0-1 package whose
+# newest changelog entry still read 0.20.0-1. Anchor on the %changelog
+# section: the %description above it lists the extensions with "* " too.
+SPEC="$REPO/packaging/rpm/my-xymon-extensions.spec"
+specver=$(awk '/^%changelog/ { inlog = 1; next }
+               inlog && /^\* / { print $NF; exit }' "$SPEC")
+wantver="$(cat "$REPO/VERSION")-1"
+if [ "$specver" = "$wantver" ]; then
+    echo "ok:   newest %changelog entry matches VERSION ($wantver)"
+else
+    echo "FAIL: VERSION says $wantver, newest %changelog entry is ${specver:-none}"
+    FAIL=1
+fi
+
 # The server-only collector has its own isolated replay/privilege tests.
 if ! sh "$TESTDIR/powerline/run.sh"; then FAIL=1; fi
 

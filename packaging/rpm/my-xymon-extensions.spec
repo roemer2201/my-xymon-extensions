@@ -177,6 +177,29 @@ RRD graphs need a one-time setup on the Xymon SERVER (not here):
 EOF
 
 %changelog
+* Tue Sep 22 2026 roemer2201 <r.oliver@web.de> - 0.21.1-1
+- packaging: the build scripts are executable again. Four of the five
+  packaging/*/build.sh carried the execute bit and the server one did
+  not, so running ./packaging/deb-server/build.sh on a build host first
+  needed a chmod +x. That uncommitted mode change then made git pull
+  refuse the merge, the tree stayed on an older commit, and the package
+  built from it carried that older version - which from the outside
+  looks exactly like a forgotten version bump. stage-server.sh and
+  tests/powerline/run.sh were missing the same bit
+- tests: the packaging section pins both halves of that failure now.
+  Every .sh file in the repository must be executable, and the newest
+  %changelog entry here must match the VERSION file. A release that
+  forgets either one fails "make test" instead of surprising someone on
+  the build host
+
+* Tue Sep 22 2026 roemer2201 <r.oliver@web.de> - 0.21.0-1
+- no change to this package. The version follows the repository-wide
+  VERSION file, which 0.21.0 moved for the new server-only powerline
+  collector; that one ships exclusively in my-xymon-extensions-server
+  (tasks.d, the server's ext/ and the my-xymon-extensions-server config
+  directory), so the client package is identical to 0.20.0-1. This
+  entry was missing from the 0.21.0 release and is recorded here
+
 * Mon Sep 21 2026 roemer2201 <r.oliver@web.de> - 0.20.0-1
 - the per-extension config files move out of the shared Xymon etc
   directory into one of this package's own:

@@ -168,7 +168,16 @@ target platform.
   `xymon`) — dpkg would prompt on its next upgrade. Detect and print
   the line the admin has to add instead.
 - Version is maintained in one place (`VERSION` file at the repo root)
-  and consumed by all package builds.
+  and consumed by all package builds. The one place a version is still
+  written by hand is the `%changelog` in the rpm spec: its newest entry
+  must name the current `VERSION`. `tests/run.sh` pins that.
+- Every `*.sh` in the repository is executable (mode 0755) — the build
+  scripts are meant to be run as `./packaging/<target>/build.sh`. A
+  missing execute bit invites a local `chmod +x` on the build host, and
+  that uncommitted mode change then makes `git pull` refuse to merge,
+  which silently builds packages from a stale tree. `tests/run.sh` pins
+  this too; a sourced library (`extensions/lib/common.sh`) would be the
+  one legitimate exception to add there.
 
 ## Build & test commands
 
