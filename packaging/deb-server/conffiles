@@ -24,3 +24,4 @@
 /etc/xymon/tasks.d/powerline.cfg
 /etc/xymon/my-xymon-extensions-server/powerline.cfg
 /etc/xymon/my-xymon-extensions-server/powerline.map
+/etc/sudoers.d/my-xymon-extensions-server

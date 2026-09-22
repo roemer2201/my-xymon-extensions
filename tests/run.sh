@@ -2625,8 +2625,9 @@ SRVBIN=/usr/lib/xymon/server/ext
 SRVETC=/etc/xymon
 SRVDOC=/usr/share/doc/my-xymon-extensions-server
 
+SRVSUDOERS=/etc/sudoers.d
 if (cd "$REPO" && sh packaging/common/stage-server.sh "$SRVSTAGE" \
-        "$SRVBIN" "$SRVETC" "$SRVDOC" >/dev/null); then
+        "$SRVBIN" "$SRVETC" "$SRVDOC" "$SRVSUDOERS" >/dev/null); then
     echo "ok:   stage-server.sh runs"
 else
     echo "FAIL: stage-server.sh failed"
@@ -2666,7 +2667,7 @@ done
 # the Debian layout would both silently ignore what the packaging asked for.
 altstage="$TMP/srvstage-alt"
 if (cd "$REPO" && sh packaging/common/stage-server.sh "$altstage" \
-        /opt/xymon/ext /opt/xymon/etc /opt/xymon/doc >/dev/null) &&
+        /opt/xymon/ext /opt/xymon/etc /opt/xymon/doc /opt/sudoers.d >/dev/null) &&
         [ -x "$altstage/opt/xymon/ext/powerline.sh" ] &&
         grep -q '^    CMD /opt/xymon/ext/powerline\.sh$' \
             "$altstage/opt/xymon/etc/tasks.d/powerline.cfg" &&
@@ -2693,6 +2694,97 @@ for file in README.md powerline.sudoers; do
     fi
 done
 
+# --- the sudo rule -----------------------------------------------------
+# A broken file in sudoers.d does not break this package, it breaks sudo
+# for the whole machine, so everything about this one is pinned - and
+# pinned against the name stage-server.sh actually staged. Repeating the
+# expected name here and then checking that string would only ever test
+# itself; it has to be read back out of the staging tree.
+if [ -d "$SRVSTAGE$SRVSUDOERS" ]; then
+    (cd "$SRVSTAGE$SRVSUDOERS" && find . -type f) | sed 's|^\./||' | sort \
+        > "$TMP/sudoers-staged"
+else
+    : > "$TMP/sudoers-staged"
+fi
+sudocount=$(wc -l < "$TMP/sudoers-staged" | tr -d ' ')
+sudoname=$(head -1 "$TMP/sudoers-staged")
+SUDOFILE="$SRVSTAGE$SRVSUDOERS/$sudoname"
+
+if [ "$sudocount" -eq 1 ]; then
+    echo "ok:   stage-server.sh stages one file into $SRVSUDOERS"
+else
+    echo "FAIL: $sudocount files staged into $SRVSUDOERS, expected exactly 1"
+    FAIL=1
+fi
+
+# Named after the package. hobbit-plugins owns "xymon" in that directory
+# (the collision list further down pins that), so a generic name is how
+# the dpkg conflict of 0.16.0 would come back.
+if [ "$sudoname" = "my-xymon-extensions-server" ]; then
+    echo "ok:   the sudo rule is named after the package"
+else
+    echo "FAIL: the sudoers.d file is called '$sudoname', expected my-xymon-extensions-server"
+    FAIL=1
+fi
+
+# sudo skips any name in sudoers.d containing "." or ending in "~", which
+# fails silently - the admin sees a file that is simply never read.
+case "$sudoname" in
+    ""|*.*|*~) echo "FAIL: '$sudoname' is a name sudo ignores in sudoers.d"; FAIL=1 ;;
+    *)         echo "ok:   the sudoers.d file name is one sudo reads" ;;
+esac
+
+# sudo refuses to read a file in sudoers.d that is group- or
+# world-writable, so 0440 is not cosmetic.
+if [ -f "$SUDOFILE" ]; then
+    if [ -n "$(find "$SUDOFILE" -perm 0440 2>/dev/null)" ]; then
+        echo "ok:   the sudo rule is installed mode 0440"
+    else
+        echo "FAIL: the sudo rule is not mode 0440, which sudo requires"
+        FAIL=1
+    fi
+fi
+
+# Shipped with the rule disabled: powerline itself ships disabled, so the
+# package must not hand out the privilege before the admin asks for it.
+if [ -f "$SUDOFILE" ]; then
+    if grep -Eq '^[[:space:]]*xymon[[:space:]]+ALL' "$SUDOFILE"; then
+        echo "FAIL: the sudo rule ships ACTIVE - it must be commented out"
+        FAIL=1
+    else
+        echo "ok:   the sudo rule ships commented out"
+    fi
+    # ... but the commented-out line must still be a complete, correct rule,
+    # otherwise "remove the #" produces a file that breaks sudo.
+    if grep -q "^#xymon ALL=(root) NOPASSWD: $SRVBIN/powerline-read\.sh$" "$SUDOFILE"; then
+        echo "ok:   the disabled rule names the staged helper path"
+    else
+        echo "FAIL: no disabled rule naming $SRVBIN/powerline-read.sh"
+        FAIL=1
+    fi
+fi
+
+# Syntax, checked by sudo's own parser - both as shipped and with the rule
+# uncommented, which is the state that ends up on the machine. Skipped
+# where visudo is absent (BusyBox/OpenWrt runs of this suite).
+if command -v visudo >/dev/null 2>&1 && [ -f "$SUDOFILE" ]; then
+    if visudo -c -f "$SUDOFILE" >/dev/null 2>&1; then
+        echo "ok:   visudo accepts the shipped sudo rule"
+    else
+        echo "FAIL: visudo rejects the shipped sudo rule"
+        FAIL=1
+    fi
+    sed 's/^#xymon /xymon /' "$SUDOFILE" > "$TMP/sudoers-active"
+    if visudo -c -f "$TMP/sudoers-active" >/dev/null 2>&1; then
+        echo "ok:   visudo accepts the rule once uncommented"
+    else
+        echo "FAIL: visudo rejects the rule after uncommenting it"
+        FAIL=1
+    fi
+else
+    echo "skip: visudo not available - sudo rule syntax not checked"
+fi
+
 # svcstatus.cgi reads GRAPHS_<column> only after find_xymon_rrd() resolved the
 # column, and that one knows nothing but TEST2RRD (lib/xymonrrd.c,
 # lib/htmllog.c). Without this entry the status page stays graphless even
@@ -2706,7 +2798,10 @@ else
     FAIL=1
 fi
 
-(cd "$SRVSTAGE" && find . -type f) | sed 's|^\.||' | grep "^$SRVETC/" \
+# Every /etc path, not just $SRVETC: the sudo rule lives in /etc/sudoers.d
+# and is a conffile too, and scoping this to /etc/xymon would silently stop
+# checking it.
+(cd "$SRVSTAGE" && find . -type f) | sed 's|^\.||' | grep "^/etc/" \
     | sort > "$TMP/srv-etc"
 sort < "$REPO/packaging/deb-server/conffiles" > "$TMP/srv-conffiles"
 if cmp -s "$TMP/srv-etc" "$TMP/srv-conffiles"; then
@@ -2788,12 +2883,24 @@ XYMONSERVER_TAKEN="conn6 entropy ircbot netstats ntpq pgbouncer postgres temp"
 RRDDEFINITIONS_TAKEN=""
 TASKS_TAKEN=""
 
+# /etc/sudoers.d is shared in exactly the same way, and it is not one of
+# Xymon's drop-in directories, so it gets its own list. hobbit-plugins
+# ships /etc/sudoers.d/xymon there (lsof, debsums, smartctl, backuppc,
+# mailman, ...) - which is why our file is named after the package.
+SUDOERS_TAKEN="xymon"
+
 cat "$TMP/client-paths" "$TMP/server-paths" > "$TMP/all-paths"
 if [ ! -s "$TMP/client-paths" ] || [ ! -s "$TMP/server-paths" ]; then
     echo "FAIL: staged path lists are empty - the collision check below is vacuous"
     FAIL=1
 fi
 collisions=0
+for name in $SUDOERS_TAKEN; do
+    if grep -qx "/etc/sudoers.d/$name" "$TMP/all-paths"; then
+        echo "FAIL: ships /etc/sudoers.d/$name, which a stock package owns"
+        FAIL=1
+    fi
+done
 for dropin in clientlaunch.d graphs.d xymonserver.d rrddefinitions.d tasks.d; do
     case "$dropin" in
         clientlaunch.d)    names=$CLIENTLAUNCH_TAKEN ;;
@@ -2883,6 +2990,38 @@ expect "$out" 'TODO: +xymonserver\.cfg does not read' \
 expect "$out" 'TODO: +graphs\.cfg does not read' \
     "postinst: missing graphs.cfg reported"
 expect_not "$out" ' ok: ' "postinst: nothing reported as wired up"
+
+# The sudo rule the package now installs is only as safe as the helper's
+# path: if xymon can write the helper or any directory above it, the rule
+# is a root shell rather than a read-only PLC query. The walk necessarily
+# reports $TMP's own world-writable parent (/tmp is 1777), so assert on
+# the fixture paths themselves, never on the presence of a warning.
+mkdir -p "$TMP/helper-safe" "$TMP/helper-unsafe"
+: > "$TMP/helper-safe/powerline-read.sh"
+: > "$TMP/helper-unsafe/powerline-read.sh"
+chmod 0755 "$TMP/helper-safe" "$TMP/helper-safe/powerline-read.sh"
+chmod 0757 "$TMP/helper-unsafe/powerline-read.sh"
+
+out=$(XYMONETCDIR="$TMP/xymonetc-debian" \
+    POWERLINEHELPER="$TMP/helper-unsafe/powerline-read.sh" \
+    $TESTSH "$SRVPOSTINST" configure)
+# Anchored on the indented LIST entries: the WARN header names the helper
+# too, whether or not the helper itself is the offending component.
+expect "$out" "^ +.*helper-unsafe/powerline-read\.sh$" \
+    "postinst: a world-writable helper is listed"
+expect "$out" 'turns a' "postinst: says what the consequence is"
+
+out=$(XYMONETCDIR="$TMP/xymonetc-debian" \
+    POWERLINEHELPER="$TMP/helper-safe/powerline-read.sh" \
+    $TESTSH "$SRVPOSTINST" configure)
+expect_not "$out" "^ +.*helper-safe/powerline-read\.sh$" \
+    "postinst: a correctly owned helper is not listed"
+
+# Whatever the helper looks like, the rule's own state is always stated:
+# the file exists after install, and it does nothing until uncommented.
+expect "$out" '/etc/sudoers\.d/my-xymon-extensions-server' \
+    "postinst: names the installed sudo rule"
+expect "$out" 'COMMENTED OUT' "postinst: says the rule is not granted yet"
 
 # Any other dpkg action must be a no-op.
 out=$(XYMONETCDIR="$TMP/xymonetc-bare" $TESTSH "$SRVPOSTINST" abort-upgrade 1.0)

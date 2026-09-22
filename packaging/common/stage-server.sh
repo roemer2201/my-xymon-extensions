@@ -4,7 +4,7 @@
 # the client package); the server-side file list lives here and only
 # here.
 #
-# usage: stage-server.sh DESTDIR BINDIR ETCDIR DOCDIR [CFGSUFFIX]
+# usage: stage-server.sh DESTDIR BINDIR ETCDIR DOCDIR SUDOERSDIR [CFGSUFFIX]
 #
 #   DESTDIR    staging root (buildroot)
 #   BINDIR     absolute path of the directory for the server-side
@@ -15,6 +15,10 @@
 #              rrddefinitions.cfg (Debian/Ubuntu: /etc/xymon)
 #   DOCDIR     absolute path of the documentation directory,
 #              or "-" to skip the docs
+#   SUDOERSDIR absolute path of the sudoers.d directory (Debian/Ubuntu:
+#              /etc/sudoers.d), or "-" to skip the sudo rule. It is an
+#              argument like the others because it is NOT below ETCDIR:
+#              sudo reads /etc/sudoers.d, not /etc/xymon/sudoers.d.
 #   CFGSUFFIX  optional suffix appended to config files
 #              (FreeBSD would use ".sample"; unused so far)
 #
@@ -44,8 +48,8 @@
 # Must be run from the repository root.
 set -u
 
-if [ $# -lt 4 ]; then
-    echo "usage: $0 DESTDIR BINDIR ETCDIR DOCDIR [CFGSUFFIX]" >&2
+if [ $# -lt 5 ]; then
+    echo "usage: $0 DESTDIR BINDIR ETCDIR DOCDIR SUDOERSDIR [CFGSUFFIX]" >&2
     exit 1
 fi
 
@@ -53,10 +57,15 @@ DESTDIR=$1
 BINDIR=$2
 ETCDIR=$3
 DOCDIR=$4
-SUF=${5:-}
+SUDOERSDIR=$5
+SUF=${6:-}
 
 case "$BINDIR" in /*) ;; *) echo "BINDIR must be absolute" >&2; exit 1 ;; esac
 case "$ETCDIR" in /*) ;; *) echo "ETCDIR must be absolute" >&2; exit 1 ;; esac
+case "$SUDOERSDIR" in
+    -|/*) ;;
+    *) echo "SUDOERSDIR must be absolute or \"-\"" >&2; exit 1 ;;
+esac
 
 # No install(1) here - same reason as in stage.sh.
 inst() { # inst MODE SRC DST
@@ -115,6 +124,19 @@ for file in powerline.cfg powerline.map; do
     instsub 0644 "extensions/powerline/$file" "$DESTDIR$ETCDIR/my-xymon-extensions-server/$file$SUF" || exit 1
 done
 
+# The sudo rule for powerline's privileged helper. It is installed with the
+# rule commented out - powerline ships disabled, and a package has no
+# business handing out a root privilege for a collector that is not running
+# yet. Mode 0440 is what sudo insists on; the file name has no dot in it
+# because sudo ignores every name in sudoers.d containing "." or ending
+# in "~". hobbit-plugins owns /etc/sudoers.d/xymon there, so this one is
+# named after the package instead; tests/run.sh pins both facts.
+if [ "$SUDOERSDIR" != "-" ]; then
+    mkdir -p "$DESTDIR$SUDOERSDIR" || exit 1
+    instsub 0440 extensions/powerline/powerline.sudoers \
+        "$DESTDIR$SUDOERSDIR/my-xymon-extensions-server$SUF" || exit 1
+fi
+
 if [ "$DOCDIR" != "-" ]; then
     mkdir -p "$DESTDIR$DOCDIR" || exit 1
     inst 0644 README.md "$DESTDIR$DOCDIR/README.md" || exit 1
@@ -123,6 +145,9 @@ if [ "$DOCDIR" != "-" ]; then
         inst 0644 "extensions/$ext/server/README.md" \
             "$DESTDIR$DOCDIR/$ext/README.md" || exit 1
     done
+    # Reference copy of the same file. On Debian/Ubuntu the one to edit is
+    # the conffile in SUDOERSDIR; this copy documents the rule and survives
+    # if that file is ever removed.
     instsub 0644 extensions/powerline/powerline.sudoers \
         "$DESTDIR$DOCDIR/powerline/powerline.sudoers" || exit 1
 

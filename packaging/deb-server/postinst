@@ -61,13 +61,59 @@ wired() {
     grep -Eq "$2" "$1"
 }
 
+# The sudo rule this package installs is only as safe as the helper's path:
+# if the xymon user can write the helper, or ANY directory on the way to
+# it, the rule is a root shell rather than a read-only PLC query. Report
+# every component xymon could replace - owned by xymon, world-writable, or
+# group-writable with xymon as the group.
+#
+# The override exists so the test suite can point the check at a fixture.
+HELPER=${POWERLINEHELPER:-/usr/lib/xymon/server/ext/powerline-read.sh}
+SUDOERS=${SUDOERSFILE:-/etc/sudoers.d/my-xymon-extensions-server}
+
+# Three independent tests, deliberately not one find expression: "-user
+# xymon" makes find abort when that account does not exist, and in a
+# combined expression that would silently take the permission tests down
+# with it - a security check that reports nothing is worse than none.
+unsafe_for_xymon() { # unsafe_for_xymon PATH
+    [ -n "$(find "$1" -maxdepth 0 -perm -0002 2>/dev/null)" ] && return 0
+    [ -n "$(find "$1" -maxdepth 0 -perm -0020 -group xymon 2>/dev/null)" ] && return 0
+    [ -n "$(find "$1" -maxdepth 0 -user xymon 2>/dev/null)" ] && return 0
+    return 1
+}
+
+unsafe_path_components() { # unsafe_path_components PATH
+    upc_found=""
+    upc_d=$1
+    while :; do
+        if [ -e "$upc_d" ] && unsafe_for_xymon "$upc_d"; then
+            upc_found="$upc_found $upc_d"
+        fi
+        case "$upc_d" in /|"") break ;; esac
+        upc_d=$(dirname "$upc_d")
+    done
+    printf '%s' "$upc_found"
+}
+
 case "${1:-}" in
     configure)
         todo=0
 
         echo "my-xymon-extensions-server: drop-in configuration installed."
-        echo " NOTE: powerline is disabled by default. See powerline/README.md"
-        echo "       before enabling PLC collection or installing its sudoers example."
+        echo " NOTE: powerline is disabled by default (POWERLINE_ENABLED=0)."
+        echo "       Its sudo rule is installed as $SUDOERS,"
+        echo "       with the rule itself COMMENTED OUT. Read"
+        echo "       powerline/README.md, then uncomment the single rule"
+        echo "       line there to grant it. Validate with: visudo -c"
+        unsafe=$(unsafe_path_components "$HELPER")
+        if [ -n "$unsafe" ]; then
+            echo " WARN: the xymon user can write these path components of"
+            echo "       $HELPER:"
+            for u in $unsafe; do echo "         $u"; done
+            echo "       Granting the sudo rule while that is true turns a"
+            echo "       read-only PLC query into a root shell. Fix the"
+            echo "       ownership/permissions BEFORE uncommenting the rule."
+        fi
         if ! wired "$ETC/tasks.cfg" 'tasks-include\.cfg|tasks\.d'; then
             echo " TODO: tasks.cfg does not read $ETC/tasks.d/ - add"
             echo "         optional directory $ETC/tasks.d"
