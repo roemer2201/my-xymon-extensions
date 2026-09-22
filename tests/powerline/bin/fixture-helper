@@ -2,6 +2,8 @@
 # Deterministic read-only PLC stand-in. No networking or privilege changes.
 set -u
 base=${PL_FIXTURES:?}
+# Simulates a helper that reads stdin (the collector must pass /dev/null).
+[ -z "${PL_READ_STDIN:-}" ] || cat >/dev/null
 case "${1}" in
     topology)
         case "${PL_TOPOLOGY:-both}" in

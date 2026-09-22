@@ -9,7 +9,7 @@ all: test
 test: shellcheck unittest
 
 shellcheck:
-	shellcheck --shell=sh extensions/*/*.sh standalone/*.sh tests/run.sh tests/smart/fakesmartctl tests/smart/fakemmc tests/fritzdsl/fakecurl tests/fritzwan/fakecurl tests/disk/fakedf tests/opkg/fakeopkg tests/wifi/fakeiw tests/wifi/fakeubus tests/wifi/fakeiwinfo tests/lxc/fakelxc-ls tests/lxc/fakelxc-info tests/lxc/fakelxc-autostart packaging/*/*.sh packaging/deb/postinst packaging/deb-server/postinst packaging/opkg/postinst
+	shellcheck --shell=sh extensions/*/*.sh standalone/*.sh tests/run.sh tests/smart/fakesmartctl tests/smart/fakemmc tests/fritzdsl/fakecurl tests/fritzwan/fakecurl tests/disk/fakedf tests/opkg/fakeopkg tests/wifi/fakeiw tests/wifi/fakeubus tests/wifi/fakeiwinfo tests/lxc/fakelxc-ls tests/lxc/fakelxc-info tests/lxc/fakelxc-autostart packaging/*/*.sh packaging/deb/postinst packaging/deb-server/postinst packaging/opkg/postinst packaging/opkg/preinst packaging/freebsd/post-install
 	shellcheck --shell=sh tests/powerline/run.sh tests/powerline/bin/*
 
 unittest:

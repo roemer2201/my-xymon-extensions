@@ -120,14 +120,80 @@ sh packaging/common/stage.sh "%{buildroot}" \
 %config(noreplace) %{xymonhome}/etc/my-xymon-extensions/xymonext.cfg
 %{_docdir}/%{name}/
 
+%pre
+# Up to 0.19.0 the config files sat straight in etc/, 0.20.0 moved them
+# to etc/my-xymon-extensions/ - and on rpm migrated nothing: the package
+# installed fresh defaults in the new place, which the extensions read
+# in preference, and the upgrade renamed an edited old file to .rpmsave.
+# Note which files in the new place may be replaced with the admin's
+# copy: those that do not exist yet (rpm is about to create them from
+# the package) and those the installed package reports as unmodified.
+# The move itself happens in posttrans, once rpm is done with the old
+# files. Nothing here may fail the installation.
+state=%{_localstatedir}/lib/rpm-state/%{name}
+new=%{xymonhome}/etc/my-xymon-extensions
+rm -rf "$state"
+mkdir -p "$state" || exit 0
+: > "$state/replaceable"
+verify=""
+if [ "$1" -ge 2 ]; then
+    verify=$(rpm -V --nodeps %{name} 2>/dev/null)
+fi
+for cfg in smart temp la memory disk opkg fritzdsl fritzwan wifi \
+    if_link lxc claude xymonext; do
+    if [ ! -e "$new/$cfg.cfg" ]; then
+        echo "$cfg" >> "$state/replaceable"
+    elif [ "$1" -ge 2 ] && ! echo "$verify" | grep -q " $new/$cfg.cfg\$"; then
+        echo "$cfg" >> "$state/replaceable"
+    fi
+done
+exit 0
+
+%posttrans
+# Second half of the migration prepared in pre. The admin's copy is the
+# old file if it is still there (never owned by rpm, e.g. a tarball
+# install) or the .rpmsave the upgrade made of an edited one; an
+# unmodified old file is gone by now and needs nothing. It replaces the
+# new file only where pre allowed it - an edited new file is never
+# overwritten, the admin is told instead.
+state=%{_localstatedir}/lib/rpm-state/%{name}
+old=%{xymonhome}/etc
+new=%{xymonhome}/etc/my-xymon-extensions
+for cfg in smart temp la memory disk opkg fritzdsl fritzwan wifi \
+    if_link lxc claude xymonext; do
+    if [ -f "$old/$cfg.cfg.rpmsave" ]; then
+        src="$old/$cfg.cfg.rpmsave"
+    elif [ -f "$old/$cfg.cfg" ]; then
+        src="$old/$cfg.cfg"
+    else
+        continue
+    fi
+    dst="$new/$cfg.cfg"
+    if [ -f "$dst" ] && [ "$(cksum < "$src")" = "$(cksum < "$dst")" ]; then
+        rm -f "$src"
+    elif [ ! -f "$dst" ] || grep -qx "$cfg" "$state/replaceable" 2>/dev/null; then
+        mkdir -p "$new"
+        if [ -f "$dst" ]; then
+            mv -f "$dst" "$dst.rpmnew"
+        fi
+        if mv -f "$src" "$dst"; then
+            echo "my-xymon-extensions: moved your $src to $dst"
+        fi
+    else
+        echo "my-xymon-extensions: WARNING: $src and $dst are both"
+        echo " edited; only the latter is read. Merge, then delete $src."
+    fi
+done
+rm -rf "$state"
+exit 0
+
 %post
 cat <<'EOF'
-my-xymon-extensions: the per-extension configuration now lives in
- %{xymonhome}/etc/my-xymon-extensions/ instead of straight in
- %{xymonhome}/etc. rpm installs the new files; a config you had edited
- stays behind in the old place and is STILL READ by its extension, so
- nothing breaks - move your changes over and delete the old file when
- convenient.
+my-xymon-extensions: the per-extension configuration lives in
+ %{xymonhome}/etc/my-xymon-extensions/ (up to 0.19.0 it sat straight
+ in %{xymonhome}/etc). A config you had edited in the old place is
+ moved over at the end of this transaction; the package default is
+ then kept next to it as <name>.cfg.rpmnew.
 To activate the "smart" extension:
  1. Grant the xymon user access to smartctl - see
     %{_docdir}/%{name}/smart/sudoers.example
@@ -177,6 +243,36 @@ RRD graphs need a one-time setup on the Xymon SERVER (not here):
 EOF
 
 %changelog
+* Tue Sep 22 2026 roemer2201 <r.oliver@web.de> - 0.23.1-1
+- the config move of 0.20.0 now actually keeps edited settings on rpm.
+  Up to 0.23.0 the package installed fresh defaults in
+  etc/my-xymon-extensions/, the extensions read those in preference,
+  and the upgrade renamed an edited etc/<name>.cfg to .rpmsave - so the
+  extension silently ran on its defaults, contrary to what the 0.20.0
+  post-install text said. %pre now notes which new files may be
+  replaced (not there yet, or unmodified according to rpm -V), and
+  %posttrans moves the edited old file or its .rpmsave over them,
+  keeping the package default as .rpmnew. Hosts that already went
+  through 0.20.0-0.23.0 are repaired by this upgrade as well; where
+  both files were edited nothing is overwritten and a warning names
+  them. FreeBSD and opkg get the same migration in their install
+  scripts
+- the config file headers and the claude launch snippet named the old
+  $XYMONHOME/etc/<name>.cfg path
+- server package (deb only): the build shipped postinst but not preinst
+  and postrm, so its dpkg-maintscript-helper conffile migrations never
+  ran their preinst half
+- server package, powerline: the collector config is no longer included
+  into xymonserver.cfg - as environment it silently overrode every
+  --config; the task passes --config instead. The privileged helper gets
+  /dev/null as stdin. An adapter absent for POWERLINE_RETENTION_DAYS
+  (default 1) is forgotten, so state and messages stop growing; an
+  adapter with a host of its own goes purple a day after it vanished. Every
+  status carries a legend for PB, MPDU and BER, and every graph prints
+  min next to cur and max
+- comments and documentation of the claude extension, the config move
+  and powerline shortened
+
 * Tue Sep 22 2026 roemer2201 <r.oliver@web.de> - 0.23.0-1
 - no change to this package. The server package restructures the powerline
   status-page graphs: two catch-all patterns became fifteen specific ones,

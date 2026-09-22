@@ -1,4 +1,37 @@
 #!/bin/sh
+# Second half of the config migration prepared in preinst. A stashed
+# file replaces the freshly installed default (kept as <name>.cfg-opkg,
+# opkg's own naming); an old file without a stash is only moved when
+# nothing is in the way, never over an edited new file.
+ETC=${IPKG_INSTROOT:-}/etc/xymon-standalone
+NEW=$ETC/my-xymon-extensions
+STASH=$ETC/.cfg-migrate
+same() { [ "$(md5sum < "$1")" = "$(md5sum < "$2")" ]; }
+for cfg in smart temp la memory disk opkg fritzdsl fritzwan wifi \
+    if_link lxc claude xymonext; do
+    old=$ETC/$cfg.cfg
+    dst=$NEW/$cfg.cfg
+    if [ -f "$STASH/$cfg.cfg" ]; then
+        mkdir -p "$NEW"
+        if [ -f "$dst" ] && ! same "$STASH/$cfg.cfg" "$dst"; then
+            mv -f "$dst" "$dst-opkg"
+        fi
+        mv -f "$STASH/$cfg.cfg" "$dst" && rm -f "$old" &&
+            echo "my-xymon-extensions: moved your $old to $dst"
+    elif [ -f "$old" ]; then
+        if [ ! -f "$dst" ]; then
+            mkdir -p "$NEW" && mv -f "$old" "$dst" &&
+                echo "my-xymon-extensions: moved your $old to $dst"
+        elif same "$old" "$dst"; then
+            rm -f "$old"
+        else
+            echo "my-xymon-extensions: WARNING: $old and $dst are both"
+            echo " present; only the latter is read. Merge, then delete $old."
+        fi
+    fi
+done
+rm -rf "$STASH"
+
 cat <<'EOF'
 my-xymon-extensions: to activate the standalone Xymon reporting:
  1. Set the Xymon server: edit /etc/xymon-standalone/standalone.cfg
@@ -8,8 +41,7 @@ my-xymon-extensions: to activate the standalone Xymon reporting:
     and restart cron: /etc/init.d/cron restart
  3. Add this host to hosts.cfg on the Xymon server.
  Per-extension settings live in
- /etc/xymon-standalone/my-xymon-extensions/<name>.cfg (up to 0.19.0
- they sat next to standalone.cfg; a file left there is still read).
+ /etc/xymon-standalone/my-xymon-extensions/<name>.cfg.
  Dry run for testing: /usr/lib/xymon-standalone/xymon-run.sh -n all
  The runner measures every test (runtime, CPU time, bytes sent) and
  reports that in the "xymonext" column; XYMONEXT_ENABLE="no" in

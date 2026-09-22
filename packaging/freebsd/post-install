@@ -1,0 +1,25 @@
+#!/bin/sh
+# FreeBSD +POST_INSTALL: move config files edited before 0.20.0 from
+# etc/ into etc/my-xymon-extensions/. The new file is replaced only while
+# it still equals its .sample, i.e. nobody has edited it. Works whether
+# the @sample copy happens before or after this script.
+ETC=${PKG_PREFIX:-/usr/local}/www/xymon/client/etc
+NEW=$ETC/my-xymon-extensions
+for cfg in smart temp la memory disk opkg fritzdsl fritzwan wifi \
+    if_link lxc claude xymonext; do
+    old=$ETC/$cfg.cfg
+    dst=$NEW/$cfg.cfg
+    [ -f "$old" ] || continue
+    if [ -f "$old.sample" ] && cmp -s "$old" "$old.sample"; then
+        rm -f "$old"
+    elif [ -f "$dst" ] && cmp -s "$old" "$dst"; then
+        rm -f "$old"
+    elif [ ! -f "$dst" ] || cmp -s "$dst" "$dst.sample"; then
+        mkdir -p "$NEW" && mv -f "$old" "$dst" &&
+            echo "my-xymon-extensions: moved your $old to $dst"
+    else
+        echo "my-xymon-extensions: WARNING: $old and $dst are both"
+        echo " edited; only the latter is read. Merge, then delete $old."
+    fi
+done
+exit 0

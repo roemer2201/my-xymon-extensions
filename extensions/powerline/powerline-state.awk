@@ -1,12 +1,12 @@
 # Pure state/identity/metric engine; no commands, networking or config eval.
 # Input: validated records from powerline.sh plus the previous state file.
 # Output: per-host messages, a delivery manifest, and a new atomic snapshot.
-# Version: 1.0.0 (2026-09-22)
 
 BEGIN { FS = "|"; OFS = "|"; now = ENVIRON["POWERLINE_NOW"] + 0
     hold = ENVIRON["POWERLINE_CHANGE_MINUTES"] * 60
     flap = ENVIRON["POWERLINE_FLAP_MINUTES"] * 60
     gap = ENVIRON["POWERLINE_MAX_SAMPLE_GAP"] + 0
+    retention = ENVIRON["POWERLINE_RETENTION_DAYS"] * 86400
 }
 function safehost(h) { return h ~ /^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/ && length(h) < 200 }
 function validmac(m) { return length(m) == 12 && m ~ /^[0-9a-f]+$/ }
@@ -155,7 +155,10 @@ END {
         else names[aname] = aliashost[aname]
     }
     for (m in present) inventory[m] = 1
-    for (m in known) inventory[m] = 1
+    # An adapter absent for longer than the retention is forgotten: no state,
+    # no status, no series. Its column then goes purple; drop it in Xymon.
+    for (m in known)
+        if (!retention || now - lastseen[m] <= retention) inventory[m] = 1
     print "baseline|1" > snapshot
     for (m in inventory) {
         current = (m in present) ? 1 : 0
@@ -235,7 +238,7 @@ END {
     for (key in values) series[key] = 1
     for (key in series) {
         split(key, f, SUBSEP); m = f[1]; p = f[2]; k = f[3]
-        if (!(m in inventory)) continue
+        if (!(m in inventory) || (p != "self" && !(p in inventory))) continue
         h = host[m]; value = (key in values) ? values[key] : "U"
         if (m in present || start[m])
             print "a" m "_p" p "_" k " : " value > (outdir "/" h ".metrics")

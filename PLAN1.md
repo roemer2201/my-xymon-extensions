@@ -172,30 +172,17 @@ be visible as a warning in the Xymon log.
 
 ## Open TODOs (not blocking, no request pending)
 
-- powerline.sh calls the privileged helper inside `while read < file` loops
-  and so passes the loop's stdin to it. A sub-process that read stdin would
-  silently truncate the loop. Add `</dev/null` to the helper invocations.
-- extensions/powerline/README.md ships in no package; only
-  server/README.md is installed. Either install it or fold it in.
-- The inventory never prunes: `for (m in known) inventory[m] = 1` keeps a
-  permanently removed adapter green forever, and its series in every trends
-  message. A retention setting would bound the state file and message size.
-- A backward system clock larger than the poll interval (VM snapshot, large
-  NTP step) is a hard failure and reds every adapter until the clock catches
-  up. Intended, but the operational consequence deserves a line in the
-  server README.
-- Because xymonserver.cfg includes powerline.cfg, all POWERLINE_* settings
-  are already environment variables, which silently override a manual
-  `--config /other/file.cfg`. The precedence is documented; the trap is not.
-- The parser treats any mismatch between the queried adapter and the MAC in
-  the plcrate response as a hard error for that adapter. The assumption that
-  a remotely addressed device answers with its own Ethernet source address
-  is standard for open-plc-utils remote management but cannot be verified
-  without hardware; if it does not hold, the adapter stays red instead of
-  merely lacking values.
-- RPM and FreeBSD server packaging do not exist. If they are ever added,
-  stage-server.sh now takes the paths as arguments, but the `tasks.d`
-  layout and the helper's fixed /usr/bin tool paths would need review.
+Resolved in 0.23.1: helper stdin (`</dev/null`), the unpackaged
+extensions/powerline/README.md (folded into server/README.md), inventory
+pruning (POWERLINE_RETENTION_DAYS), and the xymonserver.cfg include that
+let the environment override `--config` (now passed by the task).
+
+- A backward clock step larger than the poll interval reds every adapter
+  until the clock catches up. Intended; worth a line in the server README.
+- A plcrate response whose MAC differs from the queried adapter is a hard
+  error for that adapter - unverifiable without hardware.
+- RPM and FreeBSD server packaging do not exist; the tasks.d layout and the
+  helper's fixed /usr/bin tool paths would need review.
 
 Future automatic resumption: implementation is complete; do not restart
 development from this plan without a new request.

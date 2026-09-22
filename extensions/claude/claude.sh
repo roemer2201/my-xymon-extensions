@@ -2,45 +2,26 @@
 #
 # claude.sh -- Xymon client extension: Claude Code login status
 #
-# Reports whether the Claude Code login of one or more accounts on this
-# host is still valid, in a single "claude" column.
+# Reports how long the Claude Code login of each account in
+# CLAUDE_ACCOUNTS stays valid, in one "claude" column. The login is
+# refreshTokenExpiresAt in $HOME/.claude/.credentials.json; expiresAt
+# (the access token, renewed automatically) is information only. When
+# the refresh token expires, a headless session dies silently and needs
+# an interactive "claude /login".
 #
-# What is actually checked is the refresh token: Claude Code stores two
-# expiry timestamps in $HOME/.claude/.credentials.json, and only one of
-# them says how long the login lasts.
-#
-#   expiresAt             the access token - valid for hours and
-#                         renewed automatically whenever Claude runs.
-#                         An expired one is normal on an idle host, so
-#                         it is reported as information only.
-#   refreshTokenExpiresAt THE LOGIN. When this passes, nothing renews
-#                         itself any more and somebody has to run
-#                         "claude /login" interactively on the host.
-#
-# That is what makes the check worth having: a long running headless
-# session (claude --remote-control in a service, a cron job, an agent)
-# dies silently when the refresh token expires, and the repair needs a
-# human at a terminal. The default thresholds give ten days' warning.
-#
-# The credentials file is mode 0600 in a private home directory, so the
-# unprivileged Xymon client cannot read it. All reading happens in
-# claude-expiry.sh, which is called through sudo and prints timestamps
-# only - see sudoers.example. Where no sudo rule exists the column
-# reports "clear" with a hint instead of turning red.
+# The file is mode 0600, so it is read by claude-expiry.sh through sudo
+# (see sudoers.example). Without a sudo rule the column reports clear.
 #
 # usage: claude.sh [-h|--help]
 #
 # Program flow:
 #   1. load the configuration (environment, then claude.cfg)
 #   2. decide how the helper is called (root, own account, or sudo)
-#   3. for every configured account: run the helper, evaluate the
-#      remaining lifetime of the refresh token against the thresholds
-#   4. combine the per-account colors into the column color
-#   5. send the status message
+#   3. per account: run the helper, compare the days left to thresholds
+#   4. combine the per-account colors, send the status message
 #
-# Configuration: environment variables and/or $XYMONHOME/etc/my-xymon-extensions/claude.cfg
-# (see the shipped claude.cfg; the config file wins over the
-# environment).
+# Configuration: environment and/or
+# $XYMONHOME/etc/my-xymon-extensions/claude.cfg (the file wins).
 
 set -u
 
@@ -87,11 +68,8 @@ CLAUDE_CRIT="${CLAUDE_CRIT:-5}"             # red at/below N days left
 CLAUDE_HELPER="${CLAUDE_HELPER:-}"          # empty: next to this script
 CLAUDE_SUDO="${CLAUDE_SUDO:-auto}"          # auto|yes|no
 
-# The config file lives in a directory of this package's own: on
-# Debian/Ubuntu the Xymon client, the server and hobbit-plugins all
-# share $XYMONHOME/etc, where these generically named files sat until
-# 0.19.0. One left behind there is still read, so an installation
-# that was never migrated keeps working.
+# Own subdirectory since 0.20.0 ($XYMONHOME/etc is shared with the
+# Xymon server and hobbit-plugins); the old place is the fallback.
 CFGFILE="${CLAUDE_CFG:-}"
 if [ -z "$CFGFILE" ] && [ -n "$XYMONHOME" ]; then
     CFGFILE="$XYMONHOME/etc/my-xymon-extensions/claude.cfg"

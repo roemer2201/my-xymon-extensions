@@ -54,11 +54,8 @@ WAN_SERVICE="auto"         # WAN uptime source: auto | ppp | ip | off
 MARGIN_WARN=6      MARGIN_CRIT=3      # noise margin in dB (below = bad)
 CRC_RATE_WARN=30   CRC_RATE_CRIT=300  # CRC errors per minute since last run
 
-# The config file lives in a directory of this package's own: on
-# Debian/Ubuntu the Xymon client, the server and hobbit-plugins all
-# share $XYMONHOME/etc, where these generically named files sat until
-# 0.19.0. One left behind there is still read, so an installation
-# that was never migrated keeps working.
+# Own subdirectory since 0.20.0 ($XYMONHOME/etc is shared with the
+# Xymon server and hobbit-plugins); the old place is the fallback.
 CFGFILE="${FRITZDSL_CFG:-}"
 if [ -z "$CFGFILE" ] && [ -n "$XYMONHOME" ]; then
     CFGFILE="$XYMONHOME/etc/my-xymon-extensions/fritzdsl.cfg"

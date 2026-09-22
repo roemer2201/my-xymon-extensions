@@ -4,7 +4,6 @@
 # Usage: powerline-read.sh topology eth0
 #        powerline-read.sh rates eth0 DEVICE
 #        powerline-read.sh stats eth0 DEVICE PEER
-# Version: 1.0.0 (2026-09-22)
 # Security exception to env-config conventions: sudo arguments ONLY; never
 # accept executable paths, shell fragments, or option overrides from env.
 set -u

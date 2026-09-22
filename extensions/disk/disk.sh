@@ -48,11 +48,8 @@ DISK_THRESHOLDS="${DISK_THRESHOLDS:-}"      # per-mount "PATTERN:WARN:CRIT"
 DISK_EXCLUDE="${DISK_EXCLUDE:-/dev /rom}"   # globs, mount point or device
 DISK_DF="${DISK_DF:-df}"            # invoked as "$DISK_DF -P -k"
 
-# The config file lives in a directory of this package's own: on
-# Debian/Ubuntu the Xymon client, the server and hobbit-plugins all
-# share $XYMONHOME/etc, where these generically named files sat until
-# 0.19.0. One left behind there is still read, so an installation
-# that was never migrated keeps working.
+# Own subdirectory since 0.20.0 ($XYMONHOME/etc is shared with the
+# Xymon server and hobbit-plugins); the old place is the fallback.
 CFGFILE="${DISK_CFG:-}"
 if [ -z "$CFGFILE" ] && [ -n "$XYMONHOME" ]; then
     CFGFILE="$XYMONHOME/etc/my-xymon-extensions/disk.cfg"

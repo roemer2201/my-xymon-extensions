@@ -57,11 +57,8 @@ TEMP_THERMAL_DIR="${TEMP_THERMAL_DIR:-/sys/class/thermal}"
 TEMP_PLAUSIBLE_MIN="${TEMP_PLAUSIBLE_MIN:--40}"
 TEMP_PLAUSIBLE_MAX="${TEMP_PLAUSIBLE_MAX:-150}"
 
-# The config file lives in a directory of this package's own: on
-# Debian/Ubuntu the Xymon client, the server and hobbit-plugins all
-# share $XYMONHOME/etc, where these generically named files sat until
-# 0.19.0. One left behind there is still read, so an installation
-# that was never migrated keeps working.
+# Own subdirectory since 0.20.0 ($XYMONHOME/etc is shared with the
+# Xymon server and hobbit-plugins); the old place is the fallback.
 CFGFILE="${TEMP_CFG:-}"
 if [ -z "$CFGFILE" ] && [ -n "$XYMONHOME" ]; then
     CFGFILE="$XYMONHOME/etc/my-xymon-extensions/temp.cfg"

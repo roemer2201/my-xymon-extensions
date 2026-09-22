@@ -45,11 +45,8 @@ LA_CRIT="${LA_CRIT:-3.0}"       # red at/above, 5-min load PER CORE
 LA_NCPU="${LA_NCPU:-}"          # CPU count override; empty = detect
 LA_LOADAVG="${LA_LOADAVG:-/proc/loadavg}"
 
-# The config file lives in a directory of this package's own: on
-# Debian/Ubuntu the Xymon client, the server and hobbit-plugins all
-# share $XYMONHOME/etc, where these generically named files sat until
-# 0.19.0. One left behind there is still read, so an installation
-# that was never migrated keeps working.
+# Own subdirectory since 0.20.0 ($XYMONHOME/etc is shared with the
+# Xymon server and hobbit-plugins); the old place is the fallback.
 CFGFILE="${LA_CFG:-}"
 if [ -z "$CFGFILE" ] && [ -n "$XYMONHOME" ]; then
     CFGFILE="$XYMONHOME/etc/my-xymon-extensions/la.cfg"

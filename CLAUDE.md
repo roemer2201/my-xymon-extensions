@@ -17,12 +17,11 @@ systems monitor. Every extension must run unmodified on:
 From this repository, native **deb**, **rpm**, **FreeBSD pkg** and
 **opkg (.ipk)** packages are built.
 
-Exception: powerline is a Linux server-only collector, installed exclusively
-by stage-server.sh in my-xymon-extensions-server. It uses tasks.d (never
-clientlaunch.d), server/ext programs and my-xymon-extensions-server config.
-It remains POSIX sh/awk and is tested with dash and BusyBox; iproute2, flock
-and the fixed privileged helper target the approved Ubuntu server. Its RRDs
-use native trends messages to preserve explicit unknown values, not NCV.
+Exception: powerline is a Linux server-only collector, shipped only in
+my-xymon-extensions-server (stage-server.sh): tasks.d, server ext/, its own
+config directory. Still POSIX sh/awk (tested with dash and BusyBox), but
+iproute2, flock and the helper's fixed tool paths target Ubuntu. Its RRDs
+come from native trends messages (explicit unknowns), not NCV.
 
 ## Hard portability rules
 
@@ -97,12 +96,11 @@ target platform.
   - `<name>.sh` — the script (executable, POSIX sh)
   - `<name>.cfg` — default config, only if the extension is configurable;
     read from `$XYMONHOME/etc/my-xymon-extensions/<name>.cfg` with sane
-    built-in defaults so the extension works without a config file. That
-    subdirectory is this package's own: `$XYMONHOME/etc` is shared with
-    the Xymon server and `hobbit-plugins` on Debian/Ubuntu, and names
-    like `memory.cfg` belong to nobody in particular. Up to 0.19.0 the
-    files sat there; every extension still reads a file left behind in
-    the old place, so a host that was never migrated keeps working.
+    built-in defaults so the extension works without a config file
+    (`$XYMONHOME/etc` itself is shared with the server and
+    `hobbit-plugins`). Up to 0.19.0 the files sat in `etc/`; the
+    packages move edited ones at install time, because a runtime
+    fallback never fires once the package has installed the new default.
   - `README.md` — purpose, column name, thresholds, platform notes
   - `server/` — everything the **Xymon server** needs, if the extension
     produces RRD graphs. Never tell users to edit a stock config file:
@@ -141,25 +139,18 @@ target platform.
   `tests/run.sh` pins this and fails on a mismatch.
 - Xymon's drop-in directories (`clientlaunch.d`, `graphs.d`,
   `xymonserver.d`, `rrddefinitions.d`, `tasks.d`) are shared with other
-  packages, and dpkg refuses two packages claiming one path. Debian's
-  `hobbit-plugins` claims 23 names in `clientlaunch.d` and 7-8 in
-  `graphs.d`/`xymonserver.d` — `temp.cfg` is only the one that bit us —
-  so **no package here installs any of them**: the `temp` drop-ins ship
-  as documentation and are copied in by hand (`SKIP_SNIPPETS` in
-  `stage.sh`, `SKIP_EXTENSIONS` in `stage-server.sh`). `tasks.d` and
-  `rrddefinitions.d` are free: `xymon` ships the former empty and nobody
-  ships the latter. Before adding a new drop-in, check
-  `dpkg -S /etc/xymon/<dir>/<name>.cfg` on a Debian server.
-  `tests/run.sh` pins the full known-taken name list per directory, with
-  the package versions it was taken from.
-- `/etc/sudoers.d` is shared exactly like Xymon's drop-in directories,
-  and `hobbit-plugins` owns the name `xymon` there. Anything installed
-  into it is named after the package (`my-xymon-extensions-server`), is
-  mode 0440, and ships with its rule commented out — a package grants no
-  root privilege the admin did not ask for. The name must contain no
-  dot and must not end in `~`: sudo silently ignores such files.
-  `tests/run.sh` pins the name, the mode, the disabled state, and runs
-  `visudo -c` over the file as shipped and with the rule uncommented.
+  packages, and dpkg refuses two packages claiming one path.
+  `hobbit-plugins` claims many names in `clientlaunch.d`, `graphs.d` and
+  `xymonserver.d` (among them `temp.cfg`), so **no package here installs
+  any of them**: the `temp` drop-ins ship as documentation
+  (`SKIP_SNIPPETS` in `stage.sh`, `SKIP_EXTENSIONS` in
+  `stage-server.sh`). `tasks.d` and `rrddefinitions.d` are free. Before
+  adding a drop-in, check `dpkg -S /etc/xymon/<dir>/<name>.cfg`;
+  `tests/run.sh` pins the known-taken names.
+- `/etc/sudoers.d` is shared too (`hobbit-plugins` owns `xymon`).
+  Anything installed there is named after the package, mode 0440, with
+  its rule commented out, and has no dot or trailing `~` in its name
+  (sudo ignores those). `tests/run.sh` pins this and runs `visudo -c`.
 - Read order matters where two packages configure one column: the
   first `TEST2RRD` entry wins (prepend with
   `TEST2RRD="x=ncv,$TEST2RRD"` to be independent of it), while for
@@ -176,16 +167,11 @@ target platform.
   `xymon`) — dpkg would prompt on its next upgrade. Detect and print
   the line the admin has to add instead.
 - Version is maintained in one place (`VERSION` file at the repo root)
-  and consumed by all package builds. The one place a version is still
-  written by hand is the `%changelog` in the rpm spec: its newest entry
-  must name the current `VERSION`. `tests/run.sh` pins that.
-- Every `*.sh` in the repository is executable (mode 0755) — the build
-  scripts are meant to be run as `./packaging/<target>/build.sh`. A
-  missing execute bit invites a local `chmod +x` on the build host, and
-  that uncommitted mode change then makes `git pull` refuse to merge,
-  which silently builds packages from a stale tree. `tests/run.sh` pins
-  this too; a sourced library (`extensions/lib/common.sh`) would be the
-  one legitimate exception to add there.
+  and consumed by all package builds. Only the rpm `%changelog` is
+  written by hand: its newest entry must name `VERSION` (pinned).
+- Every `*.sh` is executable (0755, pinned): a local `chmod +x` on a
+  build host makes `git pull` refuse to merge and silently builds a stale
+  tree. A sourced library would be the one exception.
 
 ## Build & test commands
 

@@ -30,7 +30,8 @@ inst() { # inst MODE SRC DST
 }
 
 # Standalone runtime + main config. The extensions read their config
-# from $XYMONHOME/etc/<name>.cfg, so etc/ is a symlink to $ETCDIR.
+# from $XYMONHOME/etc/my-xymon-extensions/<name>.cfg, so etc/ is a
+# symlink to $ETCDIR.
 inst 0755 standalone/xymon-run.sh "$DATA$LIBDIR/xymon-run.sh" || exit 1
 inst 0755 standalone/xymon-send.sh "$DATA$LIBDIR/xymon-send.sh" || exit 1
 ln -s "$ETCDIR" "$DATA$LIBDIR/etc" || exit 1
@@ -38,6 +39,7 @@ inst 0644 standalone/standalone.cfg "$DATA$ETCDIR/standalone.cfg" || exit 1
 
 sed -e "s/@VERSION@/$VERSION/" packaging/opkg/control.in > "$CTRL/control" || exit 1
 inst 0644 packaging/opkg/conffiles "$CTRL/conffiles" || exit 1
+inst 0755 packaging/opkg/preinst "$CTRL/preinst" || exit 1
 inst 0755 packaging/opkg/postinst "$CTRL/postinst" || exit 1
 
 # GNU tar can normalize file ownership to root; with BSD tar the build

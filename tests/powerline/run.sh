@@ -4,7 +4,6 @@
 # protocol messages, then check failure isolation and privileged argv guards.
 # Usage: sh tests/powerline/run.sh [--help]
 # Env: TESTSH selects shell under test (e.g. "busybox sh").
-# Version: 1.0.0 (2026-09-22)
 set -u
 case "${1:-}" in -h|--help) printf '%s\n' 'Usage: run.sh; TESTSH selects the collector shell. No PLC access.'; exit 0 ;; esac
 HERE=$(CDPATH='' cd -- "$(dirname -- "${0}")" && pwd) || exit 1
@@ -35,7 +34,7 @@ poll() {
     export POWERLINE_NOW PL_TOPOLOGY PL_STATS
     : >"${PL_MESSAGES}"
     # shellcheck disable=SC2086 # TESTSH intentionally supports multiword shell.
-    ${TESTSH} "${REPO}/extensions/powerline/powerline.sh" >"${TMP}/stdout" 2>"${TMP}/stderr"
+    ${TESTSH} "${REPO}/extensions/powerline/powerline.sh" </dev/null >"${TMP}/stdout" 2>"${TMP}/stderr"
 }
 # Assertions do not abort, so one run reports all regressions.
 ok() {
@@ -71,6 +70,19 @@ ok poll 100900 both stats1
 ok has 'tx_pb_pass_per_second : U'
 ok poll 103000 both stats2
 ok has 'tx_pb_interval_pct : U'
+
+# Every adapter status explains its abbreviations.
+ok has '^  PB +PHY block'
+ok has '^  MPDU +MAC protocol data unit'
+ok has '^  BER +bit errors'
+
+# The helper runs inside while-read loops: one reading stdin must not eat
+# the remaining adapters (the second one would lose its PHY rates).
+PL_READ_STDIN=1; export PL_READ_STDIN
+ok poll 103000 both stats2
+ok has '^status\+15 powerline1,lan.powerline green '
+ok has '^status\+15 powerline3,lan.powerline green '
+unset PL_READ_STDIN
 
 # Neighbor expiry must preserve identity; LOC must not resolve to the server BDA.
 PL_NO_NEIGHBORS=1; export PL_NO_NEIGHBORS
@@ -137,6 +149,21 @@ ok poll 205500 both
 ok has '^status\+15 powerline3,lan.powerline red '
 ok has 'rx_pb_pass : U'
 unset PL_EMPTY_STATS
+
+# An adapter absent longer than the retention (default: one day) is
+# forgotten entirely.
+POWERLINE_STATE_DIR=${TMP}/retention-state; export POWERLINE_STATE_DIR
+unset POWERLINE_RETENTION_DAYS
+ok poll 400000 both
+ok poll 400300 local
+ok poll 486300 local
+ok grep -q '^state|e8df701d65a6|' "${POWERLINE_STATE_DIR}/state"
+ok has '^status\+15 powerline3,lan.powerline green '
+ok poll 486500 local
+ok test -z "$(grep 'e8df701d65a6' "${POWERLINE_STATE_DIR}/state")"
+ok lacks 'powerline3,lan'
+ok has '^status\+15 powerline1,lan.powerline green '
+POWERLINE_STATE_DIR=${TMP}/new-state; export POWERLINE_STATE_DIR
 
 # Global errors never change inventory or age it into accepted absence.
 cp "${POWERLINE_STATE_DIR}/state" "${TMP}/saved"
@@ -266,16 +293,9 @@ if sh "${REPO}/extensions/powerline/powerline-read.sh" topology eth0 extra >/dev
     printf '%s\n' 'FAIL: helper accepted extra argument'; FAIL=1
 fi
 # --- graph coverage ----------------------------------------------------
-# Every RRD the collector emits must be drawn by exactly one graph, and no
-# graph may be left without an RRD. A ".+" pattern produced both failures at
-# once before 0.23.0: 38 series crammed into one unreadable graph, while 28
-# per-second RRDs were written for months and drawn by nothing.
-#
-# FNPATTERN is PCRE. The only PCRE-ism used in the shipped file is the
-# non-capturing group, so "(?:" -> "(" turns each pattern into valid ERE for
-# grep -E, which BusyBox has and grep -P is not. That shifts capture
-# numbering - which matters to Xymon's @RRDPARAM@, not to whether a name
-# matches.
+# Every emitted RRD is drawn by exactly one graph, and every graph draws at
+# least one RRD. FNPATTERN is PCRE; its only PCRE-ism is "(?:", so turning
+# that into "(" gives ERE for grep -E (BusyBox has no grep -P).
 ok poll 300000 both
 GRAPHCFG=${REPO}/extensions/powerline/server/graphs.d/powerline.cfg
 awk '/^\[/ { name = substr($0, 2, length($0) - 2) }

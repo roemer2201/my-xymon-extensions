@@ -1,175 +1,122 @@
-# Powerline server setup
+# powerline - server-side PLC monitoring
+
+A POSIX sh collector for HomePlug AV adapters on the Xymon server's Ethernet
+segment. Each adapter gets its own `HOST.powerline` status and per-pair
+graphs; the collector itself reports on the server's host. It only reads:
+no PLC counter reset, no device setting, no hosts.cfg edit.
+
+Server-only: shipped exclusively in my-xymon-extensions-server (Debian/Ubuntu),
+disabled on installation. Requires Linux, open-plc-utils (`plcstat`,
+`plcrate`), iproute2, flock, sudo and the Xymon server environment. QCA7500
+support is based on recorded real output, not an upstream guarantee.
 
 ## Install and enable
 
-The Debian/Ubuntu server package installs programs under
-/usr/lib/xymon/server/ext, configuration under
-/etc/xymon/my-xymon-extensions-server, and drop-ins in xymonserver.d,
-graphs.d and tasks.d. No clientlaunch.d entry is installed. Those two
-directories are packaging arguments (stage-server.sh BINDIR/ETCDIR) and the
-installed task, sudoers example and include line follow them, so the paths
-below are the ones this package uses, not ones the collector assumes.
-It does not install open-plc-utils, grant sudo, modify stock configs, or restart
-Xymon. POWERLINE_ENABLED=0 prevents collection until setup is complete.
+The package installs the programs in /usr/lib/xymon/server/ext, the config in
+/etc/xymon/my-xymon-extensions-server and drop-ins in xymonserver.d, graphs.d
+and tasks.d. It installs no open-plc-utils, grants no sudo, edits no stock
+config and restarts nothing.
 
-1. Install plcstat and plcrate as root-owned /usr/bin/plcstat and
-   /usr/bin/plcrate. The privileged helper intentionally fixes these paths,
-   clears tool environment, validates every argument and permits only topology,
-   PHY and peer-statistics reads. Requests have a fixed 15-second timeout.
-2. Grant the sudo rule. The Debian/Ubuntu package already installs it as
-   /etc/sudoers.d/my-xymon-extensions-server, root:root 0440, with the rule
-   COMMENTED OUT - powerline ships disabled, so the privilege is not granted
-   before you ask for it. Read the file, remove the "#" from its single rule
-   line, then validate with visudo -c. It is a dpkg conffile, so the edit
-   survives upgrades. Other packagings install nothing there: copy
-   powerline.sudoers from the docs into place yourself, same owner and mode.
-   The file name must keep its dot-free spelling - sudo silently ignores
-   every name in sudoers.d containing "." or ending in "~".
-   The helper and all its parent directories must not be writable by xymon;
-   the package's postinst reports it if they are, and granting the rule
-   while that is true turns a read-only query into a root shell. Do not grant
-   sudo for powerline.sh, a shell, or unrestricted open-plc-utils commands.
-3. Edit /etc/xymon/my-xymon-extensions-server/powerline.cfg. Set eth0 or the
-   appropriate interface, optionally a canonical POWERLINE_COLLECTOR_HOST.
-   Persistent state defaults to $XYMONVAR/powerline; its parent must be
-   writable by xymon. Override POWERLINE_STATE_DIR if necessary. Keep it on
-   local storage; all invocations must use the same state directory.
-4. The xymonserver.d drop-in contains the requested native include:
-   `include /etc/xymon/my-xymon-extensions-server/powerline.cfg`.
-   Ensure the drop-in directory is read after stock settings. On the target
-   Debian/Ubuntu layout, the init script regenerates include lists at startup.
-   Likewise verify graphs.d and tasks.d are included. Do not add a second
-   directory directive if an existing generated include already covers it.
-   Other layouts can use `optional directory /etc/xymon/tasks.d` in tasks.cfg
-   and the corresponding xymonserver.d/graphs.d directives in their configs.
-5. Run a read-only preview as xymon in the server environment:
-   `xymoncmd --env=/etc/xymon/xymonserver.cfg /usr/lib/xymon/server/ext/powerline.sh --set POWERLINE_ENABLED=1 --set POWERLINE_SILENT=0 --verbose --dry-run`.
-   This reads PLC devices but sends nothing and does not change the snapshot.
-   It does create transient lock/work files under the state directory.
-6. Set POWERLINE_ENABLED=1, then restart Xymon at a time you choose. The task
-   uses INTERVAL 5m, MAXTIME 4m, and status+15. The timeout prevents overlapping
-   long collections; flock also protects manual invocations. stderr goes to
-   $XYMONSERVERLOGS/powerline.log; events are logged with syslog tag powerline.
+1. Install `plcstat` and `plcrate` as root-owned /usr/bin/plcstat and
+   /usr/bin/plcrate - the privileged helper uses exactly these paths.
+2. Grant the sudo rule: /etc/sudoers.d/my-xymon-extensions-server ships with
+   its single rule commented out. Remove the `#`, then run `visudo -c`. The
+   file is a conffile, so the edit survives upgrades. Other platforms: copy
+   powerline.sudoers from the docs, root:root 0440, no dot in the file name
+   (sudo ignores such files). The helper and all its parent directories must
+   not be writable by xymon - otherwise the rule is a root shell; postinst
+   warns if they are. Never grant sudo for powerline.sh or the plc tools.
+3. Edit /etc/xymon/my-xymon-extensions-server/powerline.cfg: interface,
+   optionally POWERLINE_COLLECTOR_HOST. State lives in $XYMONVAR/powerline
+   (local disk, writable by xymon).
+4. Make sure xymonserver.d, graphs.d and tasks.d are read after the stock
+   settings. Debian's init script regenerates its include lists at start;
+   elsewhere add `optional directory ...` lines. postinst reports what is
+   missing.
+5. Preview as xymon, read-only (sends nothing, keeps the state):
+   `xymoncmd --env=/etc/xymon/xymonserver.cfg /usr/lib/xymon/server/ext/powerline.sh --config /etc/xymon/my-xymon-extensions-server/powerline.cfg --set POWERLINE_ENABLED=1 --set POWERLINE_SILENT=0 --verbose --dry-run`
+6. Set POWERLINE_ENABLED=1. The task runs every 5 minutes (MAXTIME 4m,
+   status lifetime 15 minutes); flock prevents overlapping runs. Errors go to
+   $XYMONSERVERLOGS/powerline.log and syslog (tag `powerline`).
 
-Config precedence is defaults < config < exported environment < CLI. Settings
-loaded by xymonlaunch are environment settings: restart after changing them,
-or use CLI overrides during previews. --help lists all parameters.
+Precedence: CLI > exported environment > config file > defaults. The config
+is passed with `--config` and never included into xymonserver.cfg, so it
+takes effect at the next run without a restart. `--help` lists all settings.
 
-## Identity and topology
+## Identity
 
-Matching is explicit PLC-MAC mapping first, then REM BDA mapping, then passive
-IPv4 neighbor entries matched against canonical hosts.cfg names. A LOC BDA
-may be the server's NIC, so local adapters use their PLC MAC only. Multiple
-IPs resolving to the same canonical host are fine; conflicting hostnames
-are not guessed. CLIENT aliases are canonicalized. Includes are expanded by
-$XYMONHOME/bin/xymoncfg (override POWERLINE_XYMONCFG); without that program
-only a flat hosts.cfg is accepted. No DNS lookup or active ARP probing is used.
-Known identity survives neighbor-cache expiry. A static map is two fields:
-PLC-MAC canonical-hostname. Examples for the supplied devices are commented
-in powerline.map. This also handles adapters with downstream switched clients:
-one PLC link cannot measure the individual IP clients' throughput.
+An adapter is matched to a Xymon host by, in this order: static mapping
+(powerline.map: `PLC-MAC hostname`), its BDA in the mapping, then passive
+IPv4 neighbor entries against hosts.cfg (CLIENT aliases included, includes
+expanded by `xymoncfg`). No DNS, no ARP probing. A local adapter is matched
+by its PLC MAC only, its BDA may be the server's own NIC. A known identity
+survives neighbor-cache expiry.
 
-A hosts.cfg name that is also another host's CLIENT alias is not an error:
-the real host name wins and the alias is dropped, whatever the file order.
-An alias two hosts claim resolves to neither. Both cases are reported in
-$XYMONSERVERLOGS/powerline.log and cost only that one name - the collector
-keeps running. A static mapping pointing at such a name is red, however.
-An absent POWERLINE_MAPPING file simply means no static mapping.
+Ambiguous or unknown adapters report as `powerline-unknown-MAC`, which xymond
+lists as a ghost unless you add the host. A CLIENT alias that is also a host
+name, or claimed by two hosts, is ignored (logged); a static mapping to such
+a name is red. Several adapters mapped to one host: worst color wins.
 
-Unknown/conflicting identities use powerline-unknown-MAC, avoiding real-name
-collisions. Status is still sent. With xymond's default --ghosts=log, it is
-dropped and recorded in the native ghost list (ghostlist.cgi); --ghosts=allow
-accepts it instead and does NOT provide the same ghost-list semantics.
-There is no private ghost log or automatic hosts.cfg insertion. Source IP in
-the ghost list is the collector, not the remote adapter. For ghost hosts,
-usable graphs require admission by the server / a corresponding hosts entry.
+## Topology changes
 
-The first successful inventory is the baseline. Later additions, removals,
-reappearances, and local peer-membership changes immediately start yellow.
-Every transition restarts a 60-minute hold. The beginning of the continuous
-warning episode is preserved: after 180 minutes, status is red with the exact
-summary **state flapping**. A full quiet hour clears either warning or red.
-At the exact quiet deadline a new observed event continues the same episode.
-Thus a removal detected at minute 5 stays yellow until minute 65. Afterwards
-the absent adapter's current status is green with no disappearance narrative;
-its measurement graphs remain unknown. Reappearance starts a new yellow hold.
+The first successful poll is the baseline. An adapter appearing, disappearing
+or changing its peers turns yellow for 60 minutes (POWERLINE_CHANGE_MINUTES);
+every further change restarts that hold. A change episode lasting 180 minutes
+(POWERLINE_FLAP_MINUTES) turns red with the summary **state flapping**. One
+quiet hour clears it. An absent adapter is then green (graphs unknown) until
+POWERLINE_RETENTION_DAYS (default 1) after it was last seen; then it is
+forgotten, and its column goes purple once the last status expires (15
+minutes later) - drop it in Xymon or remove the host. 0 keeps absent
+adapters forever.
 
-Each adapter is evaluated separately. If static mappings deliberately group
-several adapters under one Xymon host, the worst color wins but metric keys
-stay separate. Xymon's built-in color-flap detection is independent of this
-topology timer; existing noflap/delay settings can affect display/alerts.
+Failures are not absence: a timeout, empty or unparsable output, a permission
+error or a broken hosts/neighbor lookup turns the collector and all known
+adapters red and keeps the state. A failed pair only turns its adapter red. A
+failed delivery keeps the old state for the next run. A clock running
+backwards is reported as an error.
 
-Timeout, empty output, changed output format, permission failure or a broken
-neighbor/hosts lookup is not evidence of disappearance. Global collector
-failure marks the collector and previously known hosts red and keeps state.
-A failure of one pair's statistics marks that adapter red, with missing values
-unknown. Delivery failure retains the old snapshot for retry. Partial message
-delivery cannot be transactional across Xymon hosts; a retry may repeat status.
-A backward system clock causes a visible failure rather than rewriting timers.
+## Metrics
 
-## Metrics, limits and graphs
+Legend (also appended to every status message):
 
-plcrate supplies TX/RX PHY. plcstat supplies cumulative PB pass/fail, MPDU
-ACK/fail, TX collision count, printed ratios, and RX slot PHY/PB/BER sums.
-The extra unlabelled TX field is the collision count. Slots are receive-side
-only, queried independently at each endpoint. ALL is not added to slot sums.
-BER ERR is the failed-BER-sum fraction, not FEC BER; the final ALL percentage
-is FEC BER. The code preserves both with different names.
+- **PB** - PHY block, the 520-byte unit HomePlug AV sends over the powerline.
+  A PB that fails its check is resent.
+- **MPDU** - MAC protocol data unit, one powerline frame carrying PBs;
+  counted as acknowledged, failed and (TX) collisions.
+- **BER** - bit errors seen by the FEC (turbo) decoder, summed over the
+  received PBs that passed and failed. *fec* is these errors as a share of
+  all received bits (upstream's FEC-BER, 4160 bits per PB).
+- **aMAC_pMAC** - reporting adapter and peer; TX/RX are seen from the
+  reporting adapter. **slotN** - receive slot. **_interval_pct** - since the
+  last poll, **_reported_pct** - since device reset.
 
-Intervals use counter differences divided by actual elapsed time. PB error
-is 100 * delta(fail) / (delta(pass) + delta(fail)); the FEC formula follows
-upstream's 4160 bits per PB. Initial samples, resets, long gaps, and no-traffic
-ratios are unknown. Portable awk cannot safely difference integers above
-2^53-1: those raw counters are retained but derived rates remain unknown.
-Counter wrap is treated as reset. Undetectable device resets that already
-overtake the previous count between polls cannot be distinguished.
+`plcrate` supplies TX/RX PHY rates (negotiated, not throughput); `plcstat` the
+counters. Interval values are counter deltas over the actual elapsed time;
+PB error is `100 * fail / (pass + fail)`. First samples, resets, gaps longer
+than POWERLINE_MAX_SAMPLE_GAP, idle links and counters above 2^53 give
+unknown, never zero.
 
-PHY WARN/CRIT are minima; PB WARN/CRIT are maxima, separately for TX and RX.
-Comparison is strict (< for PHY, > for PB). off disables an individual bound.
-All ship off. A critical enabled quality limit overrides topology yellow.
-Quality is evaluated from interval PB percentages, not the lifetime totals.
+Thresholds (all off by default): PHY WARN/CRIT are minima, PB WARN/CRIT are
+maxima of the interval PB error, separately for TX and RX.
 
-Each metric is a separate GAUGE RRD with DS value, heartbeat 600 seconds:
-`powerline,aREPORTINGMAC_pPEERMAC_metric.rrd`. The MAC legend identifies the
-pair; the status body supplies host mapping. slotN names preserve slot identity.
-Native `data HOST.trends` messages send U directly for missing samples:
-unlike NCV, no numeric sentinel, fake zero, or graph masking is required.
-Default Xymon RRA retention applies; no extra RRD template is needed.
+## Graphs
 
-The [powerline] overview is registered in GRAPHS so the trends page can
-discover it from filenames; the trends page matches graph names against the
-start of the RRD file name, so only that one can appear there.
-GRAPHS_powerline draws seventeen graphs on the status page, in this order:
-PHY and slot PHY; the interval error ratios (PB, slot PB, BER, FEC, MPDU);
-the per-second rates (PB, slot/ALL PB, slot/ALL BER, MPDU); the lifetime
-ratios since device reset (PB, BER/FEC); the cumulative counters (PB, BER
-sums, MPDU); and adapter presence.
+Every metric is its own GAUGE RRD, `powerline,aMAC_pMAC_metric.rrd`, written
+from native trends messages so missing samples stay `U`. The status page
+shows 17 graphs (GRAPHS_powerline): PHY, interval error ratios, rates,
+lifetime ratios, cumulative counters, presence. One graph holds one metric
+family at one scale, and every RRD is drawn by exactly one graph -
+tests/powerline/run.sh pins both. Only the `powerline` graph appears on the
+trends page. RRD history is kept when an adapter leaves.
 
-One graph carries one metric family at one order of magnitude, and no RRD is
-drawn twice. Both rules exist because one ".+" pattern used to break both:
-it mixed BER sums in the millions with MPDU counters near zero on a single
-linear axis, and a second pattern matching _interval_pct as well as
-_reported_pct re-drew every series the specific graphs already showed. The
-series counts are per adapter PAIR and multiply with each further peer, so
-the split is finer than a single pair needs. tests/powerline/run.sh pins that
-every emitted RRD is matched by exactly one pattern, that no pattern is left
-without an RRD, and that GRAPHS_powerline lists exactly the defined graphs.
-TEST2RRD carries
-the column as well: it is what makes svcstatus.cgi look at GRAPHS_powerline at
-all, and it does not route the status message to any xymond_rrd parser. Retained RRD history is not deleted when a device
-leaves. Check both the status graph list and trends after two successful polls.
+## References and test scope
 
-## References and validation boundary
-
-- [Task syntax](https://xymon.sourceforge.io/xymon/help/manpages/man5/tasks.cfg.5.html)
-- [Ghost modes](https://xymon.sourceforge.io/xymon/help/manpages/man8/xymond.8.html)
-- [Hosts include expansion](https://xymon.sourceforge.io/xymon/help/manpages/man1/xymoncfg.1.html)
+- [tasks.cfg](https://xymon.sourceforge.io/xymon/help/manpages/man5/tasks.cfg.5.html),
+  [xymond ghosts](https://xymon.sourceforge.io/xymon/help/manpages/man8/xymond.8.html),
+  [xymoncfg](https://xymon.sourceforge.io/xymon/help/manpages/man1/xymoncfg.1.html)
 - [Native trends parser](https://github.com/xymon-monitoring/xymon/blob/master/xymond/rrd/do_trends.c)
-- [PLC statistics layout/formulas](https://github.com/qca/open-plc-utils/blob/master/plc/LinkStatistics.c)
+- [PLC statistics and formulas](https://github.com/qca/open-plc-utils/blob/master/plc/LinkStatistics.c)
 
-Automated tests use recorded/synthetic stdout and fake read-only helpers;
-they do not access PLC hardware. Hardware operation, sudo policy, actual
-server include wiring and graph rendering require the administrator's preview
-and installation checks. The preverified tool behavior was not retested.
-Run make test for collector/replay/packaging tests and make graphcheck for
-real RRDtool graph rendering and unknown-value storage (Python 3 + RRDtool).
+The tests replay recorded output through fake helpers; no PLC hardware, sudo
+policy or real Xymon wiring is exercised. `make graphcheck` renders the graphs
+with real RRDtool (Python 3 + rrdtool).
