@@ -30,10 +30,15 @@ Description: Xymon server extensions and graph configuration
     rrddefinitions.cfg once - the post-install output says so if it
     is missing.
  .
+  * /etc/sudoers.d/my-xymon-extensions-server - the restricted sudo
+    rule the powerline collector needs, installed with the rule
+    commented out. powerline ships disabled, so no privilege is
+    granted until the admin uncomments that one line.
+ .
  Covered extensions: smart, temp, la, memory, opkg, fritzdsl,
  fritzwan, wifi, if_link, lxc and xymonext. The server-only powerline
  collector is included but disabled until configured with open-plc-utils
- and a restricted sudoers rule. It uses tasks.d and the separate
+ and its sudo rule. It uses tasks.d and the separate
  my-xymon-extensions-server config directory. The disk extension needs no
  server-side configuration - it reports into the standard disk column,
  which the server parses itself.

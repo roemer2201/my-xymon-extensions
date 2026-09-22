@@ -26,7 +26,7 @@ files into an entirely different tree.
 | | ext script | config (`smart.cfg`, `clientlaunch.d/`) | docs |
 |---|---|---|---|
 | deb | `/usr/lib/xymon/client/ext/` | `/etc/xymon/` (conffiles; reachable as `$XYMONCLIENTHOME/etc` via Debian's symlink) | `/usr/share/doc/my-xymon-extensions/` |
-| deb-server | — (no client files) | `/etc/xymon/{xymonserver,graphs,rrddefinitions}.d/` (conffiles) | `/usr/share/doc/my-xymon-extensions-server/` |
+| deb-server | — (no client files) | `/etc/xymon/{xymonserver,graphs,rrddefinitions,tasks}.d/`, `/etc/xymon/my-xymon-extensions-server/` and `/etc/sudoers.d/my-xymon-extensions-server` (all conffiles) | `/usr/share/doc/my-xymon-extensions-server/` |
 | rpm | `/usr/lib64/xymon/client/ext/` | `/usr/lib64/xymon/client/etc/` (`%config(noreplace)`) | `/usr/share/doc/my-xymon-extensions/` |
 | FreeBSD | `/usr/local/www/xymon/client/ext/` | `/usr/local/www/xymon/client/etc/` (`@sample`) | `/usr/local/share/doc/my-xymon-extensions/` |
 | opkg | `/usr/lib/xymon-standalone/ext/` | `/etc/xymon-standalone/` (conffiles; incl. `standalone.cfg`, no launch snippets — no xymonlaunch; `/usr/lib/xymon-standalone/etc` is a symlink to it) | none (flash space) |
@@ -166,7 +166,9 @@ these files and that `freebsd/pkg-plist` lists exactly the staged set.
   (currently only `deb-server`). Its program and config directories are
   arguments like `stage.sh`'s; the installed files name them through
   `@BINDIR@`/`@ETCDIR@` placeholders that it resolves on the way into
-  the staging tree.
+  the staging tree. `SUDOERSDIR` is an argument of its own rather than a
+  path below `ETCDIR`, because sudo reads `/etc/sudoers.d` and not
+  `/etc/xymon/sudoers.d`; pass `-` to install no sudo rule at all.
 - `common/clientlaunch.d/*.cfg` — xymonlaunch task snippets shipped by
   all client packages (one per extension), installed into the client's
   `clientlaunch.d` drop-in directory.

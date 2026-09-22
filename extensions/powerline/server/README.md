@@ -16,9 +16,18 @@ Xymon. POWERLINE_ENABLED=0 prevents collection until setup is complete.
    /usr/bin/plcrate. The privileged helper intentionally fixes these paths,
    clears tool environment, validates every argument and permits only topology,
    PHY and peer-statistics reads. Requests have a fixed 15-second timeout.
-2. Inspect the shipped powerline.sudoers example. Install it root:root 0440
-   under /etc/sudoers.d using visudo; validate with visudo -c. The helper and
-   all its parent directories must not be writable by xymon. Do not grant
+2. Grant the sudo rule. The Debian/Ubuntu package already installs it as
+   /etc/sudoers.d/my-xymon-extensions-server, root:root 0440, with the rule
+   COMMENTED OUT - powerline ships disabled, so the privilege is not granted
+   before you ask for it. Read the file, remove the "#" from its single rule
+   line, then validate with visudo -c. It is a dpkg conffile, so the edit
+   survives upgrades. Other packagings install nothing there: copy
+   powerline.sudoers from the docs into place yourself, same owner and mode.
+   The file name must keep its dot-free spelling - sudo silently ignores
+   every name in sudoers.d containing "." or ending in "~".
+   The helper and all its parent directories must not be writable by xymon;
+   the package's postinst reports it if they are, and granting the rule
+   while that is true turns a read-only query into a root shell. Do not grant
    sudo for powerline.sh, a shell, or unrestricted open-plc-utils commands.
 3. Edit /etc/xymon/my-xymon-extensions-server/powerline.cfg. Set eth0 or the
    appropriate interface, optionally a canonical POWERLINE_COLLECTOR_HOST.

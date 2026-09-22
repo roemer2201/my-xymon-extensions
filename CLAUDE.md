@@ -152,6 +152,14 @@ target platform.
   `dpkg -S /etc/xymon/<dir>/<name>.cfg` on a Debian server.
   `tests/run.sh` pins the full known-taken name list per directory, with
   the package versions it was taken from.
+- `/etc/sudoers.d` is shared exactly like Xymon's drop-in directories,
+  and `hobbit-plugins` owns the name `xymon` there. Anything installed
+  into it is named after the package (`my-xymon-extensions-server`), is
+  mode 0440, and ships with its rule commented out — a package grants no
+  root privilege the admin did not ask for. The name must contain no
+  dot and must not end in `~`: sudo silently ignores such files.
+  `tests/run.sh` pins the name, the mode, the disabled state, and runs
+  `visudo -c` over the file as shipped and with the rule uncommented.
 - Read order matters where two packages configure one column: the
   first `TEST2RRD` entry wins (prepend with
   `TEST2RRD="x=ncv,$TEST2RRD"` to be independent of it), while for

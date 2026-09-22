@@ -177,6 +177,17 @@ RRD graphs need a one-time setup on the Xymon SERVER (not here):
 EOF
 
 %changelog
+* Tue Sep 22 2026 roemer2201 <r.oliver@web.de> - 0.22.0-1
+- no change to this package. The server package gains the sudo rule for
+  the powerline collector as a real conffile,
+  /etc/sudoers.d/my-xymon-extensions-server, installed with the rule
+  commented out; powerline ships disabled, so the privilege is not
+  granted before the admin asks for it. The client package keeps
+  shipping its two sudoers files (smart, claude) as documentation only:
+  it runs on Debian, Rocky, FreeBSD and OpenWrt with four different
+  helper paths, and the claude rule needs one line per account, so a
+  single installable file would be either wrong or too permissive
+
 * Tue Sep 22 2026 roemer2201 <r.oliver@web.de> - 0.21.1-1
 - packaging: the build scripts are executable again. Four of the five
   packaging/*/build.sh carried the execute bit and the server one did

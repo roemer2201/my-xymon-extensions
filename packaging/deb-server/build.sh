@@ -24,7 +24,8 @@ mkdir -p "$ROOT/DEBIAN" || exit 1
 sh packaging/common/stage-server.sh "$ROOT" \
     /usr/lib/xymon/server/ext \
     /etc/xymon \
-    "/usr/share/doc/$PKG" || exit 1
+    "/usr/share/doc/$PKG" \
+    /etc/sudoers.d || exit 1
 
 sed -e "s/@VERSION@/$VERSION/" packaging/deb-server/control.in > "$ROOT/DEBIAN/control" || exit 1
 # cp+chmod instead of install(1) for consistency with the scripts that
