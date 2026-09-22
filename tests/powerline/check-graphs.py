@@ -29,6 +29,11 @@ KEYS = [
     "rx_all_fec_reported_pct", "tx_pb_reported_pct",
     "tx_mpdu_interval_pct", "tx_mpdu_ack", "tx_mpdu_fail",
     "tx_mpdu_collision", "rx_slot0_ber_pass", "rx_slot0_pb_pass",
+    # Slot and ALL rates: their own graphs since 0.23.0. Before that the
+    # per-second pattern only matched rx_pb_*, so these RRDs were written
+    # and never drawn.
+    "rx_slot0_pb_pass_per_second", "rx_all_pb_fail_per_second",
+    "rx_slot0_ber_pass_per_second", "rx_all_ber_fail_per_second",
 ]
 
 

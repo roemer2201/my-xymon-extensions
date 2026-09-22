@@ -138,9 +138,23 @@ Default Xymon RRA retention applies; no extra RRD template is needed.
 
 The [powerline] overview is registered in GRAPHS so the trends page can
 discover it from filenames; the trends page matches graph names against the
-start of the RRD file name, so only that one can appear there. GRAPHS_powerline
-adds PB, MPDU, slot PHY, slot PB, BER, FEC, reported/interval ratios,
-cumulative counters and presence graphs to the status page. TEST2RRD carries
+start of the RRD file name, so only that one can appear there.
+GRAPHS_powerline draws seventeen graphs on the status page, in this order:
+PHY and slot PHY; the interval error ratios (PB, slot PB, BER, FEC, MPDU);
+the per-second rates (PB, slot/ALL PB, slot/ALL BER, MPDU); the lifetime
+ratios since device reset (PB, BER/FEC); the cumulative counters (PB, BER
+sums, MPDU); and adapter presence.
+
+One graph carries one metric family at one order of magnitude, and no RRD is
+drawn twice. Both rules exist because one ".+" pattern used to break both:
+it mixed BER sums in the millions with MPDU counters near zero on a single
+linear axis, and a second pattern matching _interval_pct as well as
+_reported_pct re-drew every series the specific graphs already showed. The
+series counts are per adapter PAIR and multiply with each further peer, so
+the split is finer than a single pair needs. tests/powerline/run.sh pins that
+every emitted RRD is matched by exactly one pattern, that no pattern is left
+without an RRD, and that GRAPHS_powerline lists exactly the defined graphs.
+TEST2RRD carries
 the column as well: it is what makes svcstatus.cgi look at GRAPHS_powerline at
 all, and it does not route the status message to any xymond_rrd parser. Retained RRD history is not deleted when a device
 leaves. Check both the status graph list and trends after two successful polls.
