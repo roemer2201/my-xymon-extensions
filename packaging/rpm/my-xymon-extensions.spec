@@ -177,6 +177,19 @@ RRD graphs need a one-time setup on the Xymon SERVER (not here):
 EOF
 
 %changelog
+* Tue Sep 22 2026 roemer2201 <r.oliver@web.de> - 0.23.0-1
+- no change to this package. The server package restructures the powerline
+  status-page graphs: two catch-all patterns became fifteen specific ones,
+  so one graph now carries one metric family at one order of magnitude.
+  Before this, ".+_(?:pass|fail|ack|collision)" put 38 series into a single
+  graph whose BER sums in the millions flattened every MPDU counter onto the
+  zero line, and ".+_(?:reported|interval)_pct" re-drew all 16 series the
+  specific ratio graphs already showed. The same over-broad matching left 28
+  per-second RRDs per adapter pair - every slot and ALL rate - written for
+  months and drawn by nothing, because the rate pattern only ever matched
+  rx_pb_*. The series counts are per adapter pair and multiply with each
+  further peer, so the split is finer than one pair needs
+
 * Tue Sep 22 2026 roemer2201 <r.oliver@web.de> - 0.22.0-1
 - no change to this package. The server package gains the sudo rule for
   the powerline collector as a real conffile,

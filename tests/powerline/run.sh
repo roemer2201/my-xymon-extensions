@@ -265,4 +265,70 @@ fi
 if sh "${REPO}/extensions/powerline/powerline-read.sh" topology eth0 extra >/dev/null 2>&1; then
     printf '%s\n' 'FAIL: helper accepted extra argument'; FAIL=1
 fi
+# --- graph coverage ----------------------------------------------------
+# Every RRD the collector emits must be drawn by exactly one graph, and no
+# graph may be left without an RRD. A ".+" pattern produced both failures at
+# once before 0.23.0: 38 series crammed into one unreadable graph, while 28
+# per-second RRDs were written for months and drawn by nothing.
+#
+# FNPATTERN is PCRE. The only PCRE-ism used in the shipped file is the
+# non-capturing group, so "(?:" -> "(" turns each pattern into valid ERE for
+# grep -E, which BusyBox has and grep -P is not. That shifts capture
+# numbering - which matters to Xymon's @RRDPARAM@, not to whether a name
+# matches.
+ok poll 300000 both
+GRAPHCFG=${REPO}/extensions/powerline/server/graphs.d/powerline.cfg
+awk '/^\[/ { name = substr($0, 2, length($0) - 2) }
+     /^[[:space:]]*FNPATTERN / { sub(/^[[:space:]]*FNPATTERN /, ""); print name "|" $0 }' \
+    "${GRAPHCFG}" >"${TMP}/patterns"
+sed -n 's/^\[\(powerline,.*\.rrd\)\]$/\1/p' "${PL_MESSAGES}" | sort -u >"${TMP}/rrds"
+
+if [ ! -s "${TMP}/patterns" ] || [ ! -s "${TMP}/rrds" ]; then
+    printf '%s\n' 'FAIL: graph coverage check has no patterns or no RRDs to check'
+    FAIL=1
+fi
+
+: >"${TMP}/covered"
+while IFS='|' read -r gname gpat; do
+    epat=$(printf '%s' "${gpat}" | sed 's/(?:/(/g')
+    if grep -E "${epat}" "${TMP}/rrds" >>"${TMP}/covered"; then
+        :
+    else
+        printf 'FAIL: graph %s matches none of the emitted RRDs\n' "${gname}"
+        FAIL=1
+    fi
+done <"${TMP}/patterns"
+
+sort "${TMP}/covered" | uniq -d >"${TMP}/rrd-dupes"
+if [ -s "${TMP}/rrd-dupes" ]; then
+    printf 'FAIL: drawn by more than one graph: %s\n' "$(tr '\n' ' ' <"${TMP}/rrd-dupes")"
+    FAIL=1
+else
+    printf '%s\n' 'ok: powerline every RRD is drawn by exactly one graph'
+fi
+
+sort -u "${TMP}/covered" >"${TMP}/covered-uniq"
+grep -Fxv -f "${TMP}/covered-uniq" "${TMP}/rrds" >"${TMP}/rrd-uncovered" || true
+if [ -s "${TMP}/rrd-uncovered" ]; then
+    printf 'FAIL: written but drawn by no graph: %s\n' \
+        "$(tr '\n' ' ' <"${TMP}/rrd-uncovered")"
+    FAIL=1
+else
+    printf '%s\n' 'ok: powerline no RRD is left undrawn'
+fi
+
+# The status page draws exactly the graphs defined here - a name in one list
+# and not the other is either an invisible graph or a broken page entry.
+SRVCFG=${REPO}/extensions/powerline/server/xymonserver.d/powerline.cfg
+sed -n 's/^\[\(.*\)\]$/\1/p' "${GRAPHCFG}" | sort >"${TMP}/graph-defined"
+sed -n 's/^GRAPHS_powerline="\(.*\)"$/\1/p' "${SRVCFG}" | tr ',' '\n' | sort \
+    >"${TMP}/graph-listed"
+if cmp -s "${TMP}/graph-defined" "${TMP}/graph-listed"; then
+    printf '%s\n' 'ok: powerline GRAPHS_powerline lists exactly the defined graphs'
+else
+    printf 'FAIL: GRAPHS_powerline and graphs.d disagree: %s\n' \
+        "$(grep -Fxv -f "${TMP}/graph-listed" "${TMP}/graph-defined" | tr '\n' ' ')$(grep -Fxv -f "${TMP}/graph-defined" "${TMP}/graph-listed" | tr '\n' ' ')"
+    FAIL=1
+fi
+
 exit "${FAIL}"
