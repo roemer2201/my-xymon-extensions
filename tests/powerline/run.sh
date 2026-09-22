@@ -150,9 +150,10 @@ ok has '^status\+15 powerline3,lan.powerline red '
 ok has 'rx_pb_pass : U'
 unset PL_EMPTY_STATS
 
-# An adapter absent longer than the retention is forgotten entirely.
-POWERLINE_STATE_DIR=${TMP}/retention-state POWERLINE_RETENTION_DAYS=1
-export POWERLINE_STATE_DIR POWERLINE_RETENTION_DAYS
+# An adapter absent longer than the retention (default: one day) is
+# forgotten entirely.
+POWERLINE_STATE_DIR=${TMP}/retention-state; export POWERLINE_STATE_DIR
+unset POWERLINE_RETENTION_DAYS
 ok poll 400000 both
 ok poll 400300 local
 ok poll 486300 local
@@ -162,8 +163,7 @@ ok poll 486500 local
 ok test -z "$(grep 'e8df701d65a6' "${POWERLINE_STATE_DIR}/state")"
 ok lacks 'powerline3,lan'
 ok has '^status\+15 powerline1,lan.powerline green '
-POWERLINE_STATE_DIR=${TMP}/new-state POWERLINE_RETENTION_DAYS=30
-export POWERLINE_STATE_DIR POWERLINE_RETENTION_DAYS
+POWERLINE_STATE_DIR=${TMP}/new-state; export POWERLINE_STATE_DIR
 
 # Global errors never change inventory or age it into accepted absence.
 cp "${POWERLINE_STATE_DIR}/state" "${TMP}/saved"

@@ -64,8 +64,10 @@ or changing its peers turns yellow for 60 minutes (POWERLINE_CHANGE_MINUTES);
 every further change restarts that hold. A change episode lasting 180 minutes
 (POWERLINE_FLAP_MINUTES) turns red with the summary **state flapping**. One
 quiet hour clears it. An absent adapter is then green (graphs unknown) until
-POWERLINE_RETENTION_DAYS (default 30) have passed; after that it is forgotten
-and its column goes purple - drop it in Xymon or remove the host.
+POWERLINE_RETENTION_DAYS (default 1) after it was last seen; then it is
+forgotten, and its column goes purple once the last status expires (15
+minutes later) - drop it in Xymon or remove the host. 0 keeps absent
+adapters forever.
 
 Failures are not absence: a timeout, empty or unparsable output, a permission
 error or a broken hosts/neighbor lookup turns the collector and all known

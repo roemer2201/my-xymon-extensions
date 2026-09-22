@@ -266,7 +266,8 @@ EOF
   into xymonserver.cfg - as environment it silently overrode every
   --config; the task passes --config instead. The privileged helper gets
   /dev/null as stdin. An adapter absent for POWERLINE_RETENTION_DAYS
-  (default 30) is forgotten, so state and messages stop growing. Every
+  (default 1) is forgotten, so state and messages stop growing; an
+  adapter with a host of its own goes purple a day after it vanished. Every
   status carries a legend for PB, MPDU and BER, and every graph prints
   min next to cur and max
 - comments and documentation of the claude extension, the config move
