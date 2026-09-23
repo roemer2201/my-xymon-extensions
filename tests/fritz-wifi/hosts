@@ -1,0 +1,5 @@
+# hosts.cfg fixture for tests/fritz-wifi/run.sh
+0.0.0.0         .default.       # noconn
+192.0.2.1       powerline3.lan  # fritzwifi
+192.0.2.2       printer.lan     # ssh
+192.0.2.3       notag.lan       # fritzwifix

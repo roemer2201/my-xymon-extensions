@@ -1,0 +1,13 @@
+<?xml version="1.0"?>
+<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
+<s:Body>
+<u:GetGenericAssociatedDeviceInfoResponse xmlns:u="urn:dslforum-org:service:WLANConfiguration:2">
+<NewAssociatedDeviceMACAddress>AA:BB:CC:DD:EE:FF</NewAssociatedDeviceMACAddress>
+<NewAssociatedDeviceIPAddress>192.0.2.1</NewAssociatedDeviceIPAddress>
+<NewAssociatedDeviceAuthState>1</NewAssociatedDeviceAuthState>
+<NewX_AVM-DE_Speed>866</NewX_AVM-DE_Speed>
+<NewX_AVM-DE_SignalStrength>91</NewX_AVM-DE_SignalStrength>
+<NewX_AVM-DE_ChannelWidth>80</NewX_AVM-DE_ChannelWidth>
+</u:GetGenericAssociatedDeviceInfoResponse>
+</s:Body>
+</s:Envelope>

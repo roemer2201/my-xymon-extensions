@@ -1,0 +1,8 @@
+<?xml version="1.0"?>
+<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
+<s:Body>
+<u:GetTotalAssociationsResponse xmlns:u="urn:dslforum-org:service:WLANConfiguration:3">
+<NewTotalAssociations>0</NewTotalAssociations>
+</u:GetTotalAssociationsResponse>
+</s:Body>
+</s:Envelope>

@@ -1,0 +1,16 @@
+# fritz-wifi password file - one TR-064 login per device.
+#
+#   host_or_ip   user   password (the rest of the line)
+#
+# The first field is the hosts.cfg name or the IP address of the device
+# (the name is looked up first). "-" as user means the default "xymon";
+# the FRITZ!Powerline 1260E ignores the user name, other devices may not.
+# The password may contain blanks and any character; blanks at its start
+# and end are removed. Blank lines and lines starting with # are ignored.
+#
+# The file must belong to the user running the collector (xymon) and
+# must not be accessible by anyone else, or it is rejected:
+#   install -o xymon -g xymon -m 600 /dev/null /etc/xymon/my-xymon-extensions-server/fritz.passwd
+#
+#powerline3.lan   -       my password here
+#192.168.5.7      xymon   another_password

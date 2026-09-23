@@ -74,3 +74,25 @@ Server package only (my-xymon-extensions-server, Debian/Ubuntu).
   defaults, silent/verbose, dry-run, debug (raw responses, SIDs masked),
   logger tag `fritz-wifi`, flock, status lifetime 15 minutes.
 - Tests replay the recorded device responses through a fake curl.
+
+## Implementation status (2026-09-23)
+
+Implemented in 0.24.0 (fritz-wifi.sh 1.0.0), together with the ncv_skip
+fix for wifi.sh and the migration notes in extensions/wifi/server/README.md.
+
+Validated:
+- make test (ShellCheck 0.9.0, dash): passed, including 140 fritz-wifi
+  assertions (recorded device responses through a fake curl).
+- tests/fritz-wifi/run.sh under bash, bash --posix and BusyBox sh with the
+  BusyBox userland; the full suite under BusyBox: passed.
+- --ask-password through a pseudo terminal (script(1)): no echo, a
+  password with blanks, a double quote and a backslash accepted, echo
+  restored afterwards.
+- make deb, make deb-server, make opkg: passed; client and server package
+  installed side by side without a shared file.
+
+Not validated: no real FRITZ! device, Xymon server or RRD file was
+involved. The per-client responses (GetGenericAssociatedDeviceInfo with a
+connected client) are synthesized, and `curl --digest` (instead of the
+measured `--anyauth`) is untested against the device - both are the first
+checks of a real `--dry-run --debug`.

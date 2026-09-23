@@ -1,0 +1,4 @@
+#!/bin/sh
+# logger - records syslog messages of the collector under test.
+set -u
+printf '%s\n' "$*" >>"${FW_SYSLOG}"

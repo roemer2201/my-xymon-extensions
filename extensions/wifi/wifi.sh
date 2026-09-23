@@ -504,9 +504,16 @@ fi
 
 SUMMARY="${TOTAL:-?} client(s) on $NIF AP interface(s)"
 
+# The details are wrapped in ncv_skip markers (invisible on the status
+# page): the wifi column is an NCV test, and xymond_rrd feeds the status
+# text to the NCV parser as well, which takes "=" like ":" - without the
+# markers "channel=36" and "rx=0.0" became stray wifi,phy1_channel.rrd
+# and wifi,rx.rrd files. The RRDs come from the data message only.
 {
+    printf '%s\n' '<!-- ncv_skipstart -->'
     cat "$STATUS"
     printf '\nRates are averages since the previous poll; the first poll only primes the state file.\n'
+    printf '%s\n' '<!-- ncv_skipend -->'
 } > "$WORKDIR/final"
 
 send_report green "$WORKDIR/final" "$DATA"

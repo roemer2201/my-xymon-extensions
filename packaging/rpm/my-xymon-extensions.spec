@@ -243,6 +243,15 @@ RRD graphs need a one-time setup on the Xymon SERVER (not here):
 EOF
 
 %changelog
+* Wed Sep 23 2026 roemer2201 <r.oliver@web.de> - 0.24.0-1
+- wifi: the status details are wrapped in ncv_skip markers. xymond_rrd
+  also feeds the status text of the NCV wifi column to the NCV parser,
+  which turned "channel=36" and "rx=0.0" into stray RRD files. The RRD
+  schema is unchanged; the server README explains how to clean up and
+  how to keep the history of the why0_aw0 names of 0.18.0 and older.
+- new server-only fritz-wifi collector (Debian server package only, not
+  part of this package): Wi-Fi metadata of AVM FRITZ! devices over
+  TR-064 into the wifi column and its RRD files.
 * Tue Sep 22 2026 roemer2201 <r.oliver@web.de> - 0.23.1-1
 - the config move of 0.20.0 now actually keeps edited settings on rpm.
   Up to 0.23.0 the package installed fresh defaults in

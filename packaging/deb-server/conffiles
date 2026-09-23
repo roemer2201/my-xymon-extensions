@@ -24,4 +24,6 @@
 /etc/xymon/tasks.d/powerline.cfg
 /etc/xymon/my-xymon-extensions-server/powerline.cfg
 /etc/xymon/my-xymon-extensions-server/powerline.map
+/etc/xymon/tasks.d/fritz-wifi.cfg
+/etc/xymon/my-xymon-extensions-server/fritz-wifi.cfg
 /etc/sudoers.d/my-xymon-extensions-server

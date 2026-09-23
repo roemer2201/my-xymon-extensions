@@ -4,6 +4,7 @@ Section: net
 Priority: optional
 Architecture: all
 Depends: xymon, iproute2, util-linux, coreutils, sudo
+Recommends: curl
 Suggests: my-xymon-extensions
 Maintainer: roemer2201 <r.oliver@web.de>
 Homepage: https://github.com/roemer2201/my-xymon-extensions
@@ -38,7 +39,10 @@ Description: Xymon server extensions and graph configuration
  Covered extensions: smart, temp, la, memory, opkg, fritzdsl,
  fritzwan, wifi, if_link, lxc and xymonext. The server-only powerline
  collector is included but disabled until configured with open-plc-utils
- and its sudo rule. It uses tasks.d and the separate
- my-xymon-extensions-server config directory. The disk extension needs no
+ and its sudo rule. So is the server-only fritz-wifi collector, which
+ reads the Wi-Fi metadata of AVM FRITZ! devices (e.g. FRITZ!Powerline)
+ over TR-064 into the wifi column and graphs; it needs a password file.
+ Both use tasks.d and the separate my-xymon-extensions-server config
+ directory. The disk extension needs no
  server-side configuration - it reports into the standard disk column,
  which the server parses itself.

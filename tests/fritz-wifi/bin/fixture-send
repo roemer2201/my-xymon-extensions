@@ -1,0 +1,5 @@
+#!/bin/sh
+# fixture-send - stands in for $XYMON: records every message (argument 2).
+set -u
+[ "${FW_SEND_FAIL:-0}" = 0 ] || exit 1
+printf '%s\n' "$2" >>"${FW_MESSAGES}"
