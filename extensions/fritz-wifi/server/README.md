@@ -213,6 +213,14 @@ sudo -u xymon xymoncmd --env=/etc/xymon/xymonserver.cfg /usr/lib/xymon/server/ex
   with `"` and `\` escaped as curl's config syntax requires), never on
   a command line (`ps`), in a log, in the debug or dry-run output.
   `FRITZPASSWORT` is removed from the environment before curl runs.
+- curl is called with `--digest --ntlm`: `--digest` alone makes curl
+  send its first, unauthenticated request with an empty body, which the
+  device answers with UPnP error 502 ("XML error") instead of a login
+  challenge. With two methods allowed curl sends the full request and
+  picks Digest from the challenge. Basic authentication (`--anyauth`)
+  is never allowed. The curl build needs NTLM support (Debian, Ubuntu
+  and Rocky Linux have it); without it curl refuses `--ntlm` and the
+  status names that error.
 - TR-064 runs over plain HTTP with Digest authentication (the device
   answers with a `Digest ... algorithm=MD5, qop="auth"` challenge): the
   password does not travel in clear text, the responses (SSIDs, client
