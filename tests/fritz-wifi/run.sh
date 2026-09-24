@@ -144,7 +144,7 @@ ok has '^wl5g  channel=116 \(5580 MHz\)  width=80 MHz \(client\)  busy=n/a rx=n/
 ok has '^  &green wl2g-ap1  ssid="Steingasse"  clients=1 \[tr064\]  txpower=n/a$'
 ok has '^  &green wl5g-ap2  ssid="Steingasse-5G"  clients=1 \[tr064\]  txpower=n/a$'
 ok has '^         rx=n/a tx=n/a kbit/s  airtime rx=n/a tx=n/a  retries=n/a failed=n/a$'
-ok has '^         standard=n  signal min/avg=92/92 \(0-100\)  speed min/avg=144/144 Mbit/s$'
+ok has '^         standard=n  signal min/avg=1/1 \(0-100\)  speed min/avg=1/1 Mbit/s$'
 ok has '^         standard=ac  signal min/avg=91/91 \(0-100\)  speed min/avg=866/866 Mbit/s$'
 ok has '^<!-- ncv_skipstart -->$'
 ok has '^<!-- ncv_skipend -->$'

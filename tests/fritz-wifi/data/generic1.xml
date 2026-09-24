@@ -5,8 +5,8 @@
 <NewAssociatedDeviceMACAddress>AA:BB:CC:DD:EE:FF</NewAssociatedDeviceMACAddress>
 <NewAssociatedDeviceIPAddress>192.0.2.1</NewAssociatedDeviceIPAddress>
 <NewAssociatedDeviceAuthState>1</NewAssociatedDeviceAuthState>
-<NewX_AVM-DE_Speed>144</NewX_AVM-DE_Speed>
-<NewX_AVM-DE_SignalStrength>92</NewX_AVM-DE_SignalStrength>
+<NewX_AVM-DE_Speed>1</NewX_AVM-DE_Speed>
+<NewX_AVM-DE_SignalStrength>1</NewX_AVM-DE_SignalStrength>
 <NewX_AVM-DE_ChannelWidth>20</NewX_AVM-DE_ChannelWidth>
 </u:GetGenericAssociatedDeviceInfoResponse>
 </s:Body>

@@ -107,5 +107,12 @@ the device rejects as an XML error instead of answering with the 401
 challenge. fritz-wifi.sh 1.2.0 calls curl with `--digest --ntlm`: curl then
 sends the full body first and picks Digest from the challenge, while Basic
 (what `--anyauth` could fall back to) is never allowed. Reproduced and
-verified against a local test server with curl 8.5.0; the device run is
-pending.
+verified against a local test server with curl 8.5.0.
+
+Confirmed on the reference device on 2026-09-24 with 1.2.0: the Digest
+login with `--digest --ntlm`, instance discovery, the wl2g/wl5g names, the
+client count and the per-client query (channel width 20 MHz from the
+client). The raw GetGenericAssociatedDeviceInfo response has exactly the
+layout of the synthesized fixture; it replaces generic1.xml (masked).
+Speed and signal of that low-power client were 1-2 and 1, varying
+between polls. The 5 GHz per-client fixture stays synthesized.
