@@ -44,7 +44,7 @@ Server package only (my-xymon-extensions-server, Debian/Ubuntu).
   trimmed; `-` as user means the default `xymon`. Blank and `#` lines are
   ignored. Parsed, never sourced. Must be a regular file owned by the
   running user without any group/other permission, else it is rejected.
-  Added after 0.24.0 (fritz-wifi.sh 1.1.0): a root-owned file that only
+  Added in 0.24.1 (fritz-wifi.sh 1.1.0): a root-owned file that only
   the running user's primary group may read (root:xymon 640) is accepted
   as well.
 - Password precedence: `--ask-password` (tty, echo off via stty) >
