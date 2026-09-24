@@ -229,9 +229,11 @@ sudo -u xymon xymoncmd --env=/etc/xymon/xymonserver.cfg /usr/lib/xymon/server/ex
 ## Test scope
 
 `tests/fritz-wifi/run.sh` replays responses recorded from the reference
-device (masked) through a fake curl, under dash, bash and BusyBox. The
-per-client responses are synthesized from the device's SCPD and values
-measured by hand. No real device, Xymon server or RRD file is involved.
+device (masked) through a fake curl, under dash, bash and BusyBox. Only
+the 5 GHz per-client response is synthesized (in the layout of the
+recorded 2.4 GHz one). No real device, Xymon server or RRD file is
+involved in the tests; version 1.2.0 was checked against the reference
+device by hand (status and `--debug` output of 2026-09-24).
 
 ## References
 
