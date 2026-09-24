@@ -1,0 +1,136 @@
+#!/bin/sh
+# fakecurl - stands in for curl in tests/fritz-wifi/run.sh. Replays the
+# recorded TR-064 responses in data/, checks the credentials that
+# fritz-wifi.sh passes on stdin ("curl --config -") and logs every
+# requested action. Never talks to the network.
+#
+# Environment:
+#   FW_DATA      fixture directory            FW_LOG     log directory
+#   FW_USER/FW_PASS  expected credentials (401 otherwise)
+#   FW_SCENARIO  ok | notup | err502 | empty | sid | ssid | nowlan | race713 |
+#                desc404
+#   FW_CLIENTS1/2 client counts reported for instance 1/2 (default 1)
+#   FW_DOWN      host names/IPs that refuse connections (curl exit 7)
+#   FW_SLOW      host names/IPs that time out (curl exit 28)
+set -u
+printf '%s\n' "$*" >>"${FW_LOG}/argv"
+[ -z "${FRITZPASSWORT+x}" ] || printf 'FRITZPASSWORT reached curl\n' >>"${FW_LOG}/envleak"
+
+out='' url='' action='' data='' config=0
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --output) out=$2; shift 2 ;;
+        --write-out) shift 2 ;;
+        --header)
+            case "$2" in
+                SoapAction:*) action=${2#*#}; action=${action%\"} ;;
+            esac
+            shift 2 ;;
+        --data) data=$2; shift 2 ;;
+        --config) [ "$2" = - ] || { echo "fakecurl: config not on stdin" >&2; exit 2; }
+                  config=1; shift 2 ;;
+        --connect-timeout|--max-time) shift 2 ;;
+        --silent|--show-error|--digest) shift ;;
+        -*) echo "fakecurl: unexpected option $1" >&2; exit 2 ;;
+        *) url=$1; shift ;;
+    esac
+done
+
+# respond CODE FILE - write the body, print the HTTP code (--write-out).
+respond() {
+    if [ -n "$2" ]; then cat "$2" >"$out"; else : >"$out"; fi
+    printf '%s' "$1"
+    exit 0
+}
+
+hostport=${url#http://}
+host=${hostport%%:*}
+path=/${hostport#*/}
+case " ${FW_DOWN:-} " in *" $host "*)
+    echo "curl: (7) Failed to connect to $host port 49000 after 2 ms: Couldn't connect to server" >&2
+    printf '000'; exit 7 ;;
+esac
+case " ${FW_SLOW:-} " in *" $host "*)
+    echo "curl: (28) Connection timed out after 5001 milliseconds" >&2
+    printf '000'; exit 28 ;;
+esac
+
+scenario=${FW_SCENARIO:-ok}
+if [ "$path" = /tr64desc.xml ]; then
+    [ "$scenario" != desc404 ] || respond 404 ''
+    if [ "$scenario" = nowlan ]; then
+        grep -v 'WLANConfiguration' "$FW_DATA/tr64desc.xml" >"$out"; printf 200; exit 0
+    fi
+    respond 200 "$FW_DATA/tr64desc.xml"
+fi
+
+case "$path" in
+    /upnp/control/wlanconfig[0-9]) inst=${path#/upnp/control/wlanconfig} ;;
+    *) respond 404 '' ;;
+esac
+
+# Digest credentials arrive as one curl config line: user = "USER:PASS"
+# with \\ and \" escaped. Unescape and compare, like the device would.
+creds=bad
+if [ "$config" = 1 ]; then
+    line=$(cat)
+    got=$(printf '%s\n' "$line" | awk '
+        /^user = "/ {
+            s = substr($0, 9); v = ""
+            for (i = 1; i <= length(s); i++) {
+                c = substr(s, i, 1)
+                if (c == "\\") { i++; v = v substr(s, i, 1); continue }
+                if (c == "\"") { rest = substr(s, i + 1); break }
+                v = v c
+            }
+            if (rest == "") print v
+        }')
+    [ "$got" != "${FW_USER}:${FW_PASS}" ] || creds=ok
+fi
+[ "$creds" = ok ] || respond 401 "$FW_DATA/unauthorized.html"
+
+printf '%s %s\n' "$inst" "$action" >>"${FW_LOG}/actions"
+case "$action" in
+    GetInfo|GetTotalAssociations|GetGenericAssociatedDeviceInfo) ;;
+    *) echo "fakecurl: action $action is not allowed" >&2; exit 99 ;;
+esac
+# The device answers a self-closing action element with 502.
+case "$data" in *"</u:${action}>"*) ;; *) respond 502 '' ;; esac
+
+case "$action" in
+    GetInfo)
+        if [ "$scenario" = noenable ]; then
+            sed '/<NewEnable>/d' "$FW_DATA/getinfo$inst.xml" >"$out"; printf 200; exit 0
+        fi
+        if [ "$scenario" = notup ] && [ "$inst" = 2 ]; then
+            sed 's|<NewStatus>Up<|<NewStatus>Error<|' "$FW_DATA/getinfo$inst.xml" >"$out"; printf 200; exit 0
+        fi
+        if [ "$scenario" = ssid ] && [ "$inst" = 1 ]; then
+            sed 's|<NewSSID>Steingasse<|<NewSSID>A\&amp;B \&quot;x\&quot; \&lt;y\&gt;<|' \
+                "$FW_DATA/getinfo$inst.xml" >"$out"; printf 200; exit 0
+        fi
+        if [ "$scenario" = sid ] && [ "$inst" = 1 ]; then
+            sed 's|</NewSSID>|</NewSSID><NewX_AVM-DE_WLANDeviceListPath>/wlandevicelist.lua?sid=0123456789abcdef</NewX_AVM-DE_WLANDeviceListPath>|' \
+                "$FW_DATA/getinfo$inst.xml" >"$out"; printf 200; exit 0
+        fi
+        respond 200 "$FW_DATA/getinfo$inst.xml" ;;
+    GetTotalAssociations)
+        if [ "$inst" = 1 ]; then
+            [ "$scenario" != err502 ] || respond 502 ''
+            [ "$scenario" != empty ] || respond 200 ''
+        fi
+        case "$inst" in 1) n=${FW_CLIENTS1:-1} ;; 2) n=${FW_CLIENTS2:-1} ;; *) n=0 ;; esac
+        sed -e "s/WLANConfiguration:3/WLANConfiguration:$inst/" -e "s|>0</NewTotal|>$n</NewTotal|" \
+            "$FW_DATA/total3.xml" >"$out"
+        printf 200; exit 0 ;;
+    GetGenericAssociatedDeviceInfo)
+        idx=$(printf '%s' "$data" | sed -n 's/.*<NewAssociatedDeviceIndex>\([0-9]*\)<.*/\1/p')
+        case "$inst" in 1) n=${FW_CLIENTS1:-1} ;; 2) n=${FW_CLIENTS2:-1} ;; *) n=0 ;; esac
+        # race713: the client left between the count and this query.
+        [ "$scenario" != race713 ] || n=0
+        if [ -n "$idx" ] && [ "$idx" -lt "$n" ] && [ -f "$FW_DATA/generic$inst.xml" ]; then
+            respond 200 "$FW_DATA/generic$inst.xml"
+        fi
+        respond 500 "$FW_DATA/fault713.xml" ;;
+esac
+respond 500 ''

@@ -22,6 +22,9 @@ my-xymon-extensions-server (stage-server.sh): tasks.d, server ext/, its own
 config directory. Still POSIX sh/awk (tested with dash and BusyBox), but
 iproute2, flock and the helper's fixed tool paths target Ubuntu. Its RRDs
 come from native trends messages (explicit unknowns), not NCV.
+fritz-wifi is the second one (TR-064 via curl, flock): it reports into
+the `wifi` column and writes the wifi RRD files via trends messages; its
+password file is never installed by a package.
 
 ## Hard portability rules
 

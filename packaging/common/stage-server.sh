@@ -62,7 +62,7 @@ SKIP_EXTENSIONS="temp"
 # Every extension that produces RRD graphs. "disk" is missing on
 # purpose: it reports into the standard disk column and is handled by
 # the server's built-in parser, so it needs no server-side config.
-EXTENSIONS="smart temp la memory opkg fritzdsl fritzwan wifi if_link lxc xymonext powerline"
+EXTENSIONS="smart temp la memory opkg fritzdsl fritzwan wifi if_link lxc xymonext powerline fritz-wifi"
 
 skipped() { # skipped NAME
     for skip in $SKIP_EXTENSIONS; do
@@ -94,6 +94,13 @@ for file in powerline.cfg powerline.map; do
     instsub 0644 "extensions/powerline/$file" "$DESTDIR$ETCDIR/my-xymon-extensions-server/$file$SUF" || exit 1
 done
 
+# The server-only fritz-wifi collector (TR-064 over curl); never in
+# stage.sh either. Its password file is NOT installed: it holds secrets,
+# must belong to xymon with mode 600, and a conffile would be neither.
+inst 0755 extensions/fritz-wifi/fritz-wifi.sh "$DESTDIR$BINDIR/fritz-wifi.sh" || exit 1
+instsub 0644 extensions/fritz-wifi/fritz-wifi.cfg \
+    "$DESTDIR$ETCDIR/my-xymon-extensions-server/fritz-wifi.cfg$SUF" || exit 1
+
 # powerline's sudo rule, installed with the rule commented out (powerline
 # ships disabled). Mode 0440; no dot in the name (sudo would ignore it);
 # not "xymon", which hobbit-plugins owns.
@@ -114,6 +121,9 @@ if [ "$DOCDIR" != "-" ]; then
     # Reference copy of the sudo rule.
     instsub 0644 extensions/powerline/powerline.sudoers \
         "$DESTDIR$DOCDIR/powerline/powerline.sudoers" || exit 1
+    # Template for the fritz-wifi password file.
+    inst 0644 extensions/fritz-wifi/fritz.passwd.example \
+        "$DESTDIR$DOCDIR/fritz-wifi/fritz.passwd.example" || exit 1
 
     # The drop-ins that are not installed (see SKIP_EXTENSIONS) ship
     # here instead, so they can be put in place by hand.

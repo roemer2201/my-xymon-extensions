@@ -1,0 +1,27 @@
+<?xml version="1.0"?>
+<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
+<s:Body>
+<u:GetInfoResponse xmlns:u="urn:dslforum-org:service:WLANConfiguration:3">
+<NewEnable>0</NewEnable>
+<NewStatus>Disabled</NewStatus>
+<NewMaxBitRate>Auto</NewMaxBitRate>
+<NewChannel>11</NewChannel>
+<NewSSID>FRITZ!Box Gastzugang</NewSSID>
+<NewBeaconType>11i</NewBeaconType>
+<NewX_AVM-DE_PossibleBeaconTypes>None,11i,11iandWPA3,OWETrans</NewX_AVM-DE_PossibleBeaconTypes>
+<NewMACAddressControlEnabled>0</NewMACAddressControlEnabled>
+<NewStandard></NewStandard>
+<NewBSSID>AA:BB:CC:DD:EE:FF</NewBSSID>
+<NewBasicEncryptionModes>None</NewBasicEncryptionModes>
+<NewBasicAuthenticationMode>None</NewBasicAuthenticationMode>
+<NewMaxCharsSSID>32</NewMaxCharsSSID>
+<NewMinCharsSSID>1</NewMinCharsSSID>
+<NewAllowedCharsSSID>0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz !&quot;#$%&amp;&apos;()*+,-./:;&lt;=&gt;?@[\]^_`{|}~</NewAllowedCharsSSID>
+<NewMinCharsPSK>64</NewMinCharsPSK>
+<NewMaxCharsPSK>64</NewMaxCharsPSK>
+<NewAllowedCharsPSK>0123456789ABCDEFabcdef</NewAllowedCharsPSK>
+<NewX_AVM-DE_FrequencyBand>unknown</NewX_AVM-DE_FrequencyBand>
+<NewX_AVM-DE_WLANGlobalEnable>1</NewX_AVM-DE_WLANGlobalEnable>
+</u:GetInfoResponse>
+</s:Body>
+</s:Envelope>

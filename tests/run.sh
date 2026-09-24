@@ -1187,6 +1187,19 @@ expect "$out" '^status testhost\.wifi green ' \
 expect "$out" 'wifi: 8 client\(s\) on 4 AP interface\(s\)' \
     "summary line carries the client and interface count"
 expect "$out" '^data testhost\.wifi$' "data message for the RRDs is sent"
+# xymond_rrd feeds the status text of the (NCV) wifi column to the NCV
+# parser too, which takes "=" like ":". Outside the ncv_skip markers no
+# status line may look like one ("channel=36" made wifi,phy1_channel.rrd).
+expect "$out" '^<!-- ncv_skipstart -->$' "status details start an NCV skip block"
+expect "$out" '^<!-- ncv_skipend -->$' "status details end the NCV skip block"
+if printf '%s\n' "$out" | awk '/^status/ { s = 1; next } /^data / { s = 0 } !s { next }
+        /^<!-- ncv_skipstart -->$/ { k = 1; next } /^<!-- ncv_skipend -->$/ { k = 0; next }
+        !k && /[:=]/ { bad = 1 } END { exit bad }'; then
+    echo "ok:   no wifi status line outside the skip block reaches the NCV parser"
+else
+    echo "FAIL: a wifi status line outside the skip block would create a stray RRD"
+    FAIL=1
+fi
 expect "$out" '^clients_phy0_ap0 : 5$' \
     "client count from hostapd get_clients (authorized only)"
 expect "$out" 'clients=5 \[hostapd\]' \
@@ -2577,7 +2590,10 @@ fi
 for srvdir in "$REPO"/extensions/*/server; do
     [ -d "$srvdir" ] || continue
     ext=$(basename "$(dirname "$srvdir")")
-    for want in "README.md" "xymonserver.d/$ext.cfg"; do
+    wants="README.md xymonserver.d/$ext.cfg"
+    # fritz-wifi reports into the wifi column and reuses its drop-ins.
+    [ "$ext" != fritz-wifi ] || wants="README.md"
+    for want in $wants; do
         if [ -f "$srvdir/$want" ]; then
             echo "ok:   $ext ships server/$want"
         else
@@ -2591,7 +2607,7 @@ done
     | sed 's|^extensions/||' | sort > "$TMP/server-files"
 while read -r rel; do
     # Server-only collectors do not ship in any client package.
-    case "$rel" in powerline/*) continue ;; esac
+    case "$rel" in powerline/*|fritz-wifi/*) continue ;; esac
     if [ -f "$PKGSTAGE$DOCROOT/$rel" ]; then
         echo "ok:   stage.sh installs $rel"
     else
@@ -2697,6 +2713,41 @@ for file in README.md powerline.sudoers; do
         echo "FAIL: missing server-only Powerline documentation $file"; FAIL=1
     fi
 done
+
+# fritz-wifi: server package only, disabled, and never a password file -
+# that one holds secrets and must belong to xymon with mode 600.
+if [ -x "$SRVSTAGE$SRVBIN/fritz-wifi.sh" ]; then
+    echo "ok:   stage-server.sh installs the fritz-wifi collector"
+else
+    echo "FAIL: missing server executable fritz-wifi.sh"; FAIL=1
+fi
+if [ -f "$PKGSTAGE/ext/fritz-wifi.sh" ] || [ -f "$PKGSTAGE/etc/clientlaunch.d/fritz-wifi.cfg" ]; then
+    echo "FAIL: server-only fritz-wifi was installed in the client package"; FAIL=1
+fi
+if grep -q '^FRITZ_WIFI_ENABLED=0$' "$SRVSTAGE$SRVETC/my-xymon-extensions-server/fritz-wifi.cfg" 2>/dev/null &&
+        grep -q "^FRITZ_WIFI_PASSFILE=$SRVETC/my-xymon-extensions-server/fritz\.passwd\$" \
+            "$SRVSTAGE$SRVETC/my-xymon-extensions-server/fritz-wifi.cfg"; then
+    echo "ok:   fritz-wifi ships disabled, pointing at the password file"
+else
+    echo "FAIL: fritz-wifi.cfg is not disabled or names no password file"; FAIL=1
+fi
+if find "$SRVSTAGE" -name 'fritz.passwd' | grep -q .; then
+    echo "FAIL: a fritz-wifi password file is installed"; FAIL=1
+else
+    echo "ok:   no fritz-wifi password file is installed"
+fi
+for file in README.md fritz.passwd.example; do
+    if [ ! -f "$SRVSTAGE$SRVDOC/fritz-wifi/$file" ]; then
+        echo "FAIL: missing fritz-wifi documentation $file"; FAIL=1
+    fi
+done
+if [ -x "$altstage/opt/xymon/ext/fritz-wifi.sh" ] &&
+        grep -q '^    CMD /opt/xymon/ext/fritz-wifi\.sh --config /opt/xymon/etc/my-xymon-extensions-server/fritz-wifi\.cfg$' \
+            "$altstage/opt/xymon/etc/tasks.d/fritz-wifi.cfg"; then
+    echo "ok:   the fritz-wifi task honours BINDIR/ETCDIR"
+else
+    echo "FAIL: the fritz-wifi task ignores BINDIR/ETCDIR"; FAIL=1
+fi
 
 # --- the sudo rule -----------------------------------------------------
 # A broken file in sudoers.d does not break this package, it breaks sudo
@@ -3207,8 +3258,9 @@ else
     FAIL=1
 fi
 
-# The server-only collector has its own isolated replay/privilege tests.
+# The server-only collectors have their own isolated replay tests.
 if ! sh "$TESTDIR/powerline/run.sh"; then FAIL=1; fi
+if ! sh "$TESTDIR/fritz-wifi/run.sh"; then FAIL=1; fi
 
 echo ""
 if [ "$FAIL" -eq 0 ]; then

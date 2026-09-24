@@ -10,7 +10,9 @@ repository.
 
 The server-only [powerline collector](extensions/powerline/server/README.md)
 targets Linux/Xymon servers on the same Ethernet segment as the adapters.
-It ships in my-xymon-extensions-server, disabled until configured.
+The server-only [fritz-wifi collector](extensions/fritz-wifi/server/README.md)
+reads the Wi-Fi metadata of AVM FRITZ! devices over TR-064. Both ship in
+my-xymon-extensions-server, disabled until configured.
 
 ## Repository layout
 
@@ -44,6 +46,7 @@ my-xymon-extensions/
 | Name | Column | Description |
 |------|--------|-------------|
 | [powerline](extensions/powerline/) | `powerline` | Server-side open-plc-utils collection: per-adapter PHY and PB/MPDU/receive-slot graphs, persistent topology warnings and 180-minute state-flapping escalation; quality thresholds opt-in |
+| [fritz-wifi](extensions/fritz-wifi/) | `wifi` | Server-side TR-064 collection from AVM FRITZ! devices (e.g. FRITZ!Powerline 1260E): clients per SSID interface, channel and frequency per band, client signal/speed/channel width - into the `wifi` column and RRD files of the OpenWrt extension; unknown values stay RRD gaps; one password file for all devices |
 | [smart](extensions/smart/) | `smart` | SMART disk health for SATA/ATA, NVMe and (basic) SAS disks plus eMMC wear/pre-EOL health (Linux, via mmc-utils): vendor-normalized metrics, thresholds/alerts and per-disk RRD graphs |
 | [temp](extensions/temp/) | `temp` | All hardware temperature sensors from the Linux hwmon sysfs (fallback: thermal zones) — e.g. CPU/SoC and switch sensors on a Turris Omnia — with per-sensor thresholds and RRD graphs |
 | [la](extensions/la/) | `la` | Load average (1/5/15 min) with thresholds per CPU core; for clientless hosts — the task ships disabled where a full Xymon client runs |
@@ -71,6 +74,7 @@ ships them as ready-made drop-in files under
 | `server/graphs.d/<name>.cfg` | `graphs.d/` | the `[graphname]` graph definitions |
 | `server/rrddefinitions.d/<name>.cfg` | `rrddefinitions.d/` | RRA archive layout (only `if_link` so far) |
 | `server/tasks.d/powerline.cfg` | `tasks.d/` | Server-only Powerline task, every 5 minutes; separate configuration in `my-xymon-extensions-server/` |
+| `server/tasks.d/fritz-wifi.cfg` | `tasks.d/` | Server-only fritz-wifi task, every 5 minutes; same separate configuration directory |
 
 These directories are shared with other packages. Debian's
 `hobbit-plugins` ships a `temp.cfg` in `graphs.d`, `xymonserver.d`

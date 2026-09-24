@@ -1,0 +1,4 @@
+# Two tagged devices: one dead, one alive; one only reachable by name.
+192.0.2.9       powerline9.lan  # conn fritzwifi
+192.0.2.1       powerline3.lan  # fritzwifi
+0.0.0.0         byname.lan      # fritzwifi noconn
