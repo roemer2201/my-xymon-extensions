@@ -101,7 +101,8 @@ section - which matters only if you defined one.
 | An enabled network not `Up` | yellow | U for its client count |
 | Login refused (HTTP 401, UPnP 606) | yellow | U for everything |
 | No password, or the password file rejected | yellow | U for everything |
-| Unexpected TR-064 answer (HTTP 502/500, empty, missing element) | yellow | U for the affected value |
+| Unexpected TR-064 answer (HTTP 502/500, empty, missing NewEnable) | yellow | U for the affected value |
+| Run time budget exhausted before a required request | yellow | U for values not measured |
 | Device unreachable or timed out | red | U for everything |
 | No WLAN service, every network disabled, curl missing | clear | - |
 
@@ -166,7 +167,11 @@ and restarts nothing.
    credentials never printed), `--host NAME` to poll one device.
 
 4. Set `FRITZ_WIFI_ENABLED=1` in the config. The task runs every 5
-   minutes (MAXTIME 4m, status lifetime 15 minutes); flock prevents
+   minutes (MAXTIME 4m, status lifetime 15 minutes). Each request
+   defaults to a 3-second timeout; `FRITZ_WIFI_RUN_BUDGET=180` stops
+   further network requests after three minutes and reserves time to
+   send status messages for the remaining hosts. Keep the budget below
+   the task's MAXTIME when changing either setting. Flock prevents
    overlapping runs. Errors go to `$XYMONSERVERLOGS/fritz-wifi.log` and
    syslog (tag `fritz-wifi`). Make sure the server's tasks.cfg reads
    `tasks.d` (the package's post-install output says so if not).

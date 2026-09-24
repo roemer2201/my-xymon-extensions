@@ -10,16 +10,16 @@
 # login becomes a graph gap, never a zero. Metrics TR-064 does not
 # provide (busy, noise, airtime, retries, throughput) are not created.
 #
-# Version: 1.0.0  (2026-09-23)
+# Version: 1.0.1  (2026-09-24)
 #
 # Program flow:
 # 1. Resolve settings (defaults < config < environment < CLI), validate
 #    them, optionally prompt for the password (--ask-password).
 # 2. Take the lock, build the host list (hosts.cfg tag or --host) and
 #    check the password file (owner and permissions).
-# 3. Per host, one after another: read /tr64desc.xml, then for every
-#    enabled WLANConfiguration instance GetInfo, GetTotalAssociations and
-#    GetGenericAssociatedDeviceInfo per associated client.
+# 3. Per host, one after another: within the run time budget read
+#    /tr64desc.xml, then for every enabled WLANConfiguration instance
+#    GetInfo, GetTotalAssociations and client details.
 # 4. Build color, status text and RRD values; after a failure the names
 #    of the last clean run get U.
 # 5. Deliver status and trends (or print them with --dry-run) and
@@ -28,7 +28,7 @@
 # Usage: fritz-wifi.sh --config FILE [--host NAME] [--dry-run] [--help]
 set -u
 CONFIG_NAME=fritz-wifi.cfg
-SCRIPT_VERSION=1.0.0
+SCRIPT_VERSION=1.0.1
 
 usage() {
     cat <<'EOF'
@@ -60,8 +60,9 @@ into the Xymon "wifi" column (and its RRD files) of each device's host.
     FRITZ_WIFI_ENABLED (1), FRITZ_WIFI_TAG (fritzwifi)
     FRITZ_WIFI_PASSFILE (XYMONHOME/etc/my-xymon-extensions-server/
       fritz.passwd)
-    FRITZ_WIFI_PORT (49000), FRITZ_WIFI_CONNECT_TIMEOUT (5 seconds),
-    FRITZ_WIFI_MAX_TIME (10 seconds per request)
+    FRITZ_WIFI_PORT (49000), FRITZ_WIFI_CONNECT_TIMEOUT (3 seconds),
+    FRITZ_WIFI_MAX_TIME (3 seconds per request)
+    FRITZ_WIFI_RUN_BUDGET (180 seconds for network requests)
     FRITZ_WIFI_LIFETIME (15 minutes), FRITZ_WIFI_COLUMN (wifi)
     FRITZ_WIFI_STATE_DIR (XYMONVAR/fritz-wifi)
     FRITZ_WIFI_HOSTSCFG (HOSTSCFG), FRITZ_WIFI_XYMONCFG
@@ -79,6 +80,8 @@ With --ask-password or FRITZPASSWORT the password file is not read; the
 user is then FRITZ_WIFI_USER or "xymon".
 
 Precedence: CLI > exported environment > config file > defaults.
+The run budget leaves one minute for status delivery before the
+shipped Xymon task's MAXTIME of four minutes.
 Silent and verbose are mutually exclusive; on the command line either
 switch overrides the other one's setting. Automated runs log via syslog
 (tag fritz-wifi); errors also go to stderr (the task's log file).
@@ -98,7 +101,7 @@ EOF
 setting() {
     # shellcheck disable=SC2163 # Export a validated NAME=VALUE, not positional $1.
     case "${1%%=*}" in
-        FRITZ_WIFI_ENABLED|FRITZ_WIFI_TAG|FRITZ_WIFI_HOSTS|FRITZ_WIFI_USER|FRITZ_WIFI_PASSFILE|FRITZ_WIFI_PORT|FRITZ_WIFI_CONNECT_TIMEOUT|FRITZ_WIFI_MAX_TIME|FRITZ_WIFI_LIFETIME|FRITZ_WIFI_COLUMN|FRITZ_WIFI_STATE_DIR|FRITZ_WIFI_HOSTSCFG|FRITZ_WIFI_XYMONCFG|FRITZ_WIFI_CURL|FRITZ_WIFI_SILENT|FRITZ_WIFI_VERBOSE|FRITZ_WIFI_DEBUG|FRITZ_WIFI_DRY_RUN) export "${1}" ;;
+        FRITZ_WIFI_ENABLED|FRITZ_WIFI_TAG|FRITZ_WIFI_HOSTS|FRITZ_WIFI_USER|FRITZ_WIFI_PASSFILE|FRITZ_WIFI_PORT|FRITZ_WIFI_CONNECT_TIMEOUT|FRITZ_WIFI_MAX_TIME|FRITZ_WIFI_RUN_BUDGET|FRITZ_WIFI_LIFETIME|FRITZ_WIFI_COLUMN|FRITZ_WIFI_STATE_DIR|FRITZ_WIFI_HOSTSCFG|FRITZ_WIFI_XYMONCFG|FRITZ_WIFI_CURL|FRITZ_WIFI_SILENT|FRITZ_WIFI_VERBOSE|FRITZ_WIFI_DEBUG|FRITZ_WIFI_DRY_RUN) export "${1}" ;;
         *) printf 'Unknown setting: %s\n' "${1%%=*}" >&2; exit 2 ;;
     esac
 }
@@ -160,7 +163,8 @@ FRITZ_WIFI_HOSTS=${cli_hosts# }"
 saved_env=$(env | LC_ALL=C sort | awk '/^FRITZ_WIFI_/ && !/^FRITZ_WIFI_CONFIG=/')
 FRITZ_WIFI_ENABLED=1 FRITZ_WIFI_TAG=fritzwifi FRITZ_WIFI_HOSTS='' FRITZ_WIFI_USER=''
 FRITZ_WIFI_PASSFILE=${XYMONHOME:-}/etc/my-xymon-extensions-server/fritz.passwd
-FRITZ_WIFI_PORT=49000 FRITZ_WIFI_CONNECT_TIMEOUT=5 FRITZ_WIFI_MAX_TIME=10
+FRITZ_WIFI_PORT=49000 FRITZ_WIFI_CONNECT_TIMEOUT=3 FRITZ_WIFI_MAX_TIME=3
+FRITZ_WIFI_RUN_BUDGET=180
 FRITZ_WIFI_LIFETIME=15 FRITZ_WIFI_COLUMN=wifi
 FRITZ_WIFI_STATE_DIR=${XYMONVAR:-}/fritz-wifi
 FRITZ_WIFI_HOSTSCFG=${HOSTSCFG:-${XYMONHOME:-}/etc/hosts.cfg}
@@ -228,11 +232,12 @@ if [ "${FRITZ_WIFI_ENABLED}" != 1 ]; then
     [ ! -t 2 ] || printf '%s\n' 'fritz-wifi: disabled (FRITZ_WIFI_ENABLED=0) - nothing to do; see --help' >&2
     exit 0
 fi
-for n in "${FRITZ_WIFI_PORT}" "${FRITZ_WIFI_CONNECT_TIMEOUT}" "${FRITZ_WIFI_MAX_TIME}" "${FRITZ_WIFI_LIFETIME}"; do
+for n in "${FRITZ_WIFI_PORT}" "${FRITZ_WIFI_CONNECT_TIMEOUT}" "${FRITZ_WIFI_MAX_TIME}" "${FRITZ_WIFI_RUN_BUDGET}" "${FRITZ_WIFI_LIFETIME}"; do
     case "${n}" in ''|*[!0-9]*) fail "Expected a positive integer, got '${n}'" ;; esac
     [ "${n}" -gt 0 ] || fail 'Port, timeouts and lifetime must be positive'
 done
 [ "${FRITZ_WIFI_PORT}" -le 65535 ] || fail "Invalid TR-064 port ${FRITZ_WIFI_PORT}"
+[ "${FRITZ_WIFI_RUN_BUDGET}" -lt 240 ] || fail 'The run budget must be below the task MAXTIME of 240 seconds'
 case "${FRITZ_WIFI_COLUMN}" in ''|*[!a-z0-9_-]*) fail 'The column name must be lowercase letters, digits, _ or -' ;; esac
 case "${FRITZ_WIFI_TAG}" in ''|*[!A-Za-z0-9_-]*) fail 'Invalid hosts.cfg tag' ;; esac
 case "${FRITZ_WIFI_USER}" in *:*) fail 'The TR-064 user name must not contain a colon' ;; esac
@@ -264,6 +269,14 @@ mkdir -p "${FRITZ_WIFI_STATE_DIR}" || fail "Cannot create state directory ${FRIT
 exec 9>"${FRITZ_WIFI_STATE_DIR}/lock" || fail "Cannot open ${FRITZ_WIFI_STATE_DIR}/lock"
 flock -n 9 || { log debug 'Another fritz-wifi run holds the lock'; exit 0; }
 work=$(mktemp -d "${FRITZ_WIFI_STATE_DIR}/run.XXXXXX") || fail 'Cannot create temporary directory'
+poll_deadline=$(($(date +%s) + FRITZ_WIFI_RUN_BUDGET))
+
+# Reserve time for status delivery: a request may consume MAX_TIME even
+# when the device never replies. Expired requests are never started.
+request_time_available() {
+    now=$(date +%s) || fail 'Cannot read the current time'
+    [ "$((now + FRITZ_WIFI_MAX_TIME))" -le "${poll_deadline}" ]
+}
 
 # ----------------------------------------------------------------------
 # Host list: hosts.cfg flattened by Xymon's own parser (includes!), like
@@ -414,10 +427,12 @@ field() {
 # all GetSecurityKeys (it returns the Wi-Fi passphrase) is never sent.
 # Sets HTTPCODE, ERRCODE and CURLERR. Returns 0 = HTTP 200, 1 = transport
 # error or timeout, 2 = authentication refused (401, UPnP 606),
-# 3 = array index invalid (UPnP 713), 4 = any other error.
+# 3 = array index invalid (UPnP 713), 4 = any other error,
+# 5 = run time budget exhausted before the request.
 soap() {
     s_path=${1} s_inst=${2} s_act=${3} s_args=''
     HTTPCODE='' ERRCODE='' CURLERR=''
+    request_time_available || return 5
     case "${s_act}" in
         GetInfo|GetTotalAssociations) ;;
         GetGenericAssociatedDeviceInfo) s_args="<NewAssociatedDeviceIndex>${4}</NewAssociatedDeviceIndex>" ;;
@@ -531,6 +546,11 @@ collect_host() {
 
     # The device description lists the WLANConfiguration instances and
     # their control URLs; it needs no login.
+    if ! request_time_available; then
+        note yellow 'run time budget exhausted before reading the TR-064 device description'
+        summary='run time budget exhausted'
+        return 1
+    fi
     : >"${hw}/resp"
     HTTPCODE=$("${FRITZ_WIFI_CURL}" --silent --show-error \
         --connect-timeout "${FRITZ_WIFI_CONNECT_TIMEOUT}" --max-time "${FRITZ_WIFI_MAX_TIME}" \
@@ -575,6 +595,7 @@ collect_host() {
             0) ;;
             1) note red "$(soap_problem 1)"; summary='unreachable'; return 1 ;;
             2) note yellow "$(soap_problem 2)"; summary='authentication failed'; return 1 ;;
+            5) note yellow 'run time budget exhausted before GetInfo'; summary='run time budget exhausted'; return 1 ;;
             *) note yellow "$(soap_problem "${c_rc}" GetInfo "${inst}")"; partial=1; continue ;;
         esac
         i_enable=$(field NewEnable)
@@ -585,8 +606,8 @@ collect_host() {
         i_standard=$(field NewStandard | tr -cd 'A-Za-z0-9_.,+/-')
         i_band=$(field NewX_AVM-DE_FrequencyBand)
         is_uint "${i_band}" || i_band=''
-        if [ -z "${i_enable}" ] && [ -z "${i_status}" ]; then
-            note yellow "TR-064 GetInfo on WLANConfiguration:${inst} returned no NewEnable/NewStatus - unexpected response"
+        if [ "${i_enable}" != 0 ] && [ "${i_enable}" != 1 ]; then
+            note yellow "TR-064 GetInfo on WLANConfiguration:${inst} returned missing or invalid NewEnable"
             partial=1
             continue
         fi
@@ -635,6 +656,7 @@ collect_host() {
                     fi ;;
                 1) note red "$(soap_problem 1)"; summary='unreachable'; return 1 ;;
                 2) note yellow "$(soap_problem 2)"; summary='authentication failed'; return 1 ;;
+                5) note yellow 'run time budget exhausted before GetTotalAssociations'; summary='run time budget exhausted'; return 1 ;;
                 *) note yellow "$(soap_problem "${c_rc}" GetTotalAssociations "${inst}")"; i_color=yellow ;;
             esac
         fi
@@ -660,6 +682,7 @@ collect_host() {
                 1) note red "$(soap_problem 1)"; summary='unreachable'; return 1 ;;
                 2) note yellow "$(soap_problem 2)"; summary='authentication failed'; return 1 ;;
                 3) log debug "${host}: client ${idx} on WLANConfiguration:${inst} left during the poll"; break ;;
+                5) log debug "${host}: run time budget exhausted before client detail ${idx}"; break ;;
                 *) log warning "${host}: $(soap_problem "${c_rc}" GetGenericAssociatedDeviceInfo "${inst}")"; break ;;
             esac
             c_speed=$(field NewX_AVM-DE_Speed)
@@ -783,7 +806,8 @@ poll_host() {
         if [ "${nif}" -eq 0 ]; then
             [ "${color}" != green ] || color=clear
             [ -s "${hw}/notes" ] || printf '%s\n' 'no enabled Wi-Fi network on this device' >>"${hw}/notes"
-            summary='no enabled Wi-Fi network'
+            if [ "${partial}" = 1 ]; then summary='TR-064 error'
+            else summary='no enabled Wi-Fi network'; fi
         else
             metric clients_total "${total:-U}"
             summary="${total:-n/a} client(s) on ${nif} AP interface(s)"

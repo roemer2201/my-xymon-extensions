@@ -99,6 +99,9 @@ case "$data" in *"</u:${action}>"*) ;; *) respond 502 '' ;; esac
 
 case "$action" in
     GetInfo)
+        if [ "$scenario" = noenable ]; then
+            sed '/<NewEnable>/d' "$FW_DATA/getinfo$inst.xml" >"$out"; printf 200; exit 0
+        fi
         if [ "$scenario" = notup ] && [ "$inst" = 2 ]; then
             sed 's|<NewStatus>Up<|<NewStatus>Error<|' "$FW_DATA/getinfo$inst.xml" >"$out"; printf 200; exit 0
         fi

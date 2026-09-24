@@ -164,6 +164,24 @@ ok state_has channel_wl5g
 ok no_leak
 ok no_env_leak
 save_state
+ok grep -q -- '--max-time 3' "${FW_LOG}/argv"
+
+# --- an exhausted poll budget still sends a warning and unknowns ------
+run --set FRITZ_WIFI_RUN_BUDGET=1
+ok has '^status\+15 powerline3,lan\.wifi yellow .* - wifi: run time budget exhausted$'
+ok has '^&yellow run time budget exhausted before reading the TR-064 device description$'
+ok rrd clients_total U
+ok rrd channel_wl5g U
+ok not asked 'GetInfo'
+ok state_unchanged
+
+# --- an incomplete GetInfo must not be mistaken for disabled Wi-Fi ---
+FW_SCENARIO=noenable run
+ok has '^status\+15 powerline3,lan\.wifi yellow .* - wifi: TR-064 error$'
+ok has '^&yellow TR-064 GetInfo on WLANConfiguration:1 returned missing or invalid NewEnable$'
+ok rrd clients_wl2g_ap1 U
+ok rrd clients_total U
+ok state_unchanged
 
 # --- a wrong password is a login failure, never "0 clients" ------------
 FW_PASS='other' run
