@@ -131,12 +131,24 @@ and restarts nothing.
    test.
 
 2. **Password file** `/etc/xymon/my-xymon-extensions-server/fritz.passwd`,
-   owned by xymon, mode 600 (an example ships in the documentation
-   directory as `fritz.passwd.example`):
+   created from the example in the documentation directory (format
+   description and commented example lines). Either owned by xymon,
+   mode 600:
 
    ```
-   install -o xymon -g xymon -m 600 /dev/null /etc/xymon/my-xymon-extensions-server/fritz.passwd
+   install -o xymon -g xymon -m 600 /usr/share/doc/my-xymon-extensions-server/fritz-wifi/fritz.passwd.example /etc/xymon/my-xymon-extensions-server/fritz.passwd
    ```
+
+   or owned by root and readable by the group xymon, mode 640 - the
+   collector can then read, but not change the file:
+
+   ```
+   install -o root -g xymon -m 640 /usr/share/doc/my-xymon-extensions-server/fritz-wifi/fritz.passwd.example /etc/xymon/my-xymon-extensions-server/fritz.passwd
+   ```
+
+   Then edit it (e.g. `sudoedit`) and uncomment or add one line per
+   device. The examples alone are only comments: without an active line
+   every device stays yellow ("no password").
 
    One line per device - host name or IP, user, password:
 
@@ -154,8 +166,11 @@ and restarts nothing.
    - The password is the rest of the line: blanks, `"` and `\` are
      fine; blanks at its start and end are removed.
    - The file is read as data, never sourced. It is rejected unless it
-     is a regular file owned by the running user without any group or
-     other permission - the collector then turns every device yellow.
+     is a regular file that is either owned by the running user without
+     any group or other permission (600, 400), or owned by root with the
+     running user's **primary** group, read-only for that group and
+     nothing for others (640, 440). Every member of that group can read
+     the passwords. A rejected file turns every device yellow.
 
 3. **Preview** as xymon, read-only (sends nothing, keeps the state):
 
@@ -198,6 +213,14 @@ sudo -u xymon xymoncmd --env=/etc/xymon/xymonserver.cfg /usr/lib/xymon/server/ex
   with `"` and `\` escaped as curl's config syntax requires), never on
   a command line (`ps`), in a log, in the debug or dry-run output.
   `FRITZPASSWORT` is removed from the environment before curl runs.
+- curl is called with `--digest --ntlm`: `--digest` alone makes curl
+  send its first, unauthenticated request with an empty body, which the
+  device answers with UPnP error 502 ("XML error") instead of a login
+  challenge. With two methods allowed curl sends the full request and
+  picks Digest from the challenge. Basic authentication (`--anyauth`)
+  is never allowed. The curl build needs NTLM support (Debian, Ubuntu
+  and Rocky Linux have it); without it curl refuses `--ntlm` and the
+  status names that error.
 - TR-064 runs over plain HTTP with Digest authentication (the device
   answers with a `Digest ... algorithm=MD5, qop="auth"` challenge): the
   password does not travel in clear text, the responses (SSIDs, client

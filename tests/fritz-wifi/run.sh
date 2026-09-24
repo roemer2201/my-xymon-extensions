@@ -165,6 +165,15 @@ ok no_leak
 ok no_env_leak
 save_state
 ok grep -q -- '--max-time 3' "${FW_LOG}/argv"
+# Two auth methods, so curl sends the body at once (see fakecurl); never
+# a method that could send the password in clear text.
+ok grep -q -- '--digest --ntlm --config -' "${FW_LOG}/argv"
+ok not grep -q -e '--anyauth' -e '--basic' "${FW_LOG}/argv"
+# The emulation itself: --digest alone gets the device's UPnP error 502.
+printf 'user = "xymon:x"\n' | "${HERE}/fakecurl" --digest --config - --output "${TMP}/probe" \
+    --data x http://192.0.2.1:49000/upnp/control/wlanconfig1 >"${TMP}/probe.code" 2>/dev/null
+ok grep -qx 500 "${TMP}/probe.code"
+ok grep -q '<errorCode>502</errorCode>' "${TMP}/probe"
 
 # --- an exhausted poll budget still sends a warning and unknowns ------
 run --set FRITZ_WIFI_RUN_BUDGET=1
@@ -285,9 +294,50 @@ ok has ' yellow .* - wifi: authentication failed$'
 chmod 644 "${PASSFILE}"
 FW_USER=admin FW_PASS='right secret' run
 ok has ' yellow .* - wifi: no password$'
-ok has 'rejected: it must be a regular file owned by uid [0-9]+ without any group/other permission \(chmod 600\)'
+ok has 'rejected: it must be a regular file owned by uid [0-9]+ without any group/other permission \(chmod 600\), or owned by root with group gid [0-9]+, group read-only and no other permission \(chmod 640\)'
 ok err_has 'rejected'
 ok not asked 'GetInfo'
+# Group write is refused for the collector's own file as well.
+chmod 620 "${PASSFILE}"
+FW_USER=admin FW_PASS='right secret' run
+ok has ' yellow .* - wifi: no password$'
+
+# --- root-owned password file, read-only for the collector's group ------
+# chown to root needs root or passwordless sudo (the CI runner has it).
+# shellcheck disable=SC2317,SC2329 # Invoked via ok's command argument.
+as_root() {
+    if [ "$(id -u)" = 0 ]; then "${@}"; else sudo -n "${@}" 2>/dev/null; fi
+}
+mygid=$(id -g)
+if [ "${mygid}" = 0 ]; then othergid=1; else othergid=0; fi
+printf '%s\n' '192.0.2.1   admin   right secret' >"${PASSFILE}"
+chmod 640 "${PASSFILE}"
+if as_root chown 0:"${mygid}" "${PASSFILE}"; then
+    FW_USER=admin FW_PASS='right secret' run
+    ok has ' green .* - wifi: 2 client\(s\)'
+    ok err_lacks 'rejected'
+    ok no_leak
+    as_root chmod 440 "${PASSFILE}"
+    FW_USER=admin FW_PASS='right secret' run
+    ok has ' green .* - wifi: 2 client\(s\)'
+    # Group write, other read and a foreign group are refused.
+    as_root chmod 660 "${PASSFILE}"
+    FW_USER=admin FW_PASS='right secret' run
+    ok has ' yellow .* - wifi: no password$'
+    ok err_has 'rejected'
+    as_root chmod 644 "${PASSFILE}"
+    FW_USER=admin FW_PASS='right secret' run
+    ok has ' yellow .* - wifi: no password$'
+    as_root chmod 640 "${PASSFILE}"
+    as_root chgrp "${othergid}" "${PASSFILE}"
+    FW_USER=admin FW_PASS='right secret' run
+    ok has ' yellow .* - wifi: no password$'
+    ok err_has 'rejected'
+else
+    printf '%s\n' 'skip: fritz-wifi root-owned password file (needs root or sudo -n)'
+fi
+# The directory belongs to the test user, so the file can be removed.
+rm -f "${PASSFILE}"
 cat >"${PASSFILE}" <<'EOF'
 # nothing for this device
 other.lan   -   secret
@@ -297,9 +347,35 @@ EOF
 chmod 600 "${PASSFILE}"
 run
 ok has ' yellow .* - wifi: no password$'
-ok has '^&yellow no password for powerline3\.lan or 192\.0\.2\.1 in '
+ok has '^&yellow no password for powerline3\.lan or 192\.0\.2\.1 in .* \(1 malformed line ignored: line 3 - expected host, user and password\)$'
 ok syslog_has 'line 3: expected host, user and password'
 ok syslog_has 'line 4: duplicate entry for other\.lan, line 2 wins'
+# A line without the user column (a real setup mistake): the status
+# names the line by number, never its content.
+printf '%s\n' '192.0.2.1 geheim' >"${PASSFILE}"
+chmod 600 "${PASSFILE}"
+FW_USER=xymon FW_PASS='geheim' run
+ok has ' yellow .* - wifi: no password$'
+ok has '^&yellow no password for powerline3\.lan or 192\.0\.2\.1 in .* \(1 malformed line ignored: line 1 - expected host, user and password\)$'
+ok no_leak
+ok not asked 'GetInfo'
+# More than five: five numbers, then an ellipsis; a colon in the user.
+{
+    printf '%s\n' 'a.lan x' 'b.lan x' 'c.lan us:er pw' 'd.lan x' 'e.lan x' 'f.lan x'
+    printf '%s\n' '192.0.2.1   admin   right secret'
+} >"${PASSFILE}"
+FW_USER=admin FW_PASS='right secret' run
+ok has ' green .* - wifi: 2 client\(s\)'
+ok lacks 'malformed'
+FW_USER=admin FW_PASS='right secret' run --host other.lan
+ok has '\(6 malformed lines ignored: line 1 - expected host, user and password; line 2 - expected host, user and password; line 3 - the user must not contain a colon; line 4 - expected host, user and password; line 5 - expected host, user and password; \.\.\.\)$'
+# The shipped example, installed unchanged, is all comments: no warning.
+cp "${REPO}/extensions/fritz-wifi/fritz.passwd.example" "${PASSFILE}"
+chmod 600 "${PASSFILE}"
+run
+ok has ' yellow .* - wifi: no password$'
+ok not syslog_has 'line [0-9]+:'
+ok lacks 'malformed'
 rm -f "${PASSFILE}"
 run
 ok has '^&yellow no password for powerline3\.lan: no password file at '

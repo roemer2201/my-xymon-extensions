@@ -243,6 +243,13 @@ RRD graphs need a one-time setup on the Xymon SERVER (not here):
 EOF
 
 %changelog
+* Thu Sep 24 2026 roemer2201 <r.oliver@web.de> - 0.24.1-1
+- no change to this package. The version follows the repository-wide
+  VERSION file, which 0.24.1 moved for the server-only fritz-wifi
+  collector (Debian server package only): its password file may now
+  also be owned by root and read-only for the xymon group (root:xymon,
+  mode 640), and the documented setup creates it from the shipped
+  example with commented example lines
 * Wed Sep 23 2026 roemer2201 <r.oliver@web.de> - 0.24.0-1
 - wifi: the status details are wrapped in ncv_skip markers. xymond_rrd
   also feeds the status text of the NCV wifi column to the NCV parser,

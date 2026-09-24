@@ -8,9 +8,14 @@
 # The password may contain blanks and any character; blanks at its start
 # and end are removed. Blank lines and lines starting with # are ignored.
 #
-# The file must belong to the user running the collector (xymon) and
-# must not be accessible by anyone else, or it is rejected:
-#   install -o xymon -g xymon -m 600 /dev/null /etc/xymon/my-xymon-extensions-server/fritz.passwd
+# Two layouts are accepted, anything else is rejected. Either the file
+# belongs to the user running the collector (xymon) and nobody else may
+# access it:
+#   install -o xymon -g xymon -m 600 /usr/share/doc/my-xymon-extensions-server/fritz-wifi/fritz.passwd.example /etc/xymon/my-xymon-extensions-server/fritz.passwd
+# or it belongs to root and only the collector's primary group may read
+# it (the collector then cannot change it):
+#   install -o root -g xymon -m 640 /usr/share/doc/my-xymon-extensions-server/fritz-wifi/fritz.passwd.example /etc/xymon/my-xymon-extensions-server/fritz.passwd
 #
+# Examples - copy a line, remove the leading "#" and fill in your values:
 #powerline3.lan   -       my password here
 #192.168.5.7      xymon   another_password

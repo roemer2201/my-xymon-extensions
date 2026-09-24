@@ -12,11 +12,16 @@
 #   FW_CLIENTS1/2 client counts reported for instance 1/2 (default 1)
 #   FW_DOWN      host names/IPs that refuse connections (curl exit 7)
 #   FW_SLOW      host names/IPs that time out (curl exit 28)
+#
+# Authentication like the device and curl: a SOAP call with --digest as
+# the only method arrives as curl's empty probe body, which the device
+# answers with UPnP error 502 (never a 401 challenge). --anyauth and
+# --basic are refused outright: they could send the password in clear.
 set -u
 printf '%s\n' "$*" >>"${FW_LOG}/argv"
 [ -z "${FRITZPASSWORT+x}" ] || printf 'FRITZPASSWORT reached curl\n' >>"${FW_LOG}/envleak"
 
-out='' url='' action='' data='' config=0
+out='' url='' action='' data='' config=0 digest=0 ntlm=0
 while [ "$#" -gt 0 ]; do
     case "$1" in
         --output) out=$2; shift 2 ;;
@@ -30,7 +35,10 @@ while [ "$#" -gt 0 ]; do
         --config) [ "$2" = - ] || { echo "fakecurl: config not on stdin" >&2; exit 2; }
                   config=1; shift 2 ;;
         --connect-timeout|--max-time) shift 2 ;;
-        --silent|--show-error|--digest) shift ;;
+        --digest) digest=1; shift ;;
+        --ntlm) ntlm=1; shift ;;
+        --anyauth|--basic) echo "fakecurl: $1 may send the password in clear text" >&2; exit 98 ;;
+        --silent|--show-error) shift ;;
         -*) echo "fakecurl: unexpected option $1" >&2; exit 2 ;;
         *) url=$1; shift ;;
     esac
@@ -69,6 +77,11 @@ case "$path" in
     *) respond 404 '' ;;
 esac
 
+# A single auth method makes curl probe with an empty body first.
+if [ "$config" = 1 ] && [ "$digest" = 1 ] && [ "$ntlm" = 0 ]; then
+    respond 500 "$FW_DATA/fault502.xml"
+fi
+
 # Digest credentials arrive as one curl config line: user = "USER:PASS"
 # with \\ and \" escaped. Unescape and compare, like the device would.
 creds=bad
@@ -94,8 +107,8 @@ case "$action" in
     GetInfo|GetTotalAssociations|GetGenericAssociatedDeviceInfo) ;;
     *) echo "fakecurl: action $action is not allowed" >&2; exit 99 ;;
 esac
-# The device answers a self-closing action element with 502.
-case "$data" in *"</u:${action}>"*) ;; *) respond 502 '' ;; esac
+# The device answers a self-closing action element with UPnP error 502.
+case "$data" in *"</u:${action}>"*) ;; *) respond 500 "$FW_DATA/fault502.xml" ;; esac
 
 case "$action" in
     GetInfo)

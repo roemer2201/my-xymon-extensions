@@ -18,6 +18,10 @@ Synthesized from the SCPD element names and the values measured by hand
 - `generic1.xml`, `generic2.xml` - GetGenericAssociatedDeviceInfo with
   one client (2.4 GHz: 144 Mbit/s, signal 92, width 20; 5 GHz: 866,
   91, 80)
+- `fault502.xml` - the HTTP 500 SOAP fault for a request body the device
+  cannot parse: `fault713.xml` with the error code 502 and the
+  description "XML error" observed on the device (for a self-closing
+  action element, and for the empty body of curl's `--digest` probe)
 
 `fakecurl` derives the remaining variants (client counts, a network that
 is not up, protocol errors) from these files at runtime. The action that

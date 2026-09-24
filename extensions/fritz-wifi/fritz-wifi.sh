@@ -10,7 +10,7 @@
 # login becomes a graph gap, never a zero. Metrics TR-064 does not
 # provide (busy, noise, airtime, retries, throughput) are not created.
 #
-# Version: 1.0.1  (2026-09-24)
+# Version: 1.2.0  (2026-09-24)
 #
 # Program flow:
 # 1. Resolve settings (defaults < config < environment < CLI), validate
@@ -28,7 +28,7 @@
 # Usage: fritz-wifi.sh --config FILE [--host NAME] [--dry-run] [--help]
 set -u
 CONFIG_NAME=fritz-wifi.cfg
-SCRIPT_VERSION=1.0.1
+SCRIPT_VERSION=1.2.0
 
 usage() {
     cat <<'EOF'
@@ -89,9 +89,11 @@ switch overrides the other one's setting. Automated runs log via syslog
 Password file: one "host_or_ip user password" line per device; the
 password is the rest of the line (spaces allowed, leading/trailing blanks
 removed), "-" as user means "xymon". Blank lines and "#" lines are
-ignored. It must be owned by the running user and have no group/other
-permissions (chmod 600), or it is rejected. Passwords reach curl only on
-stdin, never on its command line.
+ignored. It must be a regular file either owned by the running user
+without any group/other permission (chmod 600), or owned by root with
+the running user's primary group, read-only for that group and nothing
+for others (chown root:xymon, chmod 640); anything else is rejected.
+Passwords reach curl only on stdin, never on its command line.
 
 Example: fritz-wifi.sh --host powerline3.lan --ask-password --dry-run
 EOF
@@ -319,10 +321,14 @@ fi
 # ----------------------------------------------------------------------
 # Password file: read as data, never sourced. Only a regular file owned
 # by the running user without any group/other permission is used - the
-# same rule ssh applies to private keys.
+# same rule ssh applies to private keys - or one owned by root that only
+# the running user's primary group may read (root:xymon 640): then the
+# collector cannot change the file, and no one outside that group can
+# read it. Group write access is refused in both layouts.
 # ----------------------------------------------------------------------
 passfile_ok=0
 passfile_problem=''
+passfile_malformed=''
 check_passfile() {
     pf=${FRITZ_WIFI_PASSFILE}
     if [ -z "${pf}" ] || { [ ! -e "${pf}" ] && [ ! -L "${pf}" ]; }; then
@@ -330,9 +336,13 @@ check_passfile() {
         return
     fi
     uid=$(id -u) || { passfile_problem='cannot determine the own user id'; return; }
-    # find -prune tests the path itself; a symlink fails -type f.
-    if [ -z "$(find "${pf}" -prune -type f -user "${uid}" ! -perm -040 ! -perm -020 ! -perm -010 ! -perm -004 ! -perm -002 ! -perm -001 -print)" ]; then
-        passfile_problem="password file ${pf} rejected: it must be a regular file owned by uid ${uid} without any group/other permission (chmod 600)"
+    gid=$(id -g) || { passfile_problem='cannot determine the own group id'; return; }
+    # find -prune tests the path itself; a symlink fails -type f. Two
+    # separate calls instead of \( ... -o ... \) keep the expressions
+    # simple for every find implementation.
+    if [ -z "$(find "${pf}" -prune -type f -user "${uid}" ! -perm -040 ! -perm -020 ! -perm -010 ! -perm -004 ! -perm -002 ! -perm -001 -print)" ] &&
+        [ -z "$(find "${pf}" -prune -type f -user 0 -group "${gid}" -perm -040 ! -perm -020 ! -perm -010 ! -perm -004 ! -perm -002 ! -perm -001 -print)" ]; then
+        passfile_problem="password file ${pf} rejected: it must be a regular file owned by uid ${uid} without any group/other permission (chmod 600), or owned by root with group gid ${gid}, group read-only and no other permission (chmod 640)"
         log error "${passfile_problem}"
         return
     fi
@@ -343,7 +353,7 @@ check_passfile() {
     fi
     passfile_ok=1
     # Report malformed and duplicate lines by number, never by content.
-    awk '
+    pf_msgs=$(awk '
         { sub(/\r$/, "") }
         /^[ \t]*$/ || /^[ \t]*#/ { next }
         {
@@ -354,9 +364,22 @@ check_passfile() {
             k = tolower(f[1])
             if (k in seen) print "line " NR ": duplicate entry for " f[1] ", line " seen[k] " wins"
             else seen[k] = NR
-        }' "${pf}" | while IFS= read -r msg; do
+        }' "${pf}") || pf_msgs=''
+    [ -z "${pf_msgs}" ] || printf '%s\n' "${pf_msgs}" | while IFS= read -r msg; do
         log warning "${pf} ${msg}"
     done
+    # The malformed lines (not the duplicates) also go into the status of
+    # a host without a password: a line lacking the user column is the
+    # likely reason, and the syslog warning is easily missed. Numbers
+    # only, at most five of them.
+    passfile_malformed=$(printf '%s\n' "${pf_msgs}" | awk '
+        /^line [0-9]+: / && !/: duplicate entry / {
+            n++; sub(/: /, " - ")
+            if (n <= 5) list = list (n > 1 ? "; " : "") $0
+        }
+        END {
+            if (n) printf "%d malformed line%s ignored: %s%s", n, (n > 1 ? "s" : ""), list, (n > 5 ? "; ..." : "")
+        }')
 }
 
 # lookup_password NAME IP - prints "user", a newline and the password of
@@ -442,8 +465,14 @@ soap() {
     : >"${hw}/resp"
     # The action element needs its own closing tag: the reference device
     # answers a self-closing one with "502 XML error".
+    # --digest --ntlm, not --digest alone: with a single method curl sends
+    # its first, unauthenticated POST as an empty "probe" (lib/http.c),
+    # and the device answers the empty body with UPnP error 502 instead
+    # of the 401 challenge. With two methods curl sends the full body,
+    # then picks Digest from the challenge. Not --anyauth: that would
+    # fall back to Basic, the password in clear text over plain HTTP.
     HTTPCODE=$(printf '%s\n' "${cred_config}" | "${FRITZ_WIFI_CURL}" --silent --show-error \
-        --digest --config - \
+        --digest --ntlm --config - \
         --connect-timeout "${FRITZ_WIFI_CONNECT_TIMEOUT}" --max-time "${FRITZ_WIFI_MAX_TIME}" \
         --output "${hw}/resp" --write-out '%{http_code}' \
         --header 'Content-Type: text/xml; charset="utf-8"' \
@@ -531,7 +560,7 @@ collect_host() {
         c_pass=${c_entry#*"${NL}"}
     else
         if [ "${passfile_ok}" = 1 ]; then
-            note yellow "no password for ${host}${ip:+ or ${ip}} in ${FRITZ_WIFI_PASSFILE}"
+            note yellow "no password for ${host}${ip:+ or ${ip}} in ${FRITZ_WIFI_PASSFILE}${passfile_malformed:+ (${passfile_malformed})}"
         else
             note yellow "no password for ${host}: ${passfile_problem}"
         fi

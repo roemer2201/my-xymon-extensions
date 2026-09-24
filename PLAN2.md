@@ -44,6 +44,9 @@ Server package only (my-xymon-extensions-server, Debian/Ubuntu).
   trimmed; `-` as user means the default `xymon`. Blank and `#` lines are
   ignored. Parsed, never sourced. Must be a regular file owned by the
   running user without any group/other permission, else it is rejected.
+  Added in 0.24.1 (fritz-wifi.sh 1.1.0): a root-owned file that only
+  the running user's primary group may read (root:xymon 640) is accepted
+  as well.
 - Password precedence: `--ask-password` (tty, echo off via stty) >
   `FRITZPASSWORT` > password file. User precedence: `FRITZ_WIFI_USER`
   (CLI/env/config) > file column > `xymon`.
@@ -96,3 +99,13 @@ involved. The per-client responses (GetGenericAssociatedDeviceInfo with a
 connected client) are synthesized, and `curl --digest` (instead of the
 measured `--anyauth`) is untested against the device - both are the first
 checks of a real `--dry-run --debug`.
+
+First real device run (0.24.1): `curl --digest` failed on every SOAP call
+with HTTP 500 / UPnP error 502. With a single method curl sends its first,
+unauthenticated POST with an empty body as a probe (curl lib/http.c), which
+the device rejects as an XML error instead of answering with the 401
+challenge. fritz-wifi.sh 1.2.0 calls curl with `--digest --ntlm`: curl then
+sends the full body first and picks Digest from the challenge, while Basic
+(what `--anyauth` could fall back to) is never allowed. Reproduced and
+verified against a local test server with curl 8.5.0; the device run is
+pending.
