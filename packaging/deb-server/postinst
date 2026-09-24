@@ -100,7 +100,8 @@ case "${1:-}" in
         echo "       powerline/README.md, then uncomment the single rule"
         echo "       line there to grant it. Validate with: visudo -c"
         echo " NOTE: fritz-wifi is disabled by default (FRITZ_WIFI_ENABLED=0)."
-        echo "       It needs a password file owned by xymon, mode 600 - see"
+        echo "       It needs a password file (xymon mode 600, or root:xymon"
+        echo "       mode 640) - see"
         echo "       fritz-wifi/README.md in /usr/share/doc/my-xymon-extensions-server."
         unsafe=$(unsafe_path_components "$HELPER")
         if [ -n "$unsafe" ]; then

@@ -285,9 +285,50 @@ ok has ' yellow .* - wifi: authentication failed$'
 chmod 644 "${PASSFILE}"
 FW_USER=admin FW_PASS='right secret' run
 ok has ' yellow .* - wifi: no password$'
-ok has 'rejected: it must be a regular file owned by uid [0-9]+ without any group/other permission \(chmod 600\)'
+ok has 'rejected: it must be a regular file owned by uid [0-9]+ without any group/other permission \(chmod 600\), or owned by root with group gid [0-9]+, group read-only and no other permission \(chmod 640\)'
 ok err_has 'rejected'
 ok not asked 'GetInfo'
+# Group write is refused for the collector's own file as well.
+chmod 620 "${PASSFILE}"
+FW_USER=admin FW_PASS='right secret' run
+ok has ' yellow .* - wifi: no password$'
+
+# --- root-owned password file, read-only for the collector's group ------
+# chown to root needs root or passwordless sudo (the CI runner has it).
+# shellcheck disable=SC2317,SC2329 # Invoked via ok's command argument.
+as_root() {
+    if [ "$(id -u)" = 0 ]; then "${@}"; else sudo -n "${@}" 2>/dev/null; fi
+}
+mygid=$(id -g)
+if [ "${mygid}" = 0 ]; then othergid=1; else othergid=0; fi
+printf '%s\n' '192.0.2.1   admin   right secret' >"${PASSFILE}"
+chmod 640 "${PASSFILE}"
+if as_root chown 0:"${mygid}" "${PASSFILE}"; then
+    FW_USER=admin FW_PASS='right secret' run
+    ok has ' green .* - wifi: 2 client\(s\)'
+    ok err_lacks 'rejected'
+    ok no_leak
+    as_root chmod 440 "${PASSFILE}"
+    FW_USER=admin FW_PASS='right secret' run
+    ok has ' green .* - wifi: 2 client\(s\)'
+    # Group write, other read and a foreign group are refused.
+    as_root chmod 660 "${PASSFILE}"
+    FW_USER=admin FW_PASS='right secret' run
+    ok has ' yellow .* - wifi: no password$'
+    ok err_has 'rejected'
+    as_root chmod 644 "${PASSFILE}"
+    FW_USER=admin FW_PASS='right secret' run
+    ok has ' yellow .* - wifi: no password$'
+    as_root chmod 640 "${PASSFILE}"
+    as_root chgrp "${othergid}" "${PASSFILE}"
+    FW_USER=admin FW_PASS='right secret' run
+    ok has ' yellow .* - wifi: no password$'
+    ok err_has 'rejected'
+else
+    printf '%s\n' 'skip: fritz-wifi root-owned password file (needs root or sudo -n)'
+fi
+# The directory belongs to the test user, so the file can be removed.
+rm -f "${PASSFILE}"
 cat >"${PASSFILE}" <<'EOF'
 # nothing for this device
 other.lan   -   secret
@@ -300,6 +341,12 @@ ok has ' yellow .* - wifi: no password$'
 ok has '^&yellow no password for powerline3\.lan or 192\.0\.2\.1 in '
 ok syslog_has 'line 3: expected host, user and password'
 ok syslog_has 'line 4: duplicate entry for other\.lan, line 2 wins'
+# The shipped example, installed unchanged, is all comments: no warning.
+cp "${REPO}/extensions/fritz-wifi/fritz.passwd.example" "${PASSFILE}"
+chmod 600 "${PASSFILE}"
+run
+ok has ' yellow .* - wifi: no password$'
+ok not syslog_has 'line [0-9]+:'
 rm -f "${PASSFILE}"
 run
 ok has '^&yellow no password for powerline3\.lan: no password file at '

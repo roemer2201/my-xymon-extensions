@@ -131,12 +131,24 @@ and restarts nothing.
    test.
 
 2. **Password file** `/etc/xymon/my-xymon-extensions-server/fritz.passwd`,
-   owned by xymon, mode 600 (an example ships in the documentation
-   directory as `fritz.passwd.example`):
+   created from the example in the documentation directory (format
+   description and commented example lines). Either owned by xymon,
+   mode 600:
 
    ```
-   install -o xymon -g xymon -m 600 /dev/null /etc/xymon/my-xymon-extensions-server/fritz.passwd
+   install -o xymon -g xymon -m 600 /usr/share/doc/my-xymon-extensions-server/fritz-wifi/fritz.passwd.example /etc/xymon/my-xymon-extensions-server/fritz.passwd
    ```
+
+   or owned by root and readable by the group xymon, mode 640 - the
+   collector can then read, but not change the file:
+
+   ```
+   install -o root -g xymon -m 640 /usr/share/doc/my-xymon-extensions-server/fritz-wifi/fritz.passwd.example /etc/xymon/my-xymon-extensions-server/fritz.passwd
+   ```
+
+   Then edit it (e.g. `sudoedit`) and uncomment or add one line per
+   device. The examples alone are only comments: without an active line
+   every device stays yellow ("no password").
 
    One line per device - host name or IP, user, password:
 
@@ -154,8 +166,11 @@ and restarts nothing.
    - The password is the rest of the line: blanks, `"` and `\` are
      fine; blanks at its start and end are removed.
    - The file is read as data, never sourced. It is rejected unless it
-     is a regular file owned by the running user without any group or
-     other permission - the collector then turns every device yellow.
+     is a regular file that is either owned by the running user without
+     any group or other permission (600, 400), or owned by root with the
+     running user's **primary** group, read-only for that group and
+     nothing for others (640, 440). Every member of that group can read
+     the passwords. A rejected file turns every device yellow.
 
 3. **Preview** as xymon, read-only (sends nothing, keeps the state):
 
