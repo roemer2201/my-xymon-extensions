@@ -1,0 +1,6 @@
+Id=munge.service
+LoadState=loaded
+ActiveState=active
+SubState=running
+NRestarts=0
+Description=MUNGE authentication service

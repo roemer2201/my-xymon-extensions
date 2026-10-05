@@ -62,7 +62,7 @@ SKIP_EXTENSIONS="temp"
 # Every extension that produces RRD graphs. "disk" is missing on
 # purpose: it reports into the standard disk column and is handled by
 # the server's built-in parser, so it needs no server-side config.
-EXTENSIONS="smart temp la memory opkg fritzdsl fritzwan wifi if_link lxc xymonext powerline fritz-wifi"
+EXTENSIONS="smart temp la memory opkg fritzdsl fritzwan wifi if_link lxc systemd xymonext powerline fritz-wifi"
 
 skipped() { # skipped NAME
     for skip in $SKIP_EXTENSIONS; do

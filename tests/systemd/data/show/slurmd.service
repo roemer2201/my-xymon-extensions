@@ -1,0 +1,6 @@
+Id=slurmd.service
+LoadState=loaded
+ActiveState=active
+SubState=running
+NRestarts=2
+Description=Slurm node daemon

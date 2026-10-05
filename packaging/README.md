@@ -88,7 +88,7 @@ conffiles, into the drop-in directories Xymon reads them from:
 |---|---|
 | `TEST2RRD`, `NCV_*`/`SPLITNCV_*`, `GRAPHS*` | `/etc/xymon/xymonserver.d/<ext>.cfg` |
 | graph definitions | `/etc/xymon/graphs.d/<ext>.cfg` |
-| RRA archives (if_link only) | `/etc/xymon/rrddefinitions.d/if_link.cfg` |
+| RRA archives (if_link, systemd) | `/etc/xymon/rrddefinitions.d/if_link.cfg`, `systemd.cfg` |
 | per-extension server docs | `/usr/share/doc/my-xymon-extensions-server/<ext>/` |
 
 It depends on `xymon` (the Debian server package), the client package
@@ -142,7 +142,7 @@ Debian/Ubuntu or where the server package is not used:
 <docdir>/<extension>/server/README.md
 <docdir>/<extension>/server/xymonserver.d/<extension>.cfg
 <docdir>/<extension>/server/graphs.d/<extension>.cfg
-<docdir>/<extension>/server/rrddefinitions.d/<extension>.cfg   (if_link only)
+<docdir>/<extension>/server/rrddefinitions.d/<extension>.cfg   (if_link, systemd)
 ```
 
 Nothing installs them into a Xymon config directory — copy them over by

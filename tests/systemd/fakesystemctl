@@ -1,0 +1,74 @@
+#!/bin/sh
+# Fake systemctl for the unit tests: replays canned output.
+# FAKESYSTEMCTL_DIR points at the fixture directory:
+#   state       output of "is-system-running" (missing: bus error)
+#   units.txt   output of "list-units --all --no-legend --plain"
+#   units.fail  if present, list-units fails with a bus error
+#   show/<unit> KEY=VALUE lines of "show" for that unit (missing: the
+#               not-found answer systemd gives for an unknown unit)
+#   nrestarts   "<unit> <count>" lines; overrides NRestarts per unit
+# FAKESYSTEMCTL_NONR=1 simulates systemd < 235 (no NRestarts property).
+set -u
+dir="${FAKESYSTEMCTL_DIR:?FAKESYSTEMCTL_DIR must be set}"
+
+cmd=""
+units=""
+while [ $# -gt 0 ]; do
+    case "$1" in
+        -p|--property) shift ;;
+        --) ;;
+        -*) ;;
+        *)
+            if [ -z "$cmd" ]; then
+                cmd=$1
+            else
+                units="$units $1"
+            fi
+            ;;
+    esac
+    shift
+done
+
+case "$cmd" in
+    is-system-running)
+        if [ -f "$dir/state" ]; then
+            cat "$dir/state"
+            [ "$(cat "$dir/state")" = running ] && exit 0
+            exit 1
+        fi
+        echo "Failed to connect to bus: No such file or directory" >&2
+        exit 1
+        ;;
+    list-units)
+        if [ -f "$dir/units.fail" ]; then
+            echo "Failed to list units: Connection timed out" >&2
+            exit 1
+        fi
+        cat "$dir/units.txt"
+        ;;
+    show)
+        first=yes
+        for u in $units; do
+            case "$u" in *.*) ;; *) u="$u.service" ;; esac
+            [ "$first" = yes ] || echo ""
+            first=no
+            if [ -f "$dir/show/$u" ]; then
+                grep -v '^NRestarts=' "$dir/show/$u"
+                nr=$(sed -n 's/^NRestarts=//p' "$dir/show/$u")
+            else
+                printf 'Id=%s\nLoadState=not-found\nActiveState=inactive\nSubState=dead\nDescription=%s\n' "$u" "$u"
+                nr=0
+            fi
+            if [ -f "$dir/nrestarts" ]; then
+                o=$(awk -v u="$u" '$1 == u { print $2; exit }' "$dir/nrestarts")
+                [ -n "$o" ] && nr=$o
+            fi
+            [ "${FAKESYSTEMCTL_NONR:-0}" = 1 ] || printf 'NRestarts=%s\n' "${nr:-0}"
+        done
+        ;;
+    *)
+        echo "fakesystemctl: unsupported command '$cmd'" >&2
+        exit 1
+        ;;
+esac
+exit 0

@@ -41,6 +41,11 @@ Included extensions:
   the current state would miss short flaps); reports a clear status
   on FreeBSD - comment its clientlaunch.d snippet out to hide the
   column.
+* systemd - systemd service manager health (failed units, required
+  units, automatic service restarts). FreeBSD is not managed by
+  systemd, so the column reports a clear status here - comment its
+  clientlaunch.d snippet out or set SYSD_ENABLE=no in
+  systemd.cfg to hide or silence it.
 
 Requires net-mgmt/xymon-client and sysutils/smartmontools (>= 7.0).
 Activation steps (sudoers rule, clientlaunch.d include, server-side

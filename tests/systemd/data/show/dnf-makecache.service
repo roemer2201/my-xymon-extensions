@@ -1,0 +1,6 @@
+Id=dnf-makecache.service
+LoadState=loaded
+ActiveState=failed
+SubState=failed
+NRestarts=0
+Description=dnf makecache
