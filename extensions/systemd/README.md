@@ -61,6 +61,11 @@ call and compares it with the value of the previous poll (state file
   counter shows now therefore happened after that reset, i.e. since the
   previous poll, and is counted.
 - A service loaded since the previous poll: all its restarts are new.
+- An unloaded service: an already detected restart stays visible until
+  the hold expires. Its old counter is discarded, so a newly loaded
+  instance is treated as new without losing the earlier warning.
+- A failed counter query: at least yellow, no metrics for that poll;
+  the last successful snapshot and unexpired restart warnings remain.
 - The first poll after installation only records the counters.
 
 `NRestarts` exists since systemd 235 (Rocky 8 ships 239, Ubuntu 20.04

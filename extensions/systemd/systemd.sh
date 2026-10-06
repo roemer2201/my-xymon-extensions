@@ -16,6 +16,8 @@
 # A detected restart colors the column for SYSD_RESTART_HOLD seconds
 # (default 1800 = 30 min) after the last restart seen, so a single
 # crash does not vanish at the next poll.
+# The hold survives a unit being unloaded or a failed counter query;
+# query errors warn without discarding the last successful snapshot.
 #
 # Program flow:
 #   1. defaults -> config file -> SYSD_ENABLE ("no": report clear)
@@ -288,8 +290,10 @@ raise "$STATECOLOR"
 # names of the loaded services for the restart check below.
 # Columns with --plain: UNIT LOAD ACTIVE SUB DESCRIPTION...
 if ! sctl list-units --all --no-legend --plain > "$WORKDIR/units" 2>"$ERR"; then
-    short_report yellow "cannot query systemd" \
-"&yellow System state: ${SYSSTATE}
+    # A query error must not downgrade a known maintenance state.
+    raise yellow
+    short_report "${WORST}" "cannot query systemd" \
+"&${STATECOLOR} System state: ${SYSSTATE}
 
 &yellow systemctl list-units failed:
 $(err_text)"
@@ -409,6 +413,7 @@ fi
 # properties in systemctl's own order - so pair Id and NRestarts per
 # block instead of relying on their order.
 RESTARTS_OK=no
+RESTARTS_QUERY_FAILED=no
 : > "$WORKDIR/nrestarts"
 if [ -s "$WORKDIR/services" ]; then
     # shellcheck disable=SC2046  # one argument per unit name on purpose;
@@ -426,57 +431,90 @@ if [ -s "$WORKDIR/services" ]; then
             END             { flush() }' "$WORKDIR/show" > "$WORKDIR/nrestarts"
         # No NRestarts line at all: systemd older than 235.
         [ -s "$WORKDIR/nrestarts" ] && RESTARTS_OK=yes
+    else
+        RESTARTS_QUERY_FAILED=yes
+        raise yellow
     fi
+else
+    # An empty, successfully queried unit list is a valid snapshot.
+    RESTARTS_OK=yes
 fi
 
 # Compare with the previous poll. State file lines:
 #   T <timestamp of the poll>
 #   R <unit> <NRestarts> <time of the last restart seen> <restarts
 #     counted since the hold window started>
+#   H <unit> <last known NRestarts> <last restart time> <held count>
+# H retains an unloaded unit's warning, but not its counter baseline:
+# a newly loaded instance starts a new NRestarts counter.
 # Event lines (written to "events"): every unit that restarted in this
 # poll or is still inside its hold window:
 #   <unit> <NRestarts> <delta this poll> <time of last restart> <count>
 NEWSTATE="$WORKDIR/newstate"
 printf 'T %s\n' "$NOW" > "$NEWSTATE"
 : > "$WORKDIR/events"
-if [ "$RESTARTS_OK" = yes ]; then
-    awk -v sf="$STATEFILE" -v have="$HAVESTATE" -v now="$NOW" \
-        -v hold="$SYSD_RESTART_HOLD" -v ns="$NEWSTATE" '
-        BEGIN {
-            if (have == "yes")
-                while ((getline line < sf) > 0) {
-                    n = split(line, f, " ")
-                    if (f[1] == "R" && n >= 5) {
-                        pn[f[2]] = f[3]; pts[f[2]] = f[4]; pacc[f[2]] = f[5]
-                    }
+# Run even after a query failure so earlier events remain visible.
+# The resulting snapshot is committed only after a successful query.
+awk -v sf="$STATEFILE" -v have="$HAVESTATE" -v now="$NOW" \
+    -v hold="$SYSD_RESTART_HOLD" -v ns="$NEWSTATE" '
+    BEGIN {
+        if (have == "yes")
+            while ((getline line < sf) > 0) {
+                n = split(line, f, " ")
+                if ((f[1] == "R" || f[1] == "H") && n >= 5) {
+                    if (f[1] == "R") pn[f[2]] = f[3]
+                    pc[f[2]] = f[3]; pts[f[2]] = f[4]; pacc[f[2]] = f[5]
                 }
+            }
+    }
+    {
+        u = $1; c = $2 + 0; d = 0
+        seen[u] = 1
+        if (u in pn) {
+            # Lower than before: reset in between (manual start,
+            # reset-failed, reboot) - all of c happened after it.
+            d = (c >= pn[u]) ? c - pn[u] : c
+        } else if (have == "yes") {
+            d = c           # unit is new since the previous poll
         }
-        {
-            u = $1; c = $2 + 0; d = 0
-            if (u in pn) {
-                # Lower than before: reset in between (manual start,
-                # reset-failed, reboot) - all of c happened after it.
-                d = (c >= pn[u]) ? c - pn[u] : c
-            } else if (have == "yes") {
-                d = c           # unit is new since the previous poll
+        last = (u in pts) ? pts[u] + 0 : 0
+        acc = (u in pacc) ? pacc[u] + 0 : 0
+        if (d > 0) {
+            if (last > 0 && now - last < hold) acc += d
+            else acc = d
+            last = now
+        }
+        print "R", u, c, last, acc >> ns
+        if (d > 0 || (last > 0 && now - last < hold))
+            print u, c, d, last, acc
+    }
+    END {
+        # systemd may unload a stopped/transient unit. Keep its
+        # already detected event until the hold expires, without
+        # counting it again in the graph or retaining its baseline.
+        for (u in pts)
+            if (!(u in seen) && pts[u] > 0 && now - pts[u] < hold) {
+                print "H", u, pc[u], pts[u], pacc[u] >> ns
+                print u, pc[u], 0, pts[u], pacc[u]
             }
-            last = (u in pts) ? pts[u] + 0 : 0
-            acc = (u in pacc) ? pacc[u] + 0 : 0
-            if (d > 0) {
-                if (last > 0 && now - last < hold) acc += d
-                else acc = d
-                last = now
-            }
-            print "R", u, c, last, acc >> ns
-            if (d > 0 || (last > 0 && now - last < hold))
-                print u, c, d, last, acc
-        }' "$WORKDIR/nrestarts" > "$WORKDIR/events"
-fi
+    }' "$WORKDIR/nrestarts" > "$WORKDIR/events"
 
 NRESTARTS=0        # restarts since the previous poll (graphed)
 NRESTARTED=0       # services shown in the restart list
 : > "$WORKDIR/restarttxt"
-if [ "$RESTARTS_OK" = yes ]; then
+if [ "$RESTARTS_OK" != yes ]; then
+    # No property is expected on old systemd; a failed D-Bus call is
+    # instead an incomplete check and has already raised the color.
+    if [ "$RESTARTS_QUERY_FAILED" = yes ]; then
+        printf '\n&yellow Automatic restarts: cannot query counters:\n' \
+            >> "$WORKDIR/restarttxt"
+        err_text >> "$WORKDIR/restarttxt"
+    else
+        printf '\nAutomatic restarts: not available - systemctl show -p NRestarts gave no counter (systemd older than 235)\n' \
+            >> "$WORKDIR/restarttxt"
+    fi
+fi
+if [ "$RESTARTS_OK" = yes ] || [ -s "$WORKDIR/events" ]; then
     HOLDMIN=$((SYSD_RESTART_HOLD / 60))
     printf '\nAutomatic restarts (Restart=), last %s min:\n' "$HOLDMIN" \
         >> "$WORKDIR/restarttxt"
@@ -497,21 +535,10 @@ if [ "$RESTARTS_OK" = yes ]; then
     done < "$WORKDIR/events"
     [ "$NRESTARTED" -gt 0 ] || [ -s "$WORKDIR/events" ] ||
         printf 'none\n' >> "$WORKDIR/restarttxt"
-    if [ "$HAVESTATE" = no ]; then
+    if [ "$HAVESTATE" = no ] && [ "$RESTARTS_OK" = yes ]; then
         printf '(first poll: the restart counters are recorded now, restarts show from the next poll on)\n' \
             >> "$WORKDIR/restarttxt"
     fi
-else
-    {
-        printf '\nAutomatic restarts: not available - '
-        if [ -s "$WORKDIR/services" ]; then
-            printf 'systemctl show -p NRestarts gave no counter\n'
-            printf '(systemd older than 235, or the query failed):\n'
-            err_text
-        else
-            printf 'no loaded service found\n'
-        fi
-    } >> "$WORKDIR/restarttxt"
 fi
 
 # Remember this run's counters (best effort - a read-only $XYMONTMP

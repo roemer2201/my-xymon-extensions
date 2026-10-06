@@ -1861,7 +1861,7 @@ sysd_status() {
 # seen <seconds> ago (rewrites the state file)
 sysd_age() {
     awk -v u="$1" -v t="$(( $(date +%s) - $2 ))" \
-        '$1 == "R" && $2 == u { $4 = t } { print }' "$SYSDSTATE" \
+        '($1 == "R" || $1 == "H") && $2 == u { $4 = t } { print }' "$SYSDSTATE" \
         > "$SYSDSTATE.new" && mv "$SYSDSTATE.new" "$SYSDSTATE"
 }
 
@@ -2022,7 +2022,107 @@ echo degraded > "$FAKESYSTEMCTL_DIR/state"
 out=$(sysd_run)
 expect "$out" '^status testhost\.systemd yellow ' "a failing list-units reports yellow"
 expect "$out" 'Failed to list units: Connection timed out' "... with the message of systemctl"
+echo maintenance > "${FAKESYSTEMCTL_DIR}/state"
+out=$(sysd_run)
+expect "${out}" '^status testhost\.systemd red ' \
+    "a list-units failure cannot downgrade maintenance to yellow"
+expect "${out}" '^&red System state: maintenance$' \
+    "the known critical system state remains visible on query failure"
+echo degraded > "${FAKESYSTEMCTL_DIR}/state"
 rm -f "$FAKESYSTEMCTL_DIR/units.fail"
+
+# Restart holds survive unloading, including a snapshot with no services.
+# Reappearing units must use a fresh baseline, while retaining the event.
+export SYSD_IGNORE="*"
+cp "${TESTDIR}/systemd/data/units.txt" "${FAKESYSTEMCTL_DIR}/units.txt"
+rm -f "${SYSDSTATE}" "${FAKESYSTEMCTL_DIR}/nrestarts"
+sysd_run > /dev/null
+printf 'slurmd.service 3\n' > "${FAKESYSTEMCTL_DIR}/nrestarts"
+out=$(sysd_run)
+expect "${out}" '^&yellow slurmd\.service  1 restart\(s\)' \
+    "record a restart before the service is unloaded"
+awk '$1 != "slurmd.service"' "${FAKESYSTEMCTL_DIR}/units.txt" \
+    > "${FAKESYSTEMCTL_DIR}/units.new"
+mv "${FAKESYSTEMCTL_DIR}/units.new" "${FAKESYSTEMCTL_DIR}/units.txt"
+out=$(sysd_run)
+expect "${out}" '^status testhost\.systemd yellow ' \
+    "an unloaded unit keeps the restart color during the hold"
+expect "${out}" '^&yellow slurmd\.service  1 restart\(s\)' \
+    "an unloaded unit keeps its detected restart in the report"
+expect "${out}" '^restarts : 0$' "an unloaded held event is not graphed twice"
+expect "$(cat "${SYSDSTATE}")" '^H slurmd\.service 3 [0-9]+ 1$' \
+    "unloaded unit keeps its event without retaining the old baseline"
+out=$(sysd_run)
+expect "${out}" '^&yellow slurmd\.service  1 restart\(s\)' \
+    "the unloaded event survives more than one poll"
+cp "${TESTDIR}/systemd/data/units.txt" "${FAKESYSTEMCTL_DIR}/units.txt"
+printf 'slurmd.service 1\n' > "${FAKESYSTEMCTL_DIR}/nrestarts"
+out=$(sysd_run)
+expect "${out}" '^restarts : 1$' "a reloaded unit starts a new counter baseline"
+expect "${out}" '^&yellow slurmd\.service  2 restart\(s\)' \
+    "a reloaded unit adds new restarts to the held event"
+: > "${FAKESYSTEMCTL_DIR}/units.txt"
+out=$(sysd_run)
+expect "${out}" '^status testhost\.systemd yellow ' \
+    "the hold survives a snapshot with no loaded services at all"
+expect "${out}" '^restarts : 0$' "an empty service snapshot graphs no new restarts"
+sysd_age slurmd.service 1900
+out=$(sysd_run)
+expect "${out}" '^status testhost\.systemd green ' \
+    "an unloaded unit turns green once its hold expires"
+expect_not "${out}" 'slurmd' "an expired unloaded event disappears from the report"
+expect_not "$(cat "${SYSDSTATE}")" 'slurmd' \
+    "an expired unloaded event is removed from the state"
+
+# Query errors are warnings, not an unsupported property; preserve the
+# snapshot and held alarms so recovery counts from the last good query.
+cp "${TESTDIR}/systemd/data/units.txt" "${FAKESYSTEMCTL_DIR}/units.txt"
+echo running > "${FAKESYSTEMCTL_DIR}/state"
+rm -f "${SYSDSTATE}" "${FAKESYSTEMCTL_DIR}/nrestarts"
+sysd_run > /dev/null
+printf 'slurmd.service 3\n' > "${FAKESYSTEMCTL_DIR}/nrestarts"
+sysd_run > /dev/null
+cp "${SYSDSTATE}" "${SYSDSTATE}.saved"
+: > "${FAKESYSTEMCTL_DIR}/show.fail"
+out=$(SYSD_RESTART_COLOR=red sysd_run)
+expect "${out}" '^status testhost\.systemd red ' \
+    "a failed restart query preserves an unexpired critical restart alarm"
+expect "${out}" '^&red slurmd\.service  1 restart\(s\)' \
+    "a held event remains listed when querying counters fails"
+expect "${out}" '^&yellow Automatic restarts: cannot query counters:' \
+    "the failed restart query is explicitly marked as a warning"
+expect "${out}" 'Failed to get properties: Connection timed out' \
+    "the counter query keeps systemctl's diagnostic"
+expect_not "${out}" '^data testhost\.systemd$' \
+    "failed restart queries send no misleading metrics"
+if ! cmp -s "${SYSDSTATE}" "${SYSDSTATE}.saved"; then
+    echo "FAIL: a failed counter query changed the last successful snapshot"
+    FAIL=1
+fi
+sysd_age slurmd.service 1900
+out=$(sysd_run)
+expect "${out}" '^status testhost\.systemd yellow ' \
+    "a counter query failure warns even without any held alarm"
+expect_not "${out}" 'slurmd' "held alarms still expire during query failures"
+rm -f "${FAKESYSTEMCTL_DIR}/show.fail"
+printf 'slurmd.service 5\n' > "${FAKESYSTEMCTL_DIR}/nrestarts"
+out=$(sysd_run)
+expect "${out}" '^restarts : 2$' \
+    "recovery counts restarts since the last successful query"
+rm -f "${SYSDSTATE}"
+: > "${FAKESYSTEMCTL_DIR}/show.fail"
+out=$(sysd_run)
+expect "${out}" '^status testhost\.systemd yellow ' \
+    "a failed first counter query also warns"
+expect_not "${out}" '^data testhost\.systemd$' \
+    "a failed first counter query cannot initialize the RRD"
+if [ -e "${SYSDSTATE}" ]; then
+    echo "FAIL: a failed first counter query created a snapshot"
+    FAIL=1
+fi
+rm -f "${FAKESYSTEMCTL_DIR}/show.fail" "${SYSDSTATE}.saved"
+unset SYSD_IGNORE
+echo degraded > "${FAKESYSTEMCTL_DIR}/state"
 
 # systemd older than 235: no NRestarts, no restart check and no graph
 rm -f "$SYSDSTATE"
@@ -2032,6 +2132,9 @@ expect "$out" 'Automatic restarts: not available' "without NRestarts the restart
 expect "$out" '^status testhost\.systemd red ' "... and the rest of the test still works"
 expect_not "$out" '^data testhost\.systemd$' \
     "... but no data message: the RRD needs both values from the start"
+out=$(SYSD_IGNORE="*" FAKESYSTEMCTL_NONR=1 sysd_run)
+expect "${out}" '^status testhost\.systemd green ' \
+    "an unsupported NRestarts property is not a counter query failure"
 
 # Not applicable / switched off
 out=$(SYSD_ENABLE=no sysd_run)

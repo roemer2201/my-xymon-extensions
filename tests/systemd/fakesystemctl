@@ -4,6 +4,7 @@
 #   state       output of "is-system-running" (missing: bus error)
 #   units.txt   output of "list-units --all --no-legend --plain"
 #   units.fail  if present, list-units fails with a bus error
+#   show.fail   if present, show fails with a bus error
 #   show/<unit> KEY=VALUE lines of "show" for that unit (missing: the
 #               not-found answer systemd gives for an unknown unit)
 #   nrestarts   "<unit> <count>" lines; overrides NRestarts per unit
@@ -47,6 +48,10 @@ case "$cmd" in
         cat "$dir/units.txt"
         ;;
     show)
+        if [ -f "${dir}/show.fail" ]; then
+            echo "Failed to get properties: Connection timed out" >&2
+            exit 1
+        fi
         first=yes
         for u in $units; do
             case "$u" in *.*) ;; *) u="$u.service" ;; esac

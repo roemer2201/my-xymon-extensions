@@ -251,6 +251,12 @@ RRD graphs need a one-time setup on the Xymon SERVER (not here):
 EOF
 
 %changelog
+* Tue Oct 06 2026 roemer2201 <r.oliver@web.de> - 0.25.1-1
+- preserve systemd restart warnings for unloaded units and failed
+  counter queries; report query failures as yellow without losing
+  the previous counters, and never downgrade maintenance to yellow
+  when listing units fails
+
 * Mon Oct 05 2026 roemer2201 <r.oliver@web.de> - 0.25.0-1
 - new extension "systemd" (column "systemd", active by default): the
   system state from systemctl is-system-running, every failed unit of
