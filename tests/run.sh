@@ -3330,8 +3330,8 @@ fi
 # The server package does not edit the stock Xymon configs; its
 # post-install tells the admin which drop-in directory is not read yet.
 # Debian wires up xymonserver.d and graphs.d (via the include files its
-# init script regenerates in /var/run/xymon), but ships no
-# rrddefinitions.d - so exactly one TODO is the expected outcome there.
+# init script regenerates in /var/run/xymon), but its rrddefinitions.cfg
+# reads no rrddefinitions.d - so exactly one TODO is the expected outcome there.
 SRVPOSTINST="$REPO/packaging/deb-server/postinst"
 
 XYMONETC="$TMP/xymonetc-debian"
@@ -3347,7 +3347,29 @@ expect "$out" 'TODO: +rrddefinitions\.cfg does not read' \
     "postinst: missing rrddefinitions.d reported"
 expect "$out" 'optional directory .*/rrddefinitions\.d' \
     "postinst: prints the line to add for rrddefinitions.d"
+expect "$out" 'BEFORE their first data arrives' \
+    "postinst: rrddefinitions.d must precede the first RRD file"
 expect "$out" 'service xymon restart' "postinst: asks for a restart"
+
+# The client post-install reports the 0.20.0 config move only on an
+# upgrade from before it: on a first install ($2 empty) nothing moved.
+CLIPOSTINST="$REPO/packaging/deb/postinst"
+out=$(DPKG_MAINTSCRIPT_NAME="" $TESTSH "$CLIPOSTINST" configure "")
+expect_not "$out" 'has moved your files' \
+    "deb postinst: no move notice on a first install"
+expect "$out" 'configuration in /etc/xymon/my-xymon-extensions/' \
+    "deb postinst: first install names the config directory"
+# BusyBox has a dpkg applet without --compare-versions; probe the feature.
+if dpkg --compare-versions 1 lt 2 >/dev/null 2>&1; then
+    out=$(DPKG_MAINTSCRIPT_NAME="" $TESTSH "$CLIPOSTINST" configure 0.19.0-1)
+    expect "$out" 'has moved your files' \
+        "deb postinst: move notice on an upgrade from 0.19.0"
+    out=$(DPKG_MAINTSCRIPT_NAME="" $TESTSH "$CLIPOSTINST" configure 0.24.1-1)
+    expect_not "$out" 'has moved your files' \
+        "deb postinst: no move notice on an upgrade from 0.20.0 or later"
+else
+    echo "skip: deb postinst upgrade notice (no dpkg --compare-versions)"
+fi
 
 # A Xymon that reads none of the three: three TODOs, no crash.
 XYMONETC="$TMP/xymonetc-bare"

@@ -150,7 +150,10 @@ say so.
   not enough. `rrddefinitions.d/` does not exist there — create it and
   add `optional directory /etc/xymon/rrddefinitions.d` at the end of
   `rrddefinitions.cfg` once (the server package does the first half and
-  tells you about the second).
+  tells you about the second). Do it before the first `data` message
+  arrives: the archives are fixed when an RRD file is created, so files
+  created without the line have to be deleted once (see the
+  extension's `server/README.md`).
 - **Current upstream Xymon** ships every config file with a trailing
   `optional directory $XYMONHOME/etc/<name>.d`, so `graphs.d` and
   `rrddefinitions.d` work out of the box. Its drop-in directory for the
