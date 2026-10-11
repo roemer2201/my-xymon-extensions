@@ -4,8 +4,8 @@
 #
 # Reports every bcache cache set, cache device and backing device of a
 # host in one "bcache" column, plus a "data" message for RRD graphs.
-# Everything is read from sysfs; no tool and no root rights are needed
-# (the attributes read here are mode 0444).
+# Everything is read from sysfs; no additional monitoring tool and no
+# root rights are needed (the attributes are readable without privileges).
 #
 # Where the numbers come from (Documentation/admin-guide/bcache.rst and
 # drivers/md/bcache/sysfs.c):
@@ -55,8 +55,51 @@
 # Configuration: environment variables and/or
 # $XYMONHOME/etc/my-xymon-extensions/bcache.cfg (see the shipped
 # bcache.cfg; the config file wins over the environment).
+#
+# Program flow:
+#   1. Load configuration and collect sysfs attributes.
+#   2. Evaluate health, remembered devices and counter differences.
+#   3. Atomically persist private state and send status/data messages.
+# Version: 1.0.0 (2026-10-12)
 
 set -u
+
+# Help has no sysfs, state-file or Xymon side effects.
+case "${1:-}" in
+    -h|--help)
+        cat <<'EOF'
+Usage: bcache.sh [-h|--help]
+
+Read Linux bcache health from sysfs and send a Xymon status/data report.
+Without XYMON and XYMSRV, print the messages to stdout.
+Configure via exported variables or BCACHE_CFG (the config file wins).
+
+Variables and defaults:
+  BCACHE_CFG                 $XYMONHOME/etc/my-xymon-extensions/bcache.cfg
+  BCACHE_COLUMN              bcache
+  BCACHE_SYSFS               /sys
+  BCACHE_STATEDIR            $XYMONTMP
+  BCACHE_FORGET              empty; space-separated removed UUID prefixes
+  BCACHE_MIN_BDEVS           empty; minimum number of backing devices
+  BCACHE_MODE                empty; expected backing device cache mode
+  BCACHE_VANISHED_COLOR      red
+  BCACHE_MODE_COLOR          yellow
+  BCACHE_NOCACHE_COLOR       yellow
+  BCACHE_IOERR_COLOR         yellow
+  BCACHE_CUTOFF_COLOR        yellow
+  BCACHE_CUTOFF_SYNC_COLOR   red
+  BCACHE_HIT_YELLOW          empty; warning hit ratio threshold (%)
+  BCACHE_HIT_RED             empty; critical hit ratio threshold (%)
+  BCACHE_HIT_MINREQ          1000; requests needed to judge a hit ratio
+  BCACHE_PRIO_STATS          yes; read cache bucket statistics
+  BCACHE_INTERNAL            no; include btree metrics
+
+Colors: red, yellow or green. See bcache.cfg for condition descriptions.
+Example: BCACHE_MIN_BDEVS=6 bcache.sh
+EOF
+        exit 0
+        ;;
+esac
 
 # Every number in a Xymon message must use a decimal point; awk formats
 # floats according to LC_NUMERIC.
@@ -141,10 +184,10 @@ send_report() {
     if [ -n "${XYMON:-}" ] && [ -n "${XYMSRV:-}" ]; then
         "$XYMON" "$XYMSRV" "status ${MACHINE}.${COLUMN} $1 $(date) - bcache: ${SUMMARY:-$1}
 
-$(cat "$2")"
+$(cat "$2")" || return 1
         if [ -n "${3:-}" ] && [ -s "${3:-}" ]; then
             "$XYMON" "$XYMSRV" "data ${MACHINE}.${COLUMN}
-$(cat "$3")"
+$(cat "$3")" || return 1
         fi
     else
         # No Xymon environment: print the messages (manual test run)
@@ -192,6 +235,9 @@ NEWSTATE="$WORKDIR/newstate"
 SUMMARY=""
 STATEFILE="${BCACHE_STATEDIR}/bcache.${MACHINE}.state"
 NOW=$(date +%s)
+# Persistent device memory survives reboot, but cumulative counters do not.
+# Older state files and hosts without boot_id retain the reset-counter fallback.
+BOOTID=$(cat /proc/sys/kernel/random/boot_id 2>/dev/null) || BOOTID=""
 
 clear_report() {
     SUMMARY="not applicable"
@@ -201,22 +247,24 @@ clear_report() {
         printf '<!-- ncv_skipend -->\n'
     } > "$WORKDIR/clear"
     send_report clear "$WORKDIR/clear"
-    exit 0
+    exit "$?"
 }
 
 SYSBLOCK="$BCACHE_SYSFS/block"
 SYSSETS="$BCACHE_SYSFS/fs/bcache"
 
-if [ ! -d "$SYSBLOCK" ]; then
+if [ ! -d "$SYSBLOCK" ] && [ -z "$BCACHE_MIN_BDEVS" ] &&
+   ! grep -q '^SEEN ' "$STATEFILE" 2>/dev/null; then
     clear_report "$SYSBLOCK does not exist - bcache is a Linux kernel feature, test not applicable on this host."
 fi
 
 # --- backing devices ---------------------------------------------------
 # /sys/block/bcacheN/bcache is only a symlink to the backing device's
 # directory, so those entries are skipped; a flash-only volume has a
-# bcache directory without "state" and is skipped as well.
+# bcache directory without "state" or "running" and is skipped as well.
 for bdir in "$SYSBLOCK"/*/bcache "$SYSBLOCK"/*/*/bcache; do
-    [ -f "$bdir/state" ] || continue
+    # Keep a backing device discoverable when one health attribute is missing.
+    [ -f "$bdir/state" ] || [ -f "$bdir/running" ] || continue
     bpar=${bdir%/bcache}
     bname=${bpar##*/}
     case "$bname" in
@@ -250,7 +298,7 @@ done
 
 # --- cache sets and their cache devices --------------------------------
 for sdir in "$SYSSETS"/*; do
-    [ -f "$sdir/cache_available_percent" ] || continue
+    [ -f "$sdir/cache_available_percent" ] || [ -d "$sdir/cache0" ] || continue
     sid=${sdir##*/}
     case "$sid" in
         *[!0-9a-f-]*) continue ;;
@@ -302,6 +350,7 @@ fi
     [ -r "$STATEFILE" ] && sed 's/^/P /' "$STATEFILE"
     cat "$FACTS"
 } | awk -v now="$NOW" -v statusf="$STATUS" -v dataf="$DATA" \
+    -v bootid="$BOOTID" \
     -v statef="$NEWSTATE" -v forget="$BCACHE_FORGET" \
     -v vanishedcolor="$BCACHE_VANISHED_COLOR" \
     -v minbdevs="$BCACHE_MIN_BDEVS" -v wantmode="$BCACHE_MODE" \
@@ -354,16 +403,16 @@ function human(b) {
 }
 
 function ncv(name, val) {
-    if (val == "") return
+    if (val == "" || BADID[METRICID]) return
     printf "%s : %s\n", name, val > dataf
 }
 
 # delta <key> <current counter> -> increase since the previous poll, or
 # "" (first poll, counter reset, no value). Records the new value.
 function delta(key, cur) {
-    if (cur !~ /^[0-9]+$/) return ""
+    if (cur !~ /^[0-9]+$/ || BADID[METRICID]) return ""
     printf "K %s %s\n", key, cur > statef
-    if (!(key in K) || dt <= 0 || cur + 0 < K[key] + 0) return ""
+    if (!(key in K) || dt <= 0 || rebooted || cur + 0 < K[key] + 0) return ""
     return cur - K[key]
 }
 
@@ -393,10 +442,18 @@ function problem(color, text) {
     }
 }
 
+# Short UUIDs are display names; never mix metrics of distinct devices
+# whose first eight digits happen to match (including set/backing UUIDs).
+function register_id(id, owner) {
+    if ((id in OWNER) && OWNER[id] != owner) BADID[id] = 1
+    else OWNER[id] = owner
+}
+
 BEGIN { WORST = "green"; NPROB = 0; FIRSTPROB = ""; FIRSTCOLOR = ""; NB = NS = NC = 0 }
 
 $1 == "P" {
     if ($2 == "T" && $3 ~ /^[0-9]+$/) PREVT = $3
+    else if ($2 == "BOOT") PREVBOOT = $3
     else if ($2 == "K" && NF >= 4) K[$3] = $4
     else if ($2 == "SEEN" && NF >= 6) {
         nseen++
@@ -432,11 +489,14 @@ $1 == "P" {
 
 END {
     dt = (PREVT != "" && now > PREVT) ? now - PREVT : 0
+    rebooted = (bootid != "" && PREVBOOT != "" && bootid != PREVBOOT)
     printf "T %s\n", now > statef
+    if (bootid != "") printf "BOOT %s\n", bootid > statef
 
     # Backing devices, sorted by bcacheN (fall back to the device name)
     for (i = 1; i <= NB; i++) {
         b = BID[i]
+        register_id(short(b), "B " b)
         SORTKEY[b] = (A["B", b, "bcname"] != "") ? A["B", b, "bcname"] : "~" A["B", b, "sysname"]
         if (SORTKEY[b] ~ /^bcache[0-9]+$/)
             SORTKEY[b] = sprintf("bcache%09d", substr(SORTKEY[b], 7) + 0)
@@ -454,8 +514,10 @@ END {
         if (isuuid(b))
             PRESENT["B", b] = (A["B", b, "bcname"] != "" ? A["B", b, "bcname"] "/" : "") A["B", b, "sysname"]
     }
-    for (i = 1; i <= NS; i++)
+    for (i = 1; i <= NS; i++) {
+        register_id(short(SID[i]), "S " SID[i])
         if (isuuid(SID[i])) PRESENT["S", SID[i]] = "no_cache_device"
+    }
     for (i = 1; i <= NC; i++) {
         s = CID[i]
         sub(/\/.*/, "", s)
@@ -464,6 +526,11 @@ END {
 
     # The order of the sections below is the order of importance for the
     # summary line: the first problem of the worst color is named there.
+
+    for (key in BADID) {
+        GONETXT = GONETXT "\n&yellow graph id " key " is shared by different devices - ambiguous metrics omitted"
+        problem("yellow", "duplicate graph id " key)
+    }
 
     # --- remembered devices: vanished, forgotten, still here -------------
     for (i = 1; i <= nseen; i++) {
@@ -493,12 +560,20 @@ END {
     # --- cache sets -----------------------------------------------------
     for (i = 1; i <= NS; i++) {
         s = SID[i]; s8 = short(s)
+        METRICID = s8
         color = "green"
         msg = ""
         avail = A["S", s, "cache_available_percent"]
         inuse = (avail ~ /^[0-9]+$/) ? 100 - avail : ""
         cut = A["S", s, "internal/cutoff_writeback"]
         cutsync = A["S", s, "internal/cutoff_writeback_sync"]
+
+        if (inuse == "" || inuse < 0 || inuse > 100) {
+            color = "yellow"
+            inuse = ""
+            msg = msg "\n    cache_available_percent is missing, unreadable or invalid"
+            problem("yellow", "cache set " s8 " usage unavailable")
+        }
 
         if (A["S", s, "internal/io_disable"] == "1") {
             color = worse(color, "red")
@@ -560,6 +635,7 @@ END {
         s = cd; sub(/\/.*/, "", s)
         n = cd; sub(/.*\/cache/, "", n)
         c8 = short(s) (n == "0" ? "" : "c" n)
+        METRICID = short(s)
         color = "green"
         msg = ""
         if (A["C", cd, "io_errors"] ~ /^[0-9]+$/ && A["C", cd, "io_errors"] > 0) {
@@ -590,6 +666,7 @@ END {
     # --- backing devices ------------------------------------------------
     for (i = 1; i <= NB; i++) {
         b = BID[i]; s8 = short(b)
+        METRICID = s8
         state = A["B", b, "state"]
         running = A["B", b, "running"]
         mode = selected(A["B", b, "cache_mode"])
@@ -597,6 +674,13 @@ END {
         name = (A["B", b, "bcname"] != "") ? A["B", b, "bcname"] : "(no bcache device)"
         color = "green"
         msg = ""
+
+        if (state !~ /^(no cache|clean|dirty|inconsistent)$/ ||
+            running !~ /^[01]$/ || mode !~ /^(writethrough|writeback|writearound|none)$/) {
+            color = "yellow"
+            msg = msg "\n    state, running or cache_mode is missing, unreadable or invalid"
+            problem("yellow", name " health attributes unavailable")
+        }
 
         if (state == "inconsistent") {
             color = worse(color, "red")
@@ -700,7 +784,12 @@ END {
     else
         summary = NS " cache set(s), " NB " backing device(s), all OK"
     printf "%s %s\n", WORST, summary
-}' > "$WORKDIR/result"
+}' > "$WORKDIR/result" || {
+    # Discard partial evaluator output and state on any awk/write failure.
+    : > "$WORKDIR/result"
+    : > "$NEWSTATE"
+    : > "$DATA"
+}
 
 read -r COLOR SUMMARY < "$WORKDIR/result" || {
     COLOR=yellow
@@ -715,18 +804,16 @@ esac
 # Remember this run's counters and devices (best effort - a read-only
 # state directory only costs the rates and the vanished-device check).
 if [ -s "$NEWSTATE" ]; then
-    if { cat "$NEWSTATE" > "${STATEFILE}.$$"; } 2>/dev/null; then
-        if ! mv "${STATEFILE}.$$" "$STATEFILE" 2>/dev/null; then
-            rm -f "${STATEFILE}.$$"
-            printf '\n&yellow cannot write the state file %s\n' "$STATEFILE" >> "$STATUS"
-            [ "$COLOR" = red ] || COLOR=yellow
-        fi
-    else
-        rm -f "${STATEFILE}.$$" 2>/dev/null
+    # mktemp prevents predictable temporary-file symlink attacks in /tmp;
+    # umask keeps both the temporary and the final state private.
+    STATE_TMP=$(umask 077; mktemp "${STATEFILE}.XXXXXX") || STATE_TMP=""
+    if [ -z "$STATE_TMP" ] || ! cat "$NEWSTATE" > "$STATE_TMP" ||
+       ! mv "$STATE_TMP" "$STATEFILE"; then
+        [ -z "$STATE_TMP" ] || rm -f -- "$STATE_TMP"
         printf '\n&yellow cannot write the state file %s - rates and the vanished-device check do not work\n' "$STATEFILE" >> "$STATUS"
         [ "$COLOR" = red ] || COLOR=yellow
     fi
 fi
 
 send_report "$COLOR" "$STATUS" "$DATA"
-exit 0
+exit "$?"

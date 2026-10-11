@@ -7,8 +7,8 @@ state, dirty data, hit ratio, cache usage and throughput.
 
 - **Column:** `bcache` (override with `BCACHE_COLUMN`).
 - **Platforms:** Linux with bcache (`CONFIG_BCACHE`, e.g. Ubuntu).
-  Everything is read from sysfs: no tool, no root rights (the attributes
-  are mode 0444). Hosts without bcache report `clear`. Not tested on
+  Everything is read from sysfs: no additional monitoring tool, no root rights (sysfs attributes
+  are readable by unprivileged users). Hosts without bcache report `clear`. Not tested on
   OpenWrt/TurrisOS and not in the standalone runner's default list.
 - **Reference system:** Ubuntu 24.04, kernel 6.8, one cache set on an
   NVMe partition, six HDD backing devices in writeback mode (the test
@@ -89,6 +89,11 @@ which is `bdev4` of its cache set). The graphs therefore use the first
 8 hex digits of the **backing device UUID** (`backing_dev_uuid` from
 its superblock — the same UUID udev uses in `/dev/bcache/by-uuid/`) and
 of the **cache set UUID** (the directory name in `/sys/fs/bcache/`).
+If different full UUIDs share the same eight-digit graph id, the column
+warns and omits every ambiguous metric and counter. Health and
+vanished-device checks still run for each full UUID, and unrelated
+graphs continue normally.
+
 The cache device itself has a UUID of its own, but sysfs does not show
 it; since a cache set has exactly one cache device in current kernels,
 the cache set UUID identifies it.
@@ -127,7 +132,9 @@ Notes on the numbers:
   **not** time windows but exponentially decaying sums (half-lives of
   5 min, 1 h, 1 day; see the comment at the top of `stats.c`). The
   extension uses the exact `stats_total` counters and computes the
-  difference between two polls instead. Requests are counted per I/O as
+  difference between two polls instead. The state file also stores the
+  Linux boot id: after a reboot the first poll supplies only gauges,
+  even if the new counters already exceed their previous values. Requests are counted per I/O as
   bcache sees it; a partial hit counts as a miss.
 - Byte values like `dirty_data` or `written` come out of `bch_hprint()`
   with about three significant digits (`9.6G`, `2.5T`, units of 1024).
@@ -143,6 +150,12 @@ Notes on the numbers:
 - `internal/writeback_keys_failed` is not an error counter: it counts
   btree insert collisions during writeback (`trace_bcache_writeback_collision`
   in writeback.c) and is neither shown nor graphed.
+
+Missing or invalid core health attributes (`state`, `running`,
+`cache_mode`, cache usage) warn rather than declaring a device healthy.
+A missing sysfs mount still evaluates remembered devices and
+`BCACHE_MIN_BDEVS`. State is replaced atomically using a private temporary
+file (mode 0600). Failed Xymon sends return a nonzero exit status.
 
 ## Configuration
 

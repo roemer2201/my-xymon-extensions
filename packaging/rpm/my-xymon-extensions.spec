@@ -260,6 +260,9 @@ EOF
 
 %changelog
 * Mon Oct 12 2026 roemer2201 <r.oliver@web.de> - 0.27.0-1
+- bcache: validate core health attributes, retain alarms without sysfs,
+  reset rates across boots, reject ambiguous graph ids, save private
+  state securely and propagate report failures
 - new extension "bcache" (column "bcache", ships disabled): state of
   every bcache cache set, cache device and backing device from sysfs -
   red for an inconsistent backing device, one that is not running or

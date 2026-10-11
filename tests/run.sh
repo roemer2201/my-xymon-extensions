@@ -2373,7 +2373,7 @@ bc_build() {
 
 bc_run() {
     # shellcheck disable=SC2086  # TESTSH may be multi-word ("busybox sh")
-    $TESTSH "$REPO/extensions/bcache/bcache.sh"
+    $TESTSH "$REPO/extensions/bcache/bcache.sh" "$@"
 }
 # bc_set <path below the sysfs root> <value>
 bc_set() {
@@ -2630,6 +2630,111 @@ rm -f "$BCROOT/block/sdf/bcache/backing_dev_uuid"
 out=$(bc_run)
 expect "$out" '^dev_sdf_dirty : 9\.60$' "without backing_dev_uuid the device name names the RRD"
 expect_not "$(cat "$BCSTATE" 2>/dev/null)" 'dev-sdf' "... and the device is not tracked for vanishing"
+
+# Reboot with persistent state: counters may already exceed the old values;
+# the boot identity, rather than only decreasing counters, starts a new poll.
+bc_build
+bc_run > /dev/null
+awk '$1 == "BOOT" { $2 = "previous-boot" } { print }' "$BCSTATE" > "$BCSTATE.new"
+mv "$BCSTATE.new" "$BCSTATE"
+bc_age 300
+bc_set block/sdf/bcache/stats_total/cache_hits 2571270
+out=$(bc_run)
+if [ -r /proc/sys/kernel/random/boot_id ]; then
+    expect_not "$out" '_hitpct|_rdops|_ssdrd' "a new boot never mixes cumulative counters with persistent state"
+fi
+expect "$out" '^17e640c6_dirty : 9\.60$' "reboot still reports gauges"
+expect "$(cat "$BCSTATE")" '^SEEN B 17e640c6-' "reboot preserves vanished-device memory"
+bc_age 300
+bc_set block/sdf/bcache/stats_total/cache_hits 2571360
+bc_set block/sdf/bcache/stats_total/cache_misses 233448
+out=$(bc_run)
+expect "$out" '^17e640c6_hitpct : 90\.0$' "rates resume after the first poll of a new boot"
+
+# Missing/malformed required attributes must never silently report healthy.
+bc_build
+rm -f "$BCROOT/block/sdf/bcache/state"
+out=$(bc_run)
+expect "$out" '^status testhost\.bcache yellow .*health attributes unavailable' "a device with no state attribute is still discovered"
+bc_set block/sdf/bcache/state dirty
+rm -f "$BCROOT/block/sdf/bcache/running"
+out=$(bc_run)
+expect "$out" '^status testhost\.bcache yellow .*health attributes unavailable' "missing running attribute warns"
+bc_set block/sdf/bcache/running 1
+bc_set block/sdf/bcache/state unknown
+out=$(bc_run)
+expect "$out" '^status testhost\.bcache yellow ' "an unknown device state warns"
+bc_set block/sdf/bcache/state dirty
+rm -f "$BCROOT/fs/bcache/$BCSET/cache_available_percent"
+out=$(bc_run)
+expect "$out" '^status testhost\.bcache yellow .*usage unavailable' "a set with no usage attribute is still discovered"
+bc_set "fs/bcache/$BCSET/cache_available_percent" 101
+out=$(bc_run)
+expect "$out" '^status testhost\.bcache yellow .*usage unavailable' "invalid cache usage warns"
+expect_not "$out" '^06912c73_inuse :' "invalid cache usage does not feed an RRD"
+
+# Different full UUIDs sharing a short graph id must not overwrite counters
+# or send duplicate NCV values; health checks still cover both devices.
+bc_build
+bc_set block/sda/bcache/backing_dev_uuid 17e640c6-1111-2222-3333-444444444444
+bc_set block/sda/bcache/state inconsistent
+out=$(bc_run)
+expect "$out" '^status testhost\.bcache red ' "a graph id collision never suppresses health checks"
+expect "$out" 'graph id 17e640c6 is shared by different devices' "short UUID collisions are explained"
+expect_not "$out" '^17e640c6_.* :' "ambiguous backing device metrics are omitted"
+expect_not "$(cat "$BCSTATE")" '^K 17e640c6_' "ambiguous counters do not contaminate history"
+expect "$out" '^56f0b7f4_dirty :' "unrelated device metrics survive a graph id collision"
+bc_build
+bc_set block/sdf/bcache/backing_dev_uuid 06912c73-1111-2222-3333-444444444444
+out=$(bc_run)
+expect "$out" '^status testhost\.bcache yellow ' "set/backing graph id collisions also warn"
+expect_not "$out" '^06912c73_.* :' "all ambiguous set/backing/cache metrics are omitted"
+
+# Losing the sysfs mount must still evaluate remembered devices and minima.
+bc_build
+bc_run > /dev/null
+out=$(BCACHE_SYSFS="$TMP/nosys" bc_run)
+expect "$out" '^status testhost\.bcache red .*vanished' "missing sysfs does not clear remembered device alarms"
+expect "$(cat "$BCSTATE")" '^SEEN B 17e640c6-' "missing sysfs retains remembered devices"
+rm -f "$BCSTATE"
+out=$(BCACHE_SYSFS="$TMP/nosys" BCACHE_MIN_BDEVS=1 bc_run)
+expect "$out" '^status testhost\.bcache red .*0 of 1 backing devices' "minimum backing devices is enforced without sysfs"
+
+# The saved state is private and publishing failures reach the caller.
+bc_build
+bc_run > /dev/null
+expect "$(find "$BCSTATE" -type f -perm 0600 -print)" '.' "state files are private"
+out=$(XYMON=false XYMSRV=127.0.0.1 bc_run)
+rc=$?
+expect "$rc" '^1$' "a failed status send returns failure"
+expect_not "$out" '.' "a failed send does not fall back to stdout"
+out=$(XYMON=false XYMSRV=127.0.0.1 bc_run --help)
+expect "$out" '^Usage: bcache.sh' "help works without publishing a status"
+
+# An evaluator that prints a plausible result and then fails must not
+# publish green, write partial metrics or overwrite device memory.
+bc_build
+bc_run > /dev/null
+cp "$BCSTATE" "$TMP/bcache.previous"
+mkdir -p "$TMP/bcache-bin"
+cat > "$TMP/bcache-bin/awk" <<'EOF'
+#!/bin/sh
+# Simulate a failed evaluator after partial stdout output.
+cat > /dev/null
+printf 'green partial evaluation\n'
+exit 1
+EOF
+chmod +x "$TMP/bcache-bin/awk"
+out=$(PATH="$TMP/bcache-bin:$PATH" bc_run)
+expect "$out" '^status testhost\.bcache yellow .*evaluation failed' "failed evaluation discards even a plausible partial result"
+expect_not "$out" '^data ' "failed evaluation never publishes partial graph data"
+if cmp -s "$BCSTATE" "$TMP/bcache.previous"; then
+    echo 'ok:   failed evaluation preserves the previous state'
+else
+    echo 'FAIL: failed evaluation preserves the previous state'
+    FAIL=1
+fi
+rm -rf "$TMP/bcache-bin" "$TMP/bcache.previous"
 
 # Not applicable
 rm -rf "$BCROOT" "$BCSTATE"
