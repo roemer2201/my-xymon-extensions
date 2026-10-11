@@ -1,6 +1,7 @@
 #!/bin/sh
 # Minimal smartctl stand-in for the unit tests: returns canned output
-# depending on the device (last argument).
+# depending on the device (last argument), including numeric serials,
+# a failing second path and an information-only response.
 set -u
 
 case "$*" in
@@ -23,6 +24,19 @@ datadir="$(dirname "$0")/data"
 case "$last" in
     /dev/tsda)   cat "$datadir/ata-seagate.txt" ;;
     /dev/tssd)   cat "$datadir/ata-samsung-ssd.txt" ;;
+    # the same disk once more, as a second multipath leg
+    /dev/tssd2)  cat "$datadir/ata-samsung-ssd.txt" ;;
+    # A second path must not hide a failing health verdict.
+    /dev/tssd-failed) sed 's/test result: PASSED/test result: FAILED/' \
+        "${datadir}/ata-samsung-ssd.txt" ;;
+    /dev/tssd-unusable) sed '/^=== START OF READ SMART DATA SECTION ===/,$d' \
+        "${datadir}/ata-samsung-ssd.txt" ;;
+    # Numeric serials are distinct strings, including leading zeroes.
+    /dev/tnumeric0) sed 's/^Serial Number:.*/Serial Number: 001/' \
+        "${datadir}/ata-samsung-ssd.txt" ;;
+    /dev/tnumeric1) sed 's/^Serial Number:.*/Serial Number: 1/' \
+        "${datadir}/ata-kingston-ssd.txt" ;;
+    /dev/tsas)   cat "$datadir/scsi-sas.txt" ;;
     /dev/tsdk)   cat "$datadir/ata-kingston-ssd.txt" ;;
     /dev/tsdc)   cat "$datadir/ata-kingston-kc600.txt" ;;
     /dev/tnvme0) cat "$datadir/nvme-samsung.txt" ;;
