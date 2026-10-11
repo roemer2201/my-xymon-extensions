@@ -50,11 +50,73 @@
 # Linux only; other platforms and hosts without a mounted btrfs report
 # "clear".
 #
+# Version: 1.0.1 (2026-10-12)
+#
+# Program flow:
+#   1. Parse help, load configuration and map mounted filesystems to their devices.
+#   2. Collect and evaluate health, space, scrub and per-device counters.
+#   3. Save state and send status and split-NCV metrics.
+#
 # Configuration: environment variables and/or
 # $XYMONHOME/etc/my-xymon-extensions/btrfs.cfg (see the shipped
 # btrfs.cfg; the config file wins over the environment).
 
 set -u
+
+# Print the standalone invocation and configuration interface.
+usage() {
+    cat <<'HELP'
+Usage: btrfs.sh [-h|--help]
+
+Monitor mounted btrfs filesystems and send Xymon status and data messages.
+Without XYMON and XYMSRV the messages are printed to stdout.
+
+Options:
+  -h, --help             Show this help. Env: BTRFS_HELP=yes
+
+Configuration (environment or sourced BTRFS_CFG file; the file wins):
+  BTRFS_ENABLE           Enable the test (default: yes).
+  BTRFS_COLUMN           Xymon column (default: btrfs).
+  BTRFS_NAMES            Space-separated UUID=name overrides.
+  BTRFS_EXCLUDE          UUID/name glob patterns to exclude.
+  BTRFS_RO_OK            UUID/name glob patterns allowed to be read-only.
+  BTRFS_UNALLOC_WARN     Unallocated space warning percentage (default: 5).
+  BTRFS_UNALLOC_CRIT     Critical percentage (default: off).
+  BTRFS_META_WARN        Metadata warning percentage (default: 75).
+  BTRFS_META_CRIT        Metadata critical percentage (default: 90).
+  BTRFS_ERR_COLOR        Historical errors (default: yellow).
+  BTRFS_ERR_NEW_COLOR    Growing errors (default: red).
+  BTRFS_ERR_HOLD         Growing-error hold time in seconds (default: 1800).
+  BTRFS_SCRUB_MAXAGE     Scrub maximum age in days (default: 35; 0/empty: off).
+  BTRFS_SCRUB_COLOR      Missing/old scrub color (default: yellow).
+  BTRFS_SUDO             Use sudo for scrub status (default: no).
+  BTRFS_CMD              btrfs binary (default: auto-detect).
+  BTRFS_CFG              Config path (default: XYMONHOME/etc/
+                         my-xymon-extensions/btrfs.cfg; legacy fallback).
+  BTRFS_SYSFS            sysfs root (default: /sys/fs/btrfs).
+  BTRFS_MOUNTS           Mount list (default: /proc/mounts).
+  BTRFS_DISKSTATS        Disk counters (default: /proc/diskstats).
+  BTRFS_SCRUBDIR         Scrub records (default: /var/lib/btrfs).
+  BTRFS_UID              Privilege test hook (default: actual uid).
+  BTRFS_SUDOCMD          Sudo command (default: sudo -n).
+
+Empty space thresholds disable the corresponding check. See btrfs.cfg
+and README.md for examples and server graph setup.
+
+Example: BTRFS_EXCLUDE='backup_*' btrfs.sh
+HELP
+}
+
+# Help must work before accessing Xymon paths, sysfs or the config file.
+case "${BTRFS_HELP:-no}" in
+    1|y|Y|yes|Yes|YES|true|True|TRUE|on|On|ON) usage; exit 0 ;;
+esac
+for arg do
+    case "${arg}" in
+        -h|--help) usage; exit 0 ;;
+        *) printf 'btrfs.sh: unknown argument: %s\n' "${arg}" >&2; exit 2 ;;
+    esac
+done
 
 # Every number in a Xymon message must use a decimal point; awk formats
 # floating point numbers according to LC_NUMERIC.
@@ -161,8 +223,10 @@ attr() {
 
 # match_any <name> <pattern-list> -> true if one space-separated glob
 # pattern of the list matches the name
-match_any() {
-    ma_name=$1
+match_any() (
+    # Expand patterns only in case, never against files in the current directory.
+    set -f
+    ma_name="${1}"
     # shellcheck disable=SC2086  # the list is a pattern list on purpose
     for ma_p in $2; do
         # shellcheck disable=SC2254  # glob matching is the point here
@@ -171,7 +235,7 @@ match_any() {
         esac
     done
     return 1
-}
+)
 
 # send_report <color> <status-body-file> [data-body-file]
 send_report() {
@@ -249,16 +313,15 @@ done < "$WORKDIR/uuids"
 # uses. /proc/mounts encodes blanks in paths as octal escapes.
 TAB=$(printf '\t')
 awk -v OFS="$TAB" '$3 == "btrfs" {
-        m = $2
-        gsub(/\\040/, " ", m); gsub(/\\011/, "\t", m)
-        gsub(/\\012/, "\n", m); gsub(/\\134/, "\\", m)
-        print $1, $4, m
+        # Retain octal escapes internally, so tabs/newlines remain one record.
+        print $1, $4, $2
     }' "$BTRFS_MOUNTS" 2>/dev/null > "$WORKDIR/btrfsmounts"
 
 : > "$WORKDIR/mounts"
 : > "$WORKDIR/unmatched"
 while IFS="$TAB" read -r src opts mnt; do
     [ -n "$mnt" ] || continue
+    src=$(printf '%b' "${src}")
     dev=${src##*/}
     if [ -L "$src" ]; then
         tgt=$(readlink "$src" 2>/dev/null) && dev=${tgt##*/}
@@ -319,7 +382,6 @@ STATEFILE="${XYMONTMP}/btrfs.${MACHINE}.state"
 : > "$WORKDIR/body"
 : > "$WORKDIR/issues"
 : > "$WORKDIR/colors"
-: > "$WORKDIR/names"
 
 # --- the evaluation, one awk run per filesystem --------------------------
 # Input: the facts collected below ("key values..." lines) and the
@@ -363,6 +425,11 @@ BEGIN {
             pticks[f[3]] = f[4]; npb++
         } else if (f[1] == "E" && n >= 5) {
             perr[f[3]] = f[4]; pinc[f[3]] = f[5]
+        } else if (f[1] == "V" && n >= 5) {
+            perrc[f[3], f[4]] = f[5]
+        } else if (f[1] == "D" && n >= 8) {
+            for (k = 4; k <= 8; k++) pdev[f[3], k - 3] = f[k]
+            haved = 1
         }
     }
     close(statefile)
@@ -390,7 +457,11 @@ END {
         if (o ~ /,ro,/) nro++
         if (o ~ /,degraded,/) deg = 1
     }
-    if (nm == 0) mounts = "(no mount point found)"
+    if (nm == 0) {
+        mounts = "(no mount point found)"
+        line("yellow", "Mount mapping unavailable: read-only and scrub result checks cannot be completed")
+        issue("mount mapping unavailable")
+    }
     devs = ""
     for (i = 1; i <= nd; i++) devs = devs (i > 1 ? " " : "") dname[i]
     title = name "  " mounts
@@ -411,6 +482,7 @@ END {
         mixed = 1
     }
 
+    readonly = (nm > 0 && nro == nm)
     line("", "Devices: " nd " (" devs ")   Profiles: data " prof["data"] \
         ", metadata " prof["metadata"] ", system " prof["system"])
 
@@ -430,7 +502,7 @@ END {
         if (imiss[i] == "1") {
             line("red", "devid " iid[i] ": device missing")
             issue("devid " iid[i] " missing")
-        } else if (iwr[i] == "0") {
+        } else if (iwr[i] == "0" && !(ro_ok && readonly)) {
             line("red", "devid " iid[i] ": device not writeable")
             issue("devid " iid[i] " not writeable")
         }
@@ -441,24 +513,41 @@ END {
 
     # --- device errors ----------------------------------------------
     split("write read flush corruption generation", ename, " ")
-    errtotal = 0; noerr = ""; errknown = 0
+    errtotal = 0; noerr = ""; errknown = 0; errcomplete = 1
     for (i = 1; i <= ni; i++) {
         id = iid[i]
-        if (!isnum(ierr[i, 1])) continue
+        complete = 1
+        for (k = 1; k <= 5; k++) if (!isnum(ierr[i, k])) complete = 0
+        if (!complete) {
+            errcomplete = 0
+            line("", "devid " id ": error counters not available")
+            continue
+        }
         errknown = 1
-        sum = 0; txt = ""
+        sum = 0; txt = ""; grew = 0; reset = 0; havev = 0
         for (k = 1; k <= 5; k++) {
             sum += ierr[i, k]
+            if ((id, k) in perrc) {
+                havev = 1
+                if (ierr[i, k] > perrc[id, k]) grew += ierr[i, k] - perrc[id, k]
+                if (ierr[i, k] < perrc[id, k]) reset = 1
+            }
+            printf "T V %s %s %d %.0f\n", uuid, id, k, ierr[i, k]
             if (ierr[i, k] > 0) txt = txt (txt == "" ? "" : ", ") ename[k] " " ierr[i, k]
         }
         errtotal += sum
         inc = (id in pinc && isnum(pinc[id])) ? pinc[id] : 0
         note = ""
-        if (id in perr && isnum(perr[id])) {
+        # A counter can grow while another is reset: comparing only their
+        # sum would miss the new error. E lines retain upgrade compatibility.
+        if (havev) {
+            if (grew > 0) { inc = now; note = " - grew by " grew " since the previous poll" }
+            else if (reset) inc = 0
+        } else if (id in perr && isnum(perr[id])) {
             if (sum > perr[id]) { inc = now; note = " - grew by " (sum - perr[id]) " since the previous poll" }
             else if (sum < perr[id]) inc = 0     # reset with "btrfs device stats -z"
         }
-        print "T E " uuid " " id " " sum " " inc
+        printf "T E %s %s %.0f %.0f\n", uuid, id, sum, inc
         if (sum == 0) { noerr = noerr (noerr == "" ? "" : " ") id; continue }
         if (inc > 0 && now - inc <= errhold) {
             if (note == "") note = " - grew " int((now - inc) / 60) " min ago"
@@ -473,54 +562,65 @@ END {
     else if (noerr != "") line("", "Device errors: none on devid " noerr)
 
     # --- space ------------------------------------------------------
+    # Do not turn missing/partial sysfs attributes into zero-valued facts.
+    spaceknown = (havealloc["data"] || mixed) && (havealloc["metadata"] || mixed) \
+        && isnum(at["data"]) && at["data"] > 0 && isnum(au["data"]) \
+        && isnum(adt["data"]) && adt["data"] > 0 \
+        && isnum(at["metadata"]) && at["metadata"] > 0 && isnum(au["metadata"]) \
+        && isnum(adt["metadata"]) && adt["metadata"] > 0 \
+        && havealloc["system"] && isnum(adt["system"])
     devsize = 0
     for (i = 1; i <= nd; i++) if (isnum(dsize[i])) devsize += dsize[i]
     sizesrc = "block devices"
     if (isnum(cmdsize) && cmdsize > 0) { devsize = cmdsize; sizesrc = "btrfs filesystem usage" }
-    allocated = adt["data"] + (mixed ? 0 : adt["metadata"]) + adt["system"]
-    unalloc = devsize - allocated
-    if (unalloc < 0) unalloc = 0
-    unpct = (devsize > 0) ? unalloc * 100 / devsize : 0
-    dratio = (at["data"] > 0) ? adt["data"] / at["data"] : 1
-    mratio = (at["metadata"] > 0) ? adt["metadata"] / at["metadata"] : 1
-    datapct = (at["data"] > 0) ? au["data"] * 100 / at["data"] : 0
-    metaused = au["metadata"] + rsv
-    metapct = (at["metadata"] > 0) ? metaused * 100 / at["metadata"] : 0
-    free = at["data"] - au["data"] + unalloc / dratio
-    if (free < 0) free = 0
-    mchunk = isnum(acs["metadata"]) ? acs["metadata"] : 268435456
-    need = mchunk * mratio
-    room = (unalloc >= need)
+    if (devsize <= 0) spaceknown = 0
+    if (!spaceknown) line("", "Space: not available (incomplete sysfs allocation or device size)")
+    if (spaceknown) {
+        allocated = adt["data"] + (mixed ? 0 : adt["metadata"]) + adt["system"]
+        unalloc = devsize - allocated
+        if (unalloc < 0) unalloc = 0
+        unpct = (devsize > 0) ? unalloc * 100 / devsize : 0
+        dratio = (at["data"] > 0) ? adt["data"] / at["data"] : 1
+        mratio = (at["metadata"] > 0) ? adt["metadata"] / at["metadata"] : 1
+        datapct = (at["data"] > 0) ? au["data"] * 100 / at["data"] : 0
+        metaused = au["metadata"] + rsv
+        metapct = (at["metadata"] > 0) ? metaused * 100 / at["metadata"] : 0
+        free = at["data"] - au["data"] + unalloc / dratio
+        if (free < 0) free = 0
+        mchunk = isnum(acs["metadata"]) ? acs["metadata"] : 268435456
+        need = mchunk * mratio
+        room = (unalloc >= need)
 
-    line("", sprintf("Size: %s, allocated %s, unallocated %s (%.1f %%)   [device size from %s]", \
-        hs(devsize), hs(allocated), hs(unalloc), unpct, sizesrc))
-    if (isnum(unalcrit) && unpct < unalcrit + 0) {
-        line("red", sprintf("Unallocated space below %s %% - btrfs can hardly allocate new chunks", unalcrit))
-        issue("unallocated " sprintf("%.1f %%", unpct))
-    } else if (isnum(unalwarn) && unpct < unalwarn + 0) {
-        line("yellow", sprintf("Unallocated space below %s %% - btrfs can hardly allocate new chunks", unalwarn))
-        issue("unallocated " sprintf("%.1f %%", unpct))
+        line("", sprintf("Size: %s, allocated %s, unallocated %s (%.1f %%)   [device size from %s]", \
+            hs(devsize), hs(allocated), hs(unalloc), unpct, sizesrc))
+        if (isnum(unalcrit) && unpct < unalcrit + 0) {
+            line("red", sprintf("Unallocated space below %s %% - btrfs can hardly allocate new chunks", unalcrit))
+            issue("unallocated " sprintf("%.1f %%", unpct))
+        } else if (isnum(unalwarn) && unpct < unalwarn + 0) {
+            line("yellow", sprintf("Unallocated space below %s %% - btrfs can hardly allocate new chunks", unalwarn))
+            issue("unallocated " sprintf("%.1f %%", unpct))
+        }
+        line("", sprintf("Data: %s used of %s allocated (%.1f %%), free (estimated) %s", \
+            hs(au["data"]), hs(at["data"]), datapct, hs(free)))
+        mtxt = sprintf("Metadata: %s used + %s global reserve of %s allocated (%.1f %%)", \
+            hs(au["metadata"]), hs(rsv), hs(at["metadata"]), metapct)
+        mcol = ""
+        if (room) mtxt = mtxt " - can grow into unallocated space"
+        else {
+            mtxt = mtxt " - NO room for a new metadata chunk (needs " hs(need) " unallocated)"
+            if (isnum(metacrit) && metapct >= metacrit + 0) { mcol = "red"; mtxt = mtxt "  [red >= " metacrit " %]" }
+            else if (isnum(metawarn) && metapct >= metawarn + 0) { mcol = "yellow"; mtxt = mtxt "  [yellow >= " metawarn " %]" }
+            if (mcol != "") issue(sprintf("metadata %.1f %% full", metapct))
+        }
+        line(mcol, mtxt)
+        if (havealloc["system"])
+            line("", sprintf("System: %s used of %s allocated", hs(au["system"]), hs(at["system"])))
+        # Partly used data chunks are what a filtered balance gives back.
+        slack = at["data"] - au["data"]
+        if ((mcol != "" || unpct < unalwarn + 0) && slack >= 2 * mchunk * dratio && nm > 0)
+            line("", sprintf("Hint: %s of the data chunks are unused; \"btrfs balance start -dusage=10 %s\" (then 25, 50) returns partly used data chunks to the unallocated space", \
+                hs(slack), mpath[1]))
     }
-    line("", sprintf("Data: %s used of %s allocated (%.1f %%), free (estimated) %s", \
-        hs(au["data"]), hs(at["data"]), datapct, hs(free)))
-    mtxt = sprintf("Metadata: %s used + %s global reserve of %s allocated (%.1f %%)", \
-        hs(au["metadata"]), hs(rsv), hs(at["metadata"]), metapct)
-    mcol = ""
-    if (room) mtxt = mtxt " - can grow into unallocated space"
-    else {
-        mtxt = mtxt " - NO room for a new metadata chunk (needs " hs(need) " unallocated)"
-        if (isnum(metacrit) && metapct >= metacrit + 0) { mcol = "red"; mtxt = mtxt "  [red >= " metacrit " %]" }
-        else if (isnum(metawarn) && metapct >= metawarn + 0) { mcol = "yellow"; mtxt = mtxt "  [yellow >= " metawarn " %]" }
-        if (mcol != "") issue(sprintf("metadata %.1f %% full", metapct))
-    }
-    line(mcol, mtxt)
-    if (havealloc["system"])
-        line("", sprintf("System: %s used of %s allocated", hs(au["system"]), hs(at["system"])))
-    # Partly used data chunks are what a filtered balance gives back.
-    slack = at["data"] - au["data"]
-    if ((mcol != "" || unpct < unalwarn + 0) && slack >= 2 * mchunk * dratio && nm > 0)
-        line("", sprintf("Hint: %s of the data chunks are unused; \"btrfs balance start -dusage=10 %s\" (then 25, 50) returns partly used data chunks to the unallocated space", \
-            hs(slack), mpath[1]))
     for (t in nprof) {
         if (nprof[t] > 1 && excl != "balance") {
             line("yellow", "Multiple " t " profiles (" prof[t] ") - an interrupted \"balance -convert\"?")
@@ -572,20 +672,29 @@ END {
     if (scol == "yellow" || scol == "red") issue(siss)
 
     # --- performance ------------------------------------------------
-    srd = 0; srs = 0; swr = 0; sws = 0; iook = (nd > 0)
+    srd = 0; srs = 0; swr = 0; sws = 0; iook = (nd > 0); ioidentity = 1
     for (i = 1; i <= nd; i++) {
-        if (!isnum(drd[i])) { iook = 0; continue }
+        if (!isnum(drd[i]) || !isnum(drs[i]) || !isnum(dwr[i]) || !isnum(dws[i])) {
+            iook = 0; continue
+        }
         srd += drd[i]; srs += drs[i]; swr += dwr[i]; sws += dws[i]
-        if (isnum(dtk[i])) print "T B " uuid " " dname[i] " " dtk[i]
+        if (isnum(dtk[i])) printf "T B %s %s %.0f\n", uuid, dname[i], dtk[i]
+        printf "T D %s %s %s %s %s %s %s\n", uuid, dname[i], drd[i], drs[i], dwr[i], dws[i], dtk[i]
+        if (!(dname[i] in pticks) || !isnum(dtk[i]) || dtk[i] < pticks[dname[i]]) ioidentity = 0
+        if (haved) {
+            if (!((dname[i], 1) in pdev) || drd[i] < pdev[dname[i], 1] \
+                || drs[i] < pdev[dname[i], 2] || dwr[i] < pdev[dname[i], 3] \
+                || dws[i] < pdev[dname[i], 4]) ioidentity = 0
+        }
     }
     cm = havecommit ? ccount : "-"
     cms = havecommit ? ctotal : "-"
-    if (iook) print "T P " uuid " " now " " srd " " srs " " swr " " sws " " cm " " cms
+    if (iook) printf "T P %s %.0f %.0f %.0f %.0f %.0f %s %s\n", uuid, now, srd, srs, swr, sws, cm, cms
     else print "T P " uuid " " now " - - - - " cm " " cms
     dt = now - pts
     rates = 0
     if (havep && dt > 0) {
-        if (iook && isnum(prd) && npb == nd && srd >= prd && srs >= prs && swr >= pwr && sws >= pws) {
+        if (iook && ioidentity && isnum(prd) && npb == nd && srd >= prd && srs >= prs && swr >= pwr && sws >= pws) {
             rbps = (srs - prs) * 512 / dt; wbps = (sws - pws) * 512 / dt
             riops = (srd - prd) / dt; wiops = (swr - pwr) / dt
             busy = 0; busydev = ""
@@ -616,9 +725,11 @@ END {
         line("", "I/O and commit rates: shown from the next poll on")
     }
 
-    printf "N %s_unalloc %.0f\nN %s_free %.0f\n", name, unalloc, name, free
-    printf "N %s_datapct %.2f\nN %s_metapct %.2f\n", name, datapct, name, metapct
-    if (errknown) printf "N %s_errors %d\n", name, errtotal
+    if (spaceknown) {
+        printf "N %s_unalloc %.0f\nN %s_free %.0f\n", name, unalloc, name, free
+        printf "N %s_datapct %.2f\nN %s_metapct %.2f\n", name, datapct, name, metapct
+    }
+    if (errknown && errcomplete) printf "N %s_errors %.0f\n", name, errtotal
 
     printf "S &%s %s\n", color, title
     for (i = 1; i <= nout; i++) print "S " out[i]
@@ -626,6 +737,35 @@ END {
     if (issues != "") print "X " name ": " issues
 }
 EOF
+
+# Reserve 37 characters for a full UUID collision suffix, and 11 for
+# the longest metric suffix. Split-NCV truncates names at 200 characters.
+# Resolve collisions before exclusions, so selection never renames graphs.
+: > "${WORKDIR}/candidates"
+while IFS= read -r uuid; do
+    label=$(attr "${BTRFS_SYSFS}/${uuid}/label")
+    name=""
+    for e in ${BTRFS_NAMES}; do
+        case "${e}" in
+            "${uuid}="*) name=$(sanitize "${e#*=}") ;;
+        esac
+    done
+    [ -n "${name}" ] || name=$(sanitize "${label}")
+    if [ -z "${name}" ]; then
+        mnt=$(awk -v u="${uuid}" '$1 == u {
+            sub(/^[^ ]* [^ ]* /, ""); print length($0), $0
+        }' "${WORKDIR}/mounts" | sort -n | head -n 1 | cut -d ' ' -f 2-)
+        case "${mnt}" in
+            "") name=$(printf '%s' "${uuid}" | cut -c1-8) ;;
+            /) name=root ;;
+            *) name=$(sanitize "$(printf '%b' "${mnt}")") ;;
+        esac
+    fi
+    [ -n "${name}" ] || name=$(printf '%s' "${uuid}" | tr '-' '_')
+    name=$(printf '%s' "${name}" | cut -c1-152)
+    name=${name%_}
+    printf '%s %s\n' "${uuid}" "${name}" >> "${WORKDIR}/candidates"
+done < "${WORKDIR}/uuids"
 
 while IFS= read -r uuid; do
     u="$BTRFS_SYSFS/$uuid"
@@ -639,33 +779,21 @@ while IFS= read -r uuid; do
         printf 'mount %s %s\n' "$o" "$m"
     done >> "$F"
     mnt=$(awk '$1 == "mount" { sub(/^[^ ]* [^ ]* /, ""); print; exit }' "$F")
+    # Decode only for command arguments; the status keeps visible octal escapes.
+    mnt=$(printf '%b' "${mnt}")
 
-    # --- name ---------------------------------------------------------
-    label=$(attr "$u/label")
-    name=""
-    for e in $BTRFS_NAMES; do
-        case "$e" in
-            "$uuid="*) name=$(sanitize "${e#*=}") ;;
-        esac
-    done
-    [ -n "$name" ] || name=$(sanitize "$label")
-    if [ -z "$name" ]; then
-        case "$mnt" in
-            "")  name="" ;;
-            /)   name=root ;;
-            *)   name=$(sanitize "$mnt") ;;
-        esac
+    # --- stable metric name, resolved against ALL filesystem names -----
+    label=$(attr "${u}/label")
+    name=$(awk -v u="${uuid}" '$1 == u { print $2; exit }' "${WORKDIR}/candidates")
+    matches=$(awk -v n="${name}" '("x" $2) == ("x" n) { c++ } END { print c + 0 }' "${WORKDIR}/candidates")
+    if [ "${matches}" -gt 1 ]; then
+        name="${name}_$(printf '%s' "${uuid}" | tr '-' '_')"
     fi
-    [ -n "$name" ] || name=$(printf '%s' "$uuid" | cut -c1-8)
-    if grep -qx "$name" "$WORKDIR/names"; then
-        name="${name}_$(printf '%s' "$uuid" | cut -c1-8)"
-    fi
-    if [ -n "$BTRFS_EXCLUDE" ] &&
-        { match_any "$uuid" "$BTRFS_EXCLUDE" || match_any "$name" "$BTRFS_EXCLUDE"; }; then
-        printf 'excluded %s (%s)\n' "$name" "$uuid" >> "$WORKDIR/excluded"
+    if [ -n "${BTRFS_EXCLUDE}" ] &&
+        { match_any "${uuid}" "${BTRFS_EXCLUDE}" || match_any "${name}" "${BTRFS_EXCLUDE}"; }; then
+        printf 'excluded %s (%s)\n' "${name}" "${uuid}" >> "${WORKDIR}/excluded"
         continue
     fi
-    printf '%s\n' "$name" >> "$WORKDIR/names"
     rook=""
     if [ -n "$BTRFS_RO_OK" ] &&
         { match_any "$uuid" "$BTRFS_RO_OK" || match_any "$name" "$BTRFS_RO_OK"; }; then
@@ -693,8 +821,9 @@ while IFS= read -r uuid; do
         a="$u/allocation/$t"
         [ -d "$a" ] || continue
         cs=$(attr "$a/chunk_size")
-        printf 'alloc %s %s %s %s %s\n' "$t" "$(attr "$a/total_bytes")" \
-            "$(attr "$a/bytes_used")" "$(attr "$a/disk_total")" "${cs:--}" >> "$F"
+        total=$(attr "$a/total_bytes"); used=$(attr "$a/bytes_used"); disk=$(attr "$a/disk_total")
+        printf 'alloc %s %s %s %s %s\n' "$t" "${total:--}" \
+            "${used:--}" "${disk:--}" "${cs:--}" >> "$F"
         for p in "$a"/*; do
             [ -d "$p" ] && printf 'profile %s %s\n' "$t" "${p##*/}" >> "$F"
         done
@@ -841,7 +970,7 @@ fi
     # separate "data" message, and xymond_rrd's NCV parser would take
     # every "name: value" pair here for a dataset.
     printf '<!-- ncv_skipstart -->\n'
-    cat "$WORKDIR/body"
+    sed -e 's/</\&lt;/g' -e 's/>/\&gt;/g' "${WORKDIR}/body"
     [ -s "$WORKDIR/excluded" ] && { cat "$WORKDIR/excluded"; printf '\n'; }
     if [ -z "$BTRFS" ]; then
         printf 'btrfs-progs not found: device sizes come from the block devices, no scrub result.\n'

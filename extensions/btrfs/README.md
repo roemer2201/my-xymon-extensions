@@ -78,7 +78,9 @@ The kernel counts write, read, flush, corruption and generation errors
 per device and keeps them in the filesystem across reboots — the same
 numbers `btrfs device stats` prints. A counter above zero is yellow; a
 counter that **grew** since the previous poll is red for
-`BTRFS_ERR_HOLD` seconds. Once the cause is dealt with, reset them:
+`BTRFS_ERR_HOLD` seconds. Each counter is compared separately, so an increase is
+still detected if another counter was reset in the same interval.
+Once the cause is dealt with, reset them:
 
 ```sh
 btrfs device stats -z /media/raid
@@ -135,7 +137,8 @@ From the second poll on, per filesystem:
   interval (`commit_stats`, kernel 6.0+); the longest commit since mount
   is shown in the status
 
-A counter that went backwards (reboot, remount, device replaced) skips
+A member device that changed, or a counter that went backwards
+(reboot, remount, device replaced), skips
 one poll instead of producing a negative rate.
 
 ## Configuration
@@ -159,7 +162,19 @@ can also come from the environment, the file wins. See the shipped
 A filesystem is named after its label; without one after its shortest
 mount point (`/` → `root`, `/media/raid` → `media_raid`), sanitized to
 `[a-z0-9_]`. A filesystem mounted several times (subvolumes) is
-reported once.
+reported once. Names are capped at 152 characters, leaving room for a
+full UUID suffix and the longest metric suffix within Xymon's
+200-character split-NCV key limit. If names collide after sanitization
+or truncation, each gets its UUID suffix, even when another filesystem
+is excluded. Use unique `BTRFS_NAMES` overrides to keep graph names
+independent of changing labels or a changing set of mounted filesystems.
+
+Unavailable allocation attributes produce an explicit "not available"
+line and no space metrics, rather than fabricated zeroes. Unresolved
+mount mappings warn because read-only and scrub-result checks cannot
+be completed. Mount paths retain their octal escapes in the status
+(for example `\040` for a space); command arguments use the actual
+path. Labels and paths are escaped for HTML display.
 
 ## Status message
 

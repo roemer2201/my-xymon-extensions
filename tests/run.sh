@@ -2391,12 +2391,12 @@ expect "$out" 'Device errors: none on devid 1 2 3 4 7$' "devices without errors 
 expect "$out" 'Size: 1\.81 TiB, allocated 1\.81 TiB, unallocated 2\.00 MiB \(0\.0 %\)   \[device size from btrfs filesystem usage\]' \
     "unallocated space: device size from btrfs-progs minus allocated chunks"
 expect "$out" '^&yellow Unallocated space below 5 %' "no unallocated space is yellow"
-expect "$out" '^&yellow Metadata: 8\.02 GiB used \+ 512\.00 MiB global reserve of 10\.03 GiB allocated \(84\.9 %\) - NO room for a new metadata chunk \(needs 2\.00 GiB unallocated\)  \[yellow >= 75 %\]$' \
+expect "$out" '^&yellow Metadata: 8\.02 GiB used \+ 512\.00 MiB global reserve of 10\.03 GiB allocated \(84\.9 %\) - NO room for a new metadata chunk \(needs 2\.00 GiB unallocated\)  \[yellow &gt;= 75 %\]$' \
     "metadata incl. global reserve is checked when no new RAID1 chunk fits"
 expect "$out" '^   Metadata: 6\.87 GiB used \+ 512\.00 MiB global reserve of 8\.00 GiB allocated \(92\.1 %\) - can grow into unallocated space$' \
     "full metadata chunks are fine while a new chunk fits"
 expect "$out" 'btrfs balance start -dusage=10 /" \(then 25, 50\)' "the balance hint names the mount point"
-expect "$out" '^&yellow Scrub: last activity [0-9]+ day\(s\) ago \(modification time of .*/scrub\.status\.<uuid>\), result unknown  \[yellow > 35 days\]$' \
+expect "$out" '^&yellow Scrub: last activity [0-9]+ day\(s\) ago \(modification time of .*/scrub\.status\.&lt;uuid&gt;\), result unknown  \[yellow &gt; 35 days\]$' \
     "without root the scrub age comes from the status file"
 expect "$out" '^&yellow Scrub: no record \(no status file in .*\), result unknown  \[yellow: never scrubbed\]$' \
     "no status file means never scrubbed"
@@ -2460,7 +2460,7 @@ expect_not "$out" 'device errors on devid' "... and keeps them out of the summar
 
 # --- scrub result with root rights --------------------------------------
 out=$(FAKEBTRFS_USER="" BTRFS_SUDO=yes BTRFS_SUDOCMD=env btrfs_run)
-expect "$out" '^&yellow Scrub: last started [0-9]+ day\(s\) ago \(Jul 23 2026 16:05:59\), finished after 6:20:53, no errors  \[yellow > 35 days\]$' \
+expect "$out" '^&yellow Scrub: last started [0-9]+ day\(s\) ago \(Jul 23 2026 16:05:59\), finished after 6:20:53, no errors  \[yellow &gt; 35 days\]$' \
     "via sudo: start, status, duration and result of the last scrub"
 expect "$out" '^&yellow Scrub: never run \(btrfs scrub status: no stats available\)  \[yellow: never scrubbed\]$' \
     "via sudo: no stats available means never scrubbed"
@@ -2495,9 +2495,9 @@ rm -f "${BSCRUB:?}/scrub.status.$ROOTU"
 
 # --- thresholds -------------------------------------------------------------
 out=$(BTRFS_META_CRIT=80 btrfs_run)
-expect "$out" '^&red Metadata: .*\[red >= 80 %\]$' "BTRFS_META_CRIT"
+expect "$out" '^&red Metadata: .*\[red &gt;= 80 %\]$' "BTRFS_META_CRIT"
 out=$(BTRFS_UNALLOC_WARN="" BTRFS_META_WARN="" btrfs_run)
-expect_not "$out" 'Unallocated space below|\[yellow >= ' "empty thresholds switch the space checks off"
+expect_not "$out" 'Unallocated space below|\[yellow &gt;= ' "empty thresholds switch the space checks off"
 out=$(BTRFS_UNALLOC_CRIT=1 btrfs_run)
 expect "$out" '^&red Unallocated space below 1 %' "BTRFS_UNALLOC_CRIT"
 
@@ -2544,11 +2544,98 @@ expect "$out" '^status testhost\.btrfs clear ' "excluding everything reports cle
 out=$(BTRFS_COLUMN=fs btrfs_run)
 expect "$out" '^status testhost\.fs ' "column name is overridable via BTRFS_COLUMN"
 
+# Help never needs a valid sysfs/config path or a writable temporary directory.
+out=$(BTRFS_CFG="${TMP}/nonexistent" XYMONTMP="${TMP}/nonexistent" \
+    sh "${REPO}/extensions/btrfs/btrfs.sh" --help)
+expect "${out}" '^Usage: btrfs.sh' "btrfs help works before collecting data"
+expect "${out}" 'BTRFS_ERR_HOLD' "btrfs help documents the configuration interface"
+
+# --- review regressions: resets, glob patterns and invalid samples -----------
+# A new write error must be red even if a reset read counter lowers the sum.
+btrfs_errs "${RAIDU}" 6 10
+out=$(btrfs_run)
+printf 'write_errs 1\nread_errs 0\nflush_errs 0\ncorruption_errs 0\ngeneration_errs 0\n' \
+    > "${BSYS}/${RAIDU}/devinfo/6/error_stats"
+out=$(btrfs_run)
+expect "${out}" '^&red devid 6: write 1 - grew by 1 since the previous poll$' \
+    "a counter increase is detected even while another counter resets"
+btrfs_errs "${RAIDU}" 6 2
+out=$(btrfs_run)
+btrfs_errage 1900
+
+# A wildcard must not expand to repository files in the caller's cwd.
+out=$(BTRFS_EXCLUDE='*' btrfs_run)
+expect "${out}" '^status testhost\.btrfs clear ' "a wildcard excludes all filesystems in any cwd"
+
+# A deliberately read-only block device is expected for an allowed ro mount.
+echo 0 > "${BSYS}/${RAIDU}/devinfo/4/writeable"
+sed 's|/media/raid btrfs rw,|/media/raid btrfs ro,|' "${BT}/mounts" > "${TMP}/btrfs-mounts"
+out=$(BTRFS_MOUNTS="${TMP}/btrfs-mounts" BTRFS_RO_OK='media_*' btrfs_run)
+expect_not "${out}" 'device not writeable|Read-only:' "allowed read-only devices do not raise a state alarm"
+echo 1 > "${BSYS}/${RAIDU}/devinfo/4/writeable"
+
+# Unknown allocation is neither zero use nor a division by zero.
+mv "${BSYS}/${ROOTU}/allocation/data/disk_total" "${TMP}/btrfs-disk-total"
+out=$(btrfs_run)
+expect "${out}" 'Space: not available' "missing allocation attributes report unavailable space"
+expect_not "${out}" '^root_(free|unalloc|datapct|metapct) : ' "unknown space is not sent as zero-valued metrics"
+mv "${TMP}/btrfs-disk-total" "${BSYS}/${ROOTU}/allocation/data/disk_total"
+
+# Replacing a device with a larger counter must skip the first rate sample.
+out=$(btrfs_run)
+btrfs_age 300
+mv "${BSYS}/${ROOTU}/devices/nvme2n1p3" "${BSYS}/${ROOTU}/devices/replacement"
+awk '$3 == "nvme2n1p3" { $3 = "replacement"; $4 += 1000; $6 += 1000; $8 += 1000; $10 += 1000; $13 += 1000 } { print }' \
+    "${BT}/diskstats" > "${TMP}/btrfs-diskstats"
+out=$(BTRFS_DISKSTATS="${TMP}/btrfs-diskstats" btrfs_run)
+expect_not "${out}" '^root_(read_bps|write_bps|read_iops|write_iops|busy) : ' \
+    "a changed device set does not produce bogus throughput or utilisation"
+mv "${BSYS}/${ROOTU}/devices/replacement" "${BSYS}/${ROOTU}/devices/nvme2n1p3"
+
+# Per-device resets can be hidden by aggregate growth on another device.
+out=$(btrfs_run)
+btrfs_age 300
+awk '$3 == "nvme1n1p3" { $4 = 0; $6 = 0; $8 = 0; $10 = 0 }
+     $3 == "nvme2n1p3" { $4 += 10000000; $6 += 1000000000; $8 += 1000000000; $10 += 10000000000 }
+     { print }' "${BT}/diskstats" > "${TMP}/btrfs-diskstats"
+out=$(BTRFS_DISKSTATS="${TMP}/btrfs-diskstats" btrfs_run)
+expect_not "${out}" '^root_(read_bps|write_bps|read_iops|write_iops|busy) : ' \
+    "a member counter reset is detected even if summed counters grow"
+
+# Names must remain distinct after Xymon's 200-character split-NCV cutoff.
+longname=$(awk 'BEGIN { for (i = 0; i < 230; i++) printf "x" }')
+out=$(BTRFS_NAMES="${RAIDU}=${longname}a ${ROOTU}=${longname}b" btrfs_run)
+metriccount=$(printf '%s\n' "${out}" | awk '/_unalloc : / { seen[$1] = 1 } END { for (n in seen) c++; print c + 0 }')
+expect "${metriccount}" '^2$' "long filesystem names retain separate metrics"
+longmetrics=$(printf '%s\n' "${out}" | awk '/^[a-z0-9_]+ : / && length($1) > 200 { print }')
+expect_not "${longmetrics}" '.' "all metric names fit split-NCV's 200-character limit"
+
+# Equal labels use UUID suffixes for both filesystems, even with an exclusion.
+out=$(BTRFS_NAMES="${RAIDU}=same ${ROOTU}=same" btrfs_run)
+rootname="same_$(printf '%s' "${ROOTU}" | tr '-' '_')"
+expect "${out}" "^${rootname}_unalloc : " "duplicate labels use an unambiguous UUID suffix"
+out=$(BTRFS_NAMES="${RAIDU}=same ${ROOTU}=same" BTRFS_EXCLUDE="${RAIDU}" btrfs_run)
+expect "${out}" "^${rootname}_unalloc : " "excluding another filesystem does not rename the graph"
+
+# Mount escapes stay one record, while command arguments use the actual path.
+sed 's|/media/raid |/media/raid\\011tab\\012line\\040space |' "${BT}/mounts" > "${TMP}/btrfs-mounts"
+out=$(BTRFS_MOUNTS="${TMP}/btrfs-mounts" BTRFS_NAMES="${RAIDU}=escaped" FAKEBTRFS_LOG="${TMP}/btrfs-calls" btrfs_run)
+expect "${out}" '^&yellow escaped  /media/raid' "escaped tabs and newlines do not break mount mapping"
+expect_not "${out}" 'no mount point found' "escaped mounts remain attached to their filesystem"
+
+# Labels and mount points must not become executable HTML on the Xymon page.
+printf '<img src=x onerror=alert(1)>\n' > "${BSYS}/${RAIDU}/label"
+out=$(btrfs_run)
+expect "${out}" 'label &lt;img src=x onerror=alert\(1\)&gt;' "filesystem labels are escaped for HTML display"
+expect_not "${out}" '<img' "no executable HTML reaches the status page"
+printf '\n' > "${BSYS}/${RAIDU}/label"
+rm -f "${TMP}/btrfs-diskstats" "${TMP}/btrfs-calls"
+
 # --- older kernels and missing btrfs-progs ----------------------------------
 rm -f "${BSYS:?}/$ROOTU/commit_stats" "${BSYS:?}/$ROOTU/devinfo/1/error_stats" \
     "${BSYS:?}/$ROOTU/devinfo/2/error_stats"
 out=$(BTRFS_CMD="$TMP/no-such-btrfs" btrfs_run)
-expect "$out" 'Device errors: not available \(devinfo/<devid>/error_stats needs kernel 5\.14\)' \
+expect "$out" 'Device errors: not available \(devinfo/&lt;devid&gt;/error_stats needs kernel 5\.14\)' \
     "without error_stats (kernel < 5.14) the counters are reported as not available"
 expect_not "$out" '^root_errors : ' "... and not graphed"
 expect_not "$out" '^root_commits : ' "without commit_stats (kernel < 6.0) no commit rates"
