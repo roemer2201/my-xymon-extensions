@@ -32,11 +32,11 @@
 #           state clean/dirty without its cache set; io_disable set on
 #           a backing device or a cache set; in use above
 #           cutoff_writeback_sync while a device caches in writeback
-#           mode (no write is cached any more); a device or cache set
+#           mode (normal writeback caching is suppressed); a device or cache set
 #           seen before has vanished (BCACHE_VANISHED_COLOR); fewer
 #           backing devices than BCACHE_MIN_BDEVS
 #   yellow  io_errors on a cache or backing device; in use above
-#           cutoff_writeback (only sync writes are cached); writeback
+#           cutoff_writeback (ordinary async writes use writethrough); writeback
 #           mode with writeback_running=0; state "no cache";
 #           cache_mode other than BCACHE_MODE (if set); hit ratio below
 #           BCACHE_HIT_YELLOW/RED (if set)
@@ -60,7 +60,7 @@
 #   1. Load configuration and collect sysfs attributes.
 #   2. Evaluate health, remembered devices and counter differences.
 #   3. Atomically persist private state and send status/data messages.
-# Version: 1.0.1 (2026-10-12)
+# Version: 1.0.2 (2026-10-12)
 
 set -u
 
@@ -582,11 +582,11 @@ END {
         }
         if (inuse != "" && cutsync ~ /^[0-9]+$/ && inuse > cutsync + 0 && WBSET[s]) {
             color = worse(color, cutsynccolor)
-            msg = msg "\n    " inuse "% in use is above cutoff_writeback_sync (" cutsync "%): no write is cached any more, all go to the backing devices"
-            problem(cutsynccolor, "cache set " s8 " " inuse "% in use, writeback caching off")
+            msg = msg "\n    " inuse "% in use is above cutoff_writeback_sync (" cutsync "%): new writes normally use writethrough instead of writeback; clean caching can continue"
+            problem(cutsynccolor, "cache set " s8 " " inuse "% in use, writeback cutoff exceeded")
         } else if (inuse != "" && cut ~ /^[0-9]+$/ && inuse > cut + 0 && WBSET[s]) {
             color = worse(color, cutcolor)
-            msg = msg "\n    " inuse "% in use is above cutoff_writeback (" cut "%): only synchronous writes are cached"
+            msg = msg "\n    " inuse "% in use is above cutoff_writeback (" cut "%): ordinary asynchronous writes normally use writethrough; synchronous, metadata and priority writes can still use writeback"
             problem(cutcolor, "cache set " s8 " " inuse "% in use")
         }
 
@@ -622,7 +622,7 @@ END {
         txt = sprintf("Cache set %s  (graphs: %s)", s, s8)
         txt = txt "\n    " A["S", s, "nbdev"] " backing device(s) attached, on error: " selected(A["S", s, "errors"]) ", io_error_limit " A["S", s, "io_error_limit"]
         if (inuse != "")
-            txt = txt "\n    " inuse "% in use (writeback caching is reduced above " cut "% and stops above " cutsync "%)"
+            txt = txt "\n    " inuse "% in use (normal writeback caching is reduced above " cut "% and stops above " cutsync "%)"
         if (A["S", s, "stats_total/cache_hit_ratio"] != "")
             txt = txt "\n    hit ratio " A["S", s, "stats_total/cache_hit_ratio"] "% total" (hit != "" ? ", " hit "% since the previous poll" : "")
         SCOLOR[s] = color

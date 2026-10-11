@@ -28,11 +28,11 @@ writeback.h).
 | backing device in state `clean`/`dirty` but not attached to a cache set — its cache device is missing | red |
 | backing device registered but not running (`running=0`, no `/dev/bcacheN`) | red |
 | `io_disable` set on a backing device or a cache set | red |
-| cache usage above `cutoff_writeback_sync` while a device caches in writeback mode: no write is cached any more | red (`BCACHE_CUTOFF_SYNC_COLOR`) |
+| cache usage above `cutoff_writeback_sync` while a device caches in writeback mode: normal writeback caching is suppressed | red (`BCACHE_CUTOFF_SYNC_COLOR`) |
 | a cache set or backing device seen before has vanished | red (`BCACHE_VANISHED_COLOR`) |
 | fewer backing devices than `BCACHE_MIN_BDEVS` (off by default) | red |
 | `io_errors` > 0 on a cache or backing device | yellow (`BCACHE_IOERR_COLOR`) |
-| cache usage above `cutoff_writeback`: only synchronous writes are cached | yellow (`BCACHE_CUTOFF_COLOR`) |
+| cache usage above `cutoff_writeback`: ordinary asynchronous writes normally use writethrough | yellow (`BCACHE_CUTOFF_COLOR`) |
 | writeback mode with `writeback_running=0` | yellow |
 | backing device in state `no cache` | yellow (`BCACHE_NOCACHE_COLOR`) |
 | `cache_mode` other than `BCACHE_MODE` (off by default) | yellow (`BCACHE_MODE_COLOR`) |
@@ -43,7 +43,14 @@ cache that holds dirty data or metadata as of the last garbage
 collection. `should_writeback()` compares exactly this value with
 `internal/cutoff_writeback` (kernel default 40) and
 `internal/cutoff_writeback_sync` (default 70); both are read from sysfs,
-not assumed.
+not assumed. These thresholds control **writeback**, not all caching:
+ordinary asynchronous writes normally switch to writethrough above the
+first cutoff, while synchronous, metadata and priority writes can still
+use writeback. Above the second cutoff, new writes normally use
+writethrough; clean caching can continue. Writes overlapping dirty ranges
+already being written back can still be forced to writeback in
+`cached_dev_write()` (`request.c`). Thus a cutoff alert does not mean the
+entire cache is off or that existing dirty data stops being flushed.
 
 ### Why devices are found the way they are
 
@@ -189,7 +196,7 @@ A healthy host (fixture data of the reference system, second poll):
 ```
 &green Cache set 06912c73-4920-4fe7-9cec-cc398e17c092  (graphs: 06912c73)
     6 backing device(s) attached, on error: unregister, io_error_limit 8
-    15% in use (writeback caching is reduced above 40% and stops above 70%)
+    15% in use (normal writeback caching is reduced above 40% and stops above 70%)
     hit ratio 92% total, 75.0% since the previous poll
     &green cache device nvme0n1p1, 409600 buckets, 2.5T written
       buckets: unused 0%, clean 85%, dirty 14%, metadata 0%

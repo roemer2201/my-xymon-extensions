@@ -2407,7 +2407,7 @@ expect "$out" '^status testhost\.bcache green .*bcache: 1 cache set\(s\), 6 back
     "a healthy host is green and summarized"
 expect "$out" '^&green Cache set 06912c73-4920-4fe7-9cec-cc398e17c092  \(graphs: 06912c73\)$' \
     "the cache set is listed with its full UUID and graph id"
-expect "$out" '15% in use \(writeback caching is reduced above 40% and stops above 70%\)' \
+expect "$out" '15% in use \(normal writeback caching is reduced above 40% and stops above 70%\)' \
     "usage is 100 - cache_available_percent, cutoffs read from internal/"
 expect "$out" '6 backing device\(s\) attached, on error: unregister, io_error_limit 8' \
     "attached devices counted from bdevN, the selected error action is shown"
@@ -2506,10 +2506,10 @@ bc_set "fs/bcache/$BCSET/cache_available_percent" 55
 out=$(bc_run)
 expect "$out" '^status testhost\.bcache yellow .*cache set 06912c73 45% in use' \
     "usage above cutoff_writeback is yellow"
-expect "$out" 'above cutoff_writeback \(40%\): only synchronous writes are cached' "... and explained"
+expect "$out" 'above cutoff_writeback \(40%\): ordinary asynchronous writes normally use writethrough' "... and explained"
 bc_set "fs/bcache/$BCSET/cache_available_percent" 25
 out=$(bc_run)
-expect "$out" '^status testhost\.bcache red .*writeback caching off' \
+expect "$out" '^status testhost\.bcache red .*writeback cutoff exceeded' \
     "usage above cutoff_writeback_sync is red"
 out=$(BCACHE_CUTOFF_SYNC_COLOR=yellow bc_run)
 expect "$out" '^status testhost\.bcache yellow ' "BCACHE_CUTOFF_SYNC_COLOR"

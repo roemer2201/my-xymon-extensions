@@ -266,8 +266,8 @@ EOF
 - new extension "bcache" (column "bcache", ships disabled): state of
   every bcache cache set, cache device and backing device from sysfs -
   red for an inconsistent backing device, one that is not running or
-  has lost its cache set, io_disable, a cache so full that writeback
-  caching stops, and devices that vanished since an earlier poll
+  has lost its cache set, io_disable, a cache exceeding the normal writeback
+  caching cutoff, and devices that vanished since an earlier poll
   (remembered by UUID in BCACHE_STATEDIR); yellow for I/O errors and
   softer conditions. RRD graphs of hit ratio, requests, dirty data,
   writeback rate, cache usage, bcacheN throughput and cache device
