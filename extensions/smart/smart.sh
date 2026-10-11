@@ -847,7 +847,9 @@ for dev in $MMCLIST; do
 
     # The kernel exposes the CID serial number ("0x1a2b3c4d"); naming
     # follows the same rules as for the SMART devices above.
-    serial=$(cat "$SYS_BLOCK/${dev#/dev/}/device/serial" 2>/dev/null | tr -d ' \t')
+    serial=""
+    sfile="$SYS_BLOCK/${dev#/dev/}/device/serial"
+    [ -r "$sfile" ] && serial=$(tr -d ' \t' < "$sfile")
     [ -n "$serial" ] || serial="-"
     name=$(disk_name "$dev" "" "$serial")
     devlabel=$dev
