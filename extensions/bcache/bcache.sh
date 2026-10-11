@@ -60,7 +60,7 @@
 #   1. Load configuration and collect sysfs attributes.
 #   2. Evaluate health, remembered devices and counter differences.
 #   3. Atomically persist private state and send status/data messages.
-# Version: 1.0.0 (2026-10-12)
+# Version: 1.0.1 (2026-10-12)
 
 set -u
 
@@ -811,6 +811,8 @@ if [ -s "$NEWSTATE" ]; then
        ! mv "$STATE_TMP" "$STATEFILE"; then
         [ -z "$STATE_TMP" ] || rm -f -- "$STATE_TMP"
         printf '\n&yellow cannot write the state file %s - rates and the vanished-device check do not work\n' "$STATEFILE" >> "$STATUS"
+        # Do not advertise "all OK" when state persistence is the only problem.
+        [ "$COLOR" != green ] || SUMMARY="cannot write the state file ${STATEFILE}"
         [ "$COLOR" = red ] || COLOR=yellow
     fi
 fi

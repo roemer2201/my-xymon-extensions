@@ -2621,7 +2621,7 @@ else
 fi
 rm -rf "$BCSTATEDIR"
 out=$(BCACHE_STATEDIR="$TMP/no/such/dir" bc_run)
-expect "$out" '^status testhost\.bcache yellow ' "an unwritable state directory is yellow"
+expect "$out" '^status testhost\.bcache yellow .*cannot write the state file' "an unwritable state directory is yellow and explains why in the summary"
 expect "$out" 'cannot write the state file' "... and explained"
 
 # Kernels without backing_dev_uuid: the device name instead, not tracked
