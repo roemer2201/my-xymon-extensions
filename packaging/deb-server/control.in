@@ -39,7 +39,7 @@ Description: Xymon server extensions and graph configuration
     granted until the admin uncomments that one line.
  .
  Covered extensions: smart, temp, la, memory, opkg, fritzdsl,
- fritzwan, wifi, if_link, lxc, systemd and xymonext. The server-only powerline
+ fritzwan, wifi, if_link, lxc, systemd, bcache and xymonext. The server-only powerline
  collector is included but disabled until configured with open-plc-utils
  and its sudo rule. So is the server-only fritz-wifi collector, which
  reads the Wi-Fi metadata of AVM FRITZ! devices (e.g. FRITZ!Powerline)

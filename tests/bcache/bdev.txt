@@ -1,0 +1,49 @@
+backing_dev_name:sdf
+backing_dev_uuid:17e640c6-7733-4b73-af9c-b76e237d5f1f
+cache_mode:writethrough [writeback] writearound none
+dirty_data:9.6G
+io_disable:0
+io_error_limit:64
+io_errors:0
+label:
+partial_stripes_expensive:0
+readahead_cache_policy:[all] meta-only
+running:1
+sequential_cutoff:0.0k
+state:dirty
+stop_when_cache_set_failed:[auto] always
+stripe_size:1.0T
+writeback_consider_fragment:1
+writeback_delay:30
+writeback_metadata:1
+writeback_percent:10
+writeback_rate:4.0k
+writeback_rate_debug:rate:		4.0k/sec
+writeback_rate_debug:dirty:		9.6G
+writeback_rate_debug:target:		13.3G
+writeback_rate_debug:proportional:	-95.3M
+writeback_rate_debug:integral:	-14.0k
+writeback_rate_debug:change:		0.0k/sec
+writeback_rate_debug:next io:	676ms
+writeback_rate_fp_term_high:1000
+writeback_rate_fp_term_low:1
+writeback_rate_fp_term_mid:10
+writeback_rate_i_term_inverse:10000
+writeback_rate_minimum:8
+writeback_rate_p_term_inverse:40
+writeback_rate_update_seconds:5
+writeback_running:1
+stats_total/bypassed:134.7G
+stats_total/cache_bypass_hits:13275
+stats_total/cache_bypass_misses:5528
+stats_total/cache_hit_ratio:91
+stats_total/cache_hits:2570370
+stats_total/cache_miss_collisions:623
+stats_total/cache_misses:233438
+stats_five_minute/bypassed:127.9M
+stats_five_minute/cache_bypass_hits:183
+stats_five_minute/cache_bypass_misses:105
+stats_five_minute/cache_hit_ratio:72
+stats_five_minute/cache_hits:14311
+stats_five_minute/cache_miss_collisions:2
+stats_five_minute/cache_misses:5451

@@ -1,0 +1,16 @@
+block_size:0.5k
+btree_written:9.3G
+bucket_size:2.0M
+cache_replacement_policy:[lru] fifo random
+discard:1
+io_errors:0
+metadata_written:14.3G
+nbuckets:409600
+priority_stats:Unused:		0%
+priority_stats:Clean:		85%
+priority_stats:Dirty:		14%
+priority_stats:Metadata:	0%
+priority_stats:Average:	2383
+priority_stats:Sectors per Q:	52317312
+priority_stats:Quantiles:	[10 46 95 158 304 420 516 605 966 1516 1592 1664 1899 2295 2383 2729 2755 2828 2879 3009 3103 3219 3401 3533 3691 4228 4452 4524 4602 4785 5138]
+written:2.5T

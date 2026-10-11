@@ -1,0 +1,64 @@
+average_key_size:76.7k
+block_size:0.5k
+btree_cache_size:305.0M
+bucket_size:2.0M
+cache_available_percent:85
+congested:0.0k
+congested_read_threshold_us:0
+congested_write_threshold_us:20000
+errors:[unregister] panic
+io_error_halflife:0
+io_error_limit:8
+journal_delay_ms:100
+root_usage_percent:2
+synchronous:1
+tree_depth:1
+internal/active_journal_entries:109
+internal/bset_tree_stats:btree nodes:		611
+internal/bset_tree_stats:written sets:		1209
+internal/bset_tree_stats:unwritten sets:		611
+internal/bset_tree_stats:written key bytes:	209248312
+internal/bset_tree_stats:unwritten key bytes:	596704
+internal/bset_tree_stats:floats:			68721110018
+internal/bset_tree_stats:failed:			623
+internal/btree_cache_max_chain:3
+internal/btree_gc_average_duration_ms:3142
+internal/btree_gc_average_frequency_sec:29918
+internal/btree_gc_last_sec:1598
+internal/btree_gc_max_duration_ms:4104
+internal/btree_nodes:607
+internal/btree_read_average_duration_us:4421
+internal/btree_read_average_frequency_ms:119228
+internal/btree_read_last_ms:156243560
+internal/btree_read_max_duration_us:32563
+internal/btree_shrinker_disabled:0
+internal/btree_sort_average_duration_us:2475
+internal/btree_sort_average_frequency_ms:6654
+internal/btree_sort_last_ms:205
+internal/btree_sort_max_duration_us:14966
+internal/btree_split_average_duration_us:12849
+internal/btree_split_average_frequency_sec:11
+internal/btree_split_last_sec:68
+internal/btree_split_max_duration_us:259634
+internal/btree_used_percent:60
+internal/cache_read_races:0
+internal/copy_gc_enabled:0
+internal/cutoff_writeback:40
+internal/cutoff_writeback_sync:70
+internal/feature_incompat:large_bucket
+internal/flush_write:6
+internal/gc_after_writeback:0
+internal/gc_always_rewrite:0
+internal/idle_max_writeback_rate:1
+internal/io_disable:0
+internal/reclaim:3689874
+internal/reclaimed_journal_buckets:1897
+internal/writeback_keys_done:8657192
+internal/writeback_keys_failed:4931
+stats_total/bypassed:340.4G
+stats_total/cache_bypass_hits:104806
+stats_total/cache_bypass_misses:23198
+stats_total/cache_hit_ratio:92
+stats_total/cache_hits:9010811
+stats_total/cache_miss_collisions:1811
+stats_total/cache_misses:762378

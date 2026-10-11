@@ -2154,6 +2154,346 @@ rm -rf "$FAKESYSTEMCTL_DIR" "$FAKESYSD_RUNDIR" "$SYSDSTATE"
 unset SYSD_CFG FAKESYSTEMCTL FAKESYSD_RUNDIR FAKESYSTEMCTL_DIR
 
 # ----------------------------------------------------------------------
+echo "--- bcache ---"
+# The fixtures are recorded on an Ubuntu 24.04 host (kernel 6.8): one
+# cache set on an NVMe partition, six HDD backing devices in writeback
+# mode. bc_build turns the recorded "name:value" lines into a sysfs
+# tree with one file per attribute and the symlinks the kernel creates
+# (cache, dev, bdevN, cacheN, /sys/block/bcacheN/bcache). The five other
+# backing devices are copies of sdf with the UUIDs of that host.
+BCROOT="$TMP/bcsys"
+BCSET=06912c73-4920-4fe7-9cec-cc398e17c092
+BCSTATE="$TMP/bcache.testhost.state"
+export BCACHE_SYSFS="$BCROOT"
+unset BCACHE_CFG BCACHE_COLUMN BCACHE_STATEDIR BCACHE_FORGET \
+    BCACHE_VANISHED_COLOR BCACHE_MIN_BDEVS BCACHE_MODE BCACHE_MODE_COLOR \
+    BCACHE_NOCACHE_COLOR BCACHE_IOERR_COLOR BCACHE_CUTOFF_COLOR \
+    BCACHE_CUTOFF_SYNC_COLOR BCACHE_HIT_YELLOW BCACHE_HIT_RED \
+    BCACHE_HIT_MINREQ BCACHE_PRIO_STATS BCACHE_INTERNAL 2>/dev/null || true
+
+# bc_attrs <dir> <fixture> -- one file per "name:value" line; lines of
+# the same name (writeback_rate_debug, priority_stats) are appended
+bc_attrs() {
+    mkdir -p "$1"
+    while IFS= read -r ba_line; do
+        ba_name=${ba_line%%:*}
+        mkdir -p "$1/$(dirname "$ba_name")"
+        printf '%s\n' "${ba_line#*:}" >> "$1/$ba_name"
+    done < "$2"
+}
+
+bc_build() {
+    rm -rf "$BCROOT" "$BCSTATE"
+    mkdir -p "$BCROOT/block" "$BCROOT/fs/bcache"
+    bc_attrs "$BCROOT/fs/bcache/$BCSET" "$TESTDIR/bcache/cset.txt"
+    mkdir -p "$BCROOT/block/nvme0n1/nvme0n1p1"
+    bc_attrs "$BCROOT/block/nvme0n1/nvme0n1p1/bcache" "$TESTDIR/bcache/cache.txt"
+    cp "$TESTDIR/bcache/cache.stat" "$BCROOT/block/nvme0n1/nvme0n1p1/stat"
+    ln -s ../../../block/nvme0n1/nvme0n1p1/bcache "$BCROOT/fs/bcache/$BCSET/cache0"
+    bb_n=0
+    for bb_spec in sdf:17e640c6-7733-4b73-af9c-b76e237d5f1f \
+        sda:5f42606b-1cbe-43ab-b712-d498bc8d18c9 \
+        sdb:56f0b7f4-eeea-4f1a-88fd-4ae06c299bf1 \
+        sdc:c0afb1ca-6149-4db2-89bb-bed49d7b999e \
+        sdd:d9c49827-b8f6-4f8b-a940-e0b3ae1f400d \
+        sde:d6770f1c-9d3a-4b6e-99d3-63a414762848; do
+        bb_dev=${bb_spec%%:*}
+        bb_uuid=${bb_spec#*:}
+        sed -e "s/^backing_dev_name:.*/backing_dev_name:$bb_dev/" \
+            -e "s/^backing_dev_uuid:.*/backing_dev_uuid:$bb_uuid/" \
+            "$TESTDIR/bcache/bdev.txt" > "$TMP/bdev.txt"
+        bc_attrs "$BCROOT/block/$bb_dev/bcache" "$TMP/bdev.txt"
+        mkdir -p "$BCROOT/block/bcache$bb_n"
+        cp "$TESTDIR/bcache/bcache0.stat" "$BCROOT/block/bcache$bb_n/stat"
+        ln -s "../$bb_dev/bcache" "$BCROOT/block/bcache$bb_n/bcache"
+        ln -s "../../bcache$bb_n" "$BCROOT/block/$bb_dev/bcache/dev"
+        ln -s "../../../fs/bcache/$BCSET" "$BCROOT/block/$bb_dev/bcache/cache"
+        ln -s "../../../block/$bb_dev/bcache" "$BCROOT/fs/bcache/$BCSET/bdev$bb_n"
+        bb_n=$((bb_n + 1))
+    done
+    rm -f "$TMP/bdev.txt"
+}
+
+bc_run() {
+    # shellcheck disable=SC2086  # TESTSH may be multi-word ("busybox sh")
+    $TESTSH "$REPO/extensions/bcache/bcache.sh"
+}
+# bc_set <path below the sysfs root> <value>
+bc_set() {
+    printf '%s\n' "$2" > "$BCROOT/$1"
+}
+# bc_age <seconds> -- pretend the previous poll was <seconds> ago
+bc_age() {
+    awk -v t="$(( $(date +%s) - $1 ))" '$1 == "T" { $2 = t } { print }' \
+        "$BCSTATE" > "$BCSTATE.new" && mv "$BCSTATE.new" "$BCSTATE"
+}
+# bc_status <output> -> the status message only
+bc_status() {
+    printf '%s\n' "$1" | awk '/^data / { exit } { print }'
+}
+# bc_allbdevs <attribute> <value> -- set it on all six backing devices
+bc_allbdevs() {
+    for bb_dev in sda sdb sdc sdd sde sdf; do
+        bc_set "block/$bb_dev/bcache/$1" "$2"
+    done
+}
+
+bc_build
+out=$(bc_run)
+rc=$?
+if [ "$rc" -ne 0 ]; then
+    echo "FAIL: bcache.sh exited with $rc"
+    printf '%s\n' "$out"
+    exit 1
+fi
+expect "$out" '^status testhost\.bcache green .*bcache: 1 cache set\(s\), 6 backing device\(s\), all OK$' \
+    "a healthy host is green and summarized"
+expect "$out" '^&green Cache set 06912c73-4920-4fe7-9cec-cc398e17c092  \(graphs: 06912c73\)$' \
+    "the cache set is listed with its full UUID and graph id"
+expect "$out" '15% in use \(writeback caching is reduced above 40% and stops above 70%\)' \
+    "usage is 100 - cache_available_percent, cutoffs read from internal/"
+expect "$out" '6 backing device\(s\) attached, on error: unregister, io_error_limit 8' \
+    "attached devices counted from bdevN, the selected error action is shown"
+expect "$out" '&green cache device nvme0n1p1, 409600 buckets, 2\.5T written' \
+    "the cache device is named after its partition"
+expect "$out" 'buckets: unused 0%, clean 85%, dirty 14%, metadata 0%' \
+    "priority_stats are parsed from the multi-line attribute"
+expect "$out" '^&green bcache0  sdf  17e640c6  writeback  dirty  dirty 9\.6G \(target 13\.3G\)  hits 91% total$' \
+    "backing device line: bcacheN, sdX, UUID prefix, mode, state, dirty data and target"
+expect "$(printf '%s\n' "$out" | grep '^&green bcache' | awk '{ print $2 }' | tr '\n' ' ')" \
+    '^bcache0 bcache1 bcache2 bcache3 bcache4 bcache5 $' "backing devices are sorted by bcacheN"
+expect "$out" 'First poll' "first poll explains why rates are missing"
+expect "$out" '^17e640c6_dirty : 9\.60$' "data: dirty_data converted from 9.6G to GiB"
+expect "$out" '^17e640c6_target : 13\.30$' "data: writeback target from writeback_rate_debug"
+expect "$out" '^17e640c6_wbrate : 4\.0$' "data: writeback_rate converted from 4.0k to KiB/s"
+expect "$out" '^06912c73_inuse : 15$' "data: cache set usage"
+expect "$out" '^06912c73_cutwb : 40$' "data: cutoff_writeback"
+expect "$out" '^06912c73_cutsync : 70$' "data: cutoff_writeback_sync"
+expect "$out" '^06912c73_bkclean : 85$' "data: clean buckets from priority_stats"
+expect "$out" '^06912c73_bkdirty : 14$' "data: dirty buckets from priority_stats"
+expect_not "$out" '_hitpct|_rdbytes|_hits :' "no rates on the first poll"
+expect_not "$out" '_btused' "no btree graph unless BCACHE_INTERNAL=yes"
+expect_not "$(ncv_view "$(bc_status "$out")")" '.' \
+    "the status message itself carries nothing the NCV parser would graph"
+expect "$(cat "$BCSTATE" 2>/dev/null)" '^SEEN B 17e640c6-7733-4b73-af9c-b76e237d5f1f bcache0/sdf [0-9]+$' \
+    "state file remembers the backing devices by UUID"
+expect "$(cat "$BCSTATE" 2>/dev/null)" "^SEEN S $BCSET nvme0n1p1 [0-9]+\$" \
+    "state file remembers the cache set by UUID"
+
+# Second poll, 300 s later: sdf saw 900 hits and 100 misses, the cache
+# set 3000 hits and 1000 misses; bcache0 read and wrote 3000 I/Os and
+# 300 MiB each, the cache device wrote 300 MiB.
+bc_age 300
+bc_set block/sdf/bcache/stats_total/cache_hits 2571270
+bc_set block/sdf/bcache/stats_total/cache_misses 233538
+bc_set "fs/bcache/$BCSET/stats_total/cache_hits" 9013811
+bc_set "fs/bcache/$BCSET/stats_total/cache_misses" 763378
+bc_set block/bcache0/stat ' 2825680        0 134847212  6379674 15689081        0 679093872 50078422        0  8118051 56466778  3568585        0        0     8682        0        0'
+bc_set block/nvme0n1/nvme0n1p1/stat '20324453   443014 1442335496 22360890 85122390 11473589 5478199420 199363241        0 20438125 229448205  1353785        0 5545103360  7724073        0        0'
+out=$(bc_run)
+expect "$out" '^17e640c6_hitpct : 90\.0$' "data: hit ratio of the poll from the stats_total differences"
+expect "$out" '^06912c73_hitpct : 75\.0$' "data: hit ratio of the cache set"
+expect "$out" '75\.0% since the previous poll' "the cache set's poll hit ratio is shown"
+expect "$out" 'hits 91% total, 90\.0% last poll' "the device's poll hit ratio is shown"
+expect_rate "$out" 06912c73_hits 10 "data: cache set hits per second"
+expect_rate "$out" 06912c73_misses 3.33 "data: cache set misses per second"
+expect "$out" '^06912c73_bphits : 0\.00$' "data: bypass hits per second"
+expect_rate "$out" 17e640c6_rdops 10 "data: read I/Os per second from the bcacheN stat file"
+expect_rate "$out" 17e640c6_wrops 10 "data: write I/Os per second"
+expect_rate "$out" 17e640c6_rdbytes 1 "data: MiB/s read (stat sectors x 512)"
+expect_rate "$out" 17e640c6_wrbytes 1 "data: MiB/s written"
+expect_rate "$out" 06912c73_ssdwr 1 "data: MiB/s written to the cache device partition"
+expect "$out" '^5f42606b_rdops : 0\.0$' "an idle device reports 0 I/Os"
+expect_not "$out" '^5f42606b_hitpct' "no hit ratio without requests (a gap, not 0 %)"
+expect_not "$out" 'First poll' "the first-poll note is gone"
+
+# Hit ratio thresholds (cache set, 4000 requests in this poll)
+bc_age 300
+bc_set "fs/bcache/$BCSET/stats_total/cache_hits" 9016811
+bc_set "fs/bcache/$BCSET/stats_total/cache_misses" 764378
+out=$(BCACHE_HIT_YELLOW=80 bc_run)
+expect "$out" '^status testhost\.bcache yellow .*cache set 06912c73 hit ratio 75\.0%' \
+    "BCACHE_HIT_YELLOW colors a low hit ratio"
+bc_age 300
+bc_set "fs/bcache/$BCSET/stats_total/cache_hits" 9019811
+bc_set "fs/bcache/$BCSET/stats_total/cache_misses" 765378
+out=$(BCACHE_HIT_YELLOW=80 BCACHE_HIT_RED=76 bc_run)
+expect "$out" '^status testhost\.bcache red ' "BCACHE_HIT_RED"
+bc_age 300
+bc_set "fs/bcache/$BCSET/stats_total/cache_hits" 9022811
+bc_set "fs/bcache/$BCSET/stats_total/cache_misses" 766378
+out=$(BCACHE_HIT_YELLOW=80 BCACHE_HIT_MINREQ=5000 bc_run)
+expect "$out" '^status testhost\.bcache green ' "a poll with fewer than BCACHE_HIT_MINREQ requests is not judged"
+
+# A counter that went backwards (reboot, clear_stats) skips the poll
+bc_age 300
+bc_set block/sdf/bcache/stats_total/cache_hits 100
+out=$(bc_run)
+expect_not "$out" '^17e640c6_hitpct' "a reset counter gives no hit ratio for that poll"
+expect "$out" '^17e640c6_dirty : ' "... while the gauges are still reported"
+bc_age 300
+bc_set block/sdf/bcache/stats_total/cache_hits 190
+bc_set block/sdf/bcache/stats_total/cache_misses 233548
+out=$(bc_run)
+expect "$out" '^17e640c6_hitpct : 90\.0$' "... and the next poll counts from the new value"
+
+# Optional metrics
+out=$(BCACHE_INTERNAL=yes bc_run)
+expect "$out" '^06912c73_btused : 60$' "BCACHE_INTERNAL=yes: btree_used_percent"
+expect "$out" '^06912c73_btroot : 2$' "BCACHE_INTERNAL=yes: root_usage_percent"
+out=$(BCACHE_PRIO_STATS=no bc_run)
+expect_not "$out" '_bk|buckets: unused' "BCACHE_PRIO_STATS=no skips priority_stats"
+
+# Cache usage against the writeback cutoffs
+bc_set "fs/bcache/$BCSET/cache_available_percent" 55
+out=$(bc_run)
+expect "$out" '^status testhost\.bcache yellow .*cache set 06912c73 45% in use' \
+    "usage above cutoff_writeback is yellow"
+expect "$out" 'above cutoff_writeback \(40%\): only synchronous writes are cached' "... and explained"
+bc_set "fs/bcache/$BCSET/cache_available_percent" 25
+out=$(bc_run)
+expect "$out" '^status testhost\.bcache red .*writeback caching off' \
+    "usage above cutoff_writeback_sync is red"
+out=$(BCACHE_CUTOFF_SYNC_COLOR=yellow bc_run)
+expect "$out" '^status testhost\.bcache yellow ' "BCACHE_CUTOFF_SYNC_COLOR"
+bc_allbdevs cache_mode 'writethrough [writearound] writeback none'
+out=$(bc_run)
+expect "$out" '^status testhost\.bcache green ' \
+    "the cutoffs do not matter without a device in writeback mode"
+expect "$out" '^&green bcache0  sdf  17e640c6  writearound  dirty' "the selected cache_mode is shown"
+expect_not "$out" '_target|_wbrate' "no writeback graphs outside writeback mode"
+out=$(BCACHE_MODE=writeback bc_run)
+expect "$out" '^status testhost\.bcache yellow .*in writearound mode' \
+    "a cache_mode other than BCACHE_MODE is yellow"
+expect "$out" 'cache_mode is writearound, expected writeback \(BCACHE_MODE\)' "... and explained"
+bc_allbdevs cache_mode 'writethrough [writeback] writearound none'
+bc_set "fs/bcache/$BCSET/cache_available_percent" 85
+
+# Errors and states
+bc_set block/nvme0n1/nvme0n1p1/bcache/io_errors 3
+out=$(bc_run)
+expect "$out" '^status testhost\.bcache yellow .*cache device nvme0n1p1 I/O errors' \
+    "io_errors on the cache device are yellow"
+expect "$out" '3 I/O error\(s\) on the cache device' "... and counted"
+bc_set block/nvme0n1/nvme0n1p1/bcache/io_errors 0
+bc_set block/sda/bcache/io_errors 2
+out=$(BCACHE_IOERR_COLOR=red bc_run)
+expect "$out" '^status testhost\.bcache red .*bcache1 I/O errors' "io_errors on a backing device, BCACHE_IOERR_COLOR"
+bc_set block/sda/bcache/io_errors 0
+bc_set block/sdb/bcache/state inconsistent
+out=$(bc_run)
+expect "$out" '^status testhost\.bcache red .*bcache2 inconsistent' "an inconsistent backing device is red"
+expect "$out" 'probably corrupted' "... and explained"
+bc_set block/sdb/bcache/state dirty
+bc_set block/sdc/bcache/writeback_running 0
+out=$(bc_run)
+expect "$out" '^status testhost\.bcache yellow .*bcache3 writeback stopped' \
+    "writeback_running=0 in writeback mode is yellow"
+bc_set block/sdc/bcache/writeback_running 1
+bc_set "fs/bcache/$BCSET/internal/io_disable" 1
+out=$(bc_run)
+expect "$out" '^status testhost\.bcache red .*cache set 06912c73 disabled' "a disabled cache set is red"
+bc_set "fs/bcache/$BCSET/internal/io_disable" 0
+out=$(bc_run)
+expect "$out" '^status testhost\.bcache green ' "green again"
+
+# A backing device that is not attached at all
+rm -f "$BCROOT/block/sdd/bcache/cache" "$BCROOT/fs/bcache/$BCSET/bdev4"
+bc_set block/sdd/bcache/state 'no cache'
+out=$(bc_run)
+expect "$out" '^status testhost\.bcache yellow .*bcache4 not cached' "state \"no cache\" is yellow"
+expect "$out" '^Backing devices without a cache set:$' "unattached devices get a section of their own"
+out=$(BCACHE_NOCACHE_COLOR=green bc_run)
+expect "$out" '^status testhost\.bcache green ' "BCACHE_NOCACHE_COLOR=green"
+
+# Cache device failed at boot: the cache set does not exist, the
+# backing devices are registered but not started - no bcacheN, no cache
+# link. The cache set was seen at the previous poll.
+bc_build
+bc_run > /dev/null
+rm -rf "${BCROOT:?}/fs/bcache/$BCSET" "$BCROOT"/block/bcache[0-9]
+for bb_dev in sda sdb sdc sdd sde sdf; do
+    rm -f "$BCROOT/block/$bb_dev/bcache/cache" "$BCROOT/block/$bb_dev/bcache/dev"
+done
+bc_allbdevs running 0
+out=$(bc_run)
+expect "$out" '^status testhost\.bcache red .*bcache: cache set 06912c73 \(nvme0n1p1\) vanished \(\+12 more\)$' \
+    "backing devices without their cache device are red, the summary names the cache set first"
+expect "$out" "^&red cache set $BCSET \\(last seen as nvme0n1p1\\) has vanished\$" \
+    "the vanished cache set is reported with its cache device"
+expect "$out" 'state "dirty" but not attached to any cache set - the cache device is missing and holds dirty data of this device' \
+    "a dirty backing device without its cache set is explained"
+expect "$out" 'not running: no /dev/bcacheN exists for it' "a backing device that is not running is explained"
+expect "$out" '^&red \(no bcache device\)  sdf  17e640c6  writeback  dirty' \
+    "a device without bcacheN is still listed under its UUID"
+expect_not "$out" '_rdops' "no throughput without a bcacheN"
+
+# A backing device vanishing at runtime (stopped by the kernel), then
+# acknowledged with BCACHE_FORGET
+bc_build
+bc_run > /dev/null
+rm -rf "${BCROOT:?}/block/sdc" "$BCROOT/block/bcache3" "$BCROOT/fs/bcache/$BCSET/bdev3"
+out=$(bc_run)
+expect "$out" '^status testhost\.bcache red .*bcache3/sdc \(c0afb1ca\) vanished' \
+    "a backing device seen before that has vanished is red"
+expect "$out" '^&red backing device c0afb1ca-6149-4db2-89bb-bed49d7b999e \(last seen as bcache3/sdc\) has vanished$' \
+    "... with its full UUID and last name"
+out=$(bc_run)
+expect "$out" '^status testhost\.bcache red ' "the vanished device stays red at the next poll"
+out=$(BCACHE_VANISHED_COLOR=yellow bc_run)
+expect "$out" '^status testhost\.bcache yellow ' "BCACHE_VANISHED_COLOR"
+out=$(BCACHE_FORGET="c0afb1ca" bc_run)
+expect "$out" '^status testhost\.bcache green ' "BCACHE_FORGET acknowledges the device"
+expect "$out" '^&clear backing device c0afb1ca-.* - forgotten \(BCACHE_FORGET\)$' "... and says so once"
+out=$(bc_run)
+expect "$out" '^status testhost\.bcache green ' "a forgotten device is dropped from the state file"
+expect_not "$out" 'c0afb1ca' "... and not mentioned any more"
+out=$(BCACHE_MIN_BDEVS=6 bc_run)
+expect "$out" '^status testhost\.bcache red .*5 of 6 backing devices' "BCACHE_MIN_BDEVS"
+
+# The state file location
+bc_build
+BCSTATEDIR="$TMP/bcstatedir"
+mkdir -p "$BCSTATEDIR"
+BCACHE_STATEDIR="$BCSTATEDIR" bc_run > /dev/null
+if [ -f "$BCSTATEDIR/bcache.testhost.state" ] && [ ! -f "$BCSTATE" ]; then
+    echo "ok:   BCACHE_STATEDIR moves the state file"
+else
+    echo "FAIL: BCACHE_STATEDIR moves the state file"
+    FAIL=1
+fi
+rm -rf "$BCSTATEDIR"
+out=$(BCACHE_STATEDIR="$TMP/no/such/dir" bc_run)
+expect "$out" '^status testhost\.bcache yellow ' "an unwritable state directory is yellow"
+expect "$out" 'cannot write the state file' "... and explained"
+
+# Kernels without backing_dev_uuid: the device name instead, not tracked
+bc_build
+rm -f "$BCROOT/block/sdf/bcache/backing_dev_uuid"
+out=$(bc_run)
+expect "$out" '^dev_sdf_dirty : 9\.60$' "without backing_dev_uuid the device name names the RRD"
+expect_not "$(cat "$BCSTATE" 2>/dev/null)" 'dev-sdf' "... and the device is not tracked for vanishing"
+
+# Not applicable
+rm -rf "$BCROOT" "$BCSTATE"
+mkdir -p "$BCROOT/block/sda"
+out=$(bc_run)
+expect "$out" '^status testhost\.bcache clear .*not applicable' "a host without bcache reports clear"
+expect "$out" 'No bcache device on this host' "... and says why"
+out=$(BCACHE_MIN_BDEVS=1 bc_run)
+expect "$out" '^status testhost\.bcache red .*0 of 1 backing devices' \
+    "BCACHE_MIN_BDEVS still alarms when no bcache device is left"
+out=$(BCACHE_SYSFS="$TMP/nosys" bc_run)
+expect "$out" '^status testhost\.bcache clear ' "no sysfs at all reports clear"
+expect "$out" 'bcache is a Linux kernel feature' "... and says why"
+bc_build
+out=$(BCACHE_COLUMN="bc" bc_run)
+expect "$out" '^status testhost\.bc ' "column name is overridable via BCACHE_COLUMN"
+
+rm -rf "$BCROOT" "$BCSTATE"
+unset BCACHE_SYSFS
+
+# ----------------------------------------------------------------------
 echo "--- xymonext ---"
 
 # Install tree for the measurement wrapper plus fake extensions that
@@ -3226,7 +3566,7 @@ fi
 # list too), so a snippet there runs twice on a combined host - that is
 # what this guards against.
 # temp is missing on purpose - see the collision check further down.
-for snippet in smart la memory disk opkg fritzdsl fritzwan wifi if_link lxc claude systemd; do
+for snippet in smart la memory disk opkg fritzdsl fritzwan wifi if_link lxc claude systemd bcache; do
     grep -qx "/etc/xymon/clientlaunch.d/$snippet.cfg" "$TMP/client-paths" || {
         echo "FAIL: $snippet snippet is not staged into clientlaunch.d"
         FAIL=1
