@@ -59,6 +59,11 @@ Included extensions:
   including short flaps between two polls, with optional per-port
   thresholds and RRD graphs; Linux-only, green until thresholds are
   configured.
+* btrfs - btrfs filesystem health: missing or read-only devices,
+  degraded mounts, device error counters, unallocated space and
+  metadata usage, scrub age and result, throughput, IOPS and commit
+  times with RRD graphs. Linux-only; stock EL kernels have no btrfs,
+  so the column is clear there.
 * xymonext - what the extensions above cost this host: wall clock
   time, CPU time and the number of bytes each test sends to the
   Xymon server, measured on every run and reported in one
@@ -118,6 +123,9 @@ sh packaging/common/stage.sh "%{buildroot}" \
 %{xymonhome}/ext/systemd.sh
 %config(noreplace) %{xymonhome}/etc/my-xymon-extensions/systemd.cfg
 %config(noreplace) %{xymonhome}/etc/clientlaunch.d/systemd.cfg
+%{xymonhome}/ext/btrfs.sh
+%config(noreplace) %{xymonhome}/etc/my-xymon-extensions/btrfs.cfg
+%config(noreplace) %{xymonhome}/etc/clientlaunch.d/btrfs.cfg
 %{xymonhome}/ext/xymonext.sh
 %{xymonhome}/ext/xymonext-send.sh
 %config(noreplace) %{xymonhome}/etc/my-xymon-extensions/xymonext.cfg
@@ -143,7 +151,7 @@ if [ "$1" -ge 2 ]; then
     verify=$(rpm -V --nodeps %{name} 2>/dev/null)
 fi
 for cfg in smart temp la memory disk opkg fritzdsl fritzwan wifi \
-    if_link lxc claude systemd xymonext; do
+    if_link lxc claude systemd btrfs xymonext; do
     if [ ! -e "$new/$cfg.cfg" ]; then
         echo "$cfg" >> "$state/replaceable"
     elif [ "$1" -ge 2 ] && ! echo "$verify" | grep -q " $new/$cfg.cfg\$"; then
@@ -163,7 +171,7 @@ state=%{_localstatedir}/lib/rpm-state/%{name}
 old=%{xymonhome}/etc
 new=%{xymonhome}/etc/my-xymon-extensions
 for cfg in smart temp la memory disk opkg fritzdsl fritzwan wifi \
-    if_link lxc claude systemd xymonext; do
+    if_link lxc claude systemd btrfs xymonext; do
     if [ -f "$old/$cfg.cfg.rpmsave" ]; then
         src="$old/$cfg.cfg.rpmsave"
     elif [ -f "$old/$cfg.cfg" ]; then
@@ -226,6 +234,11 @@ The "systemd" extension is active out of the box and adds a "systemd"
  (a restart keeps the column yellow for 30 minutes). List the units
  that must run in SYSD_REQUIRED, or set SYSD_ENABLE="no" to switch it
  off, in %{xymonhome}/etc/my-xymon-extensions/systemd.cfg.
+The "btrfs" extension is active out of the box and adds a "btrfs"
+ column for every mounted btrfs filesystem. Stock EL kernels have no
+ btrfs, so the column is clear unless a btrfs-enabled kernel is used;
+ set BTRFS_ENABLE="no" in %{xymonhome}/etc/my-xymon-extensions/btrfs.cfg
+ to silence it.
 The "lxc" extension ships disabled: on an LXC host, remove the
  DISABLED line from %{xymonhome}/etc/clientlaunch.d/lxc.cfg. Which
  containers are supposed to run is detected automatically
@@ -251,6 +264,17 @@ RRD graphs need a one-time setup on the Xymon SERVER (not here):
 EOF
 
 %changelog
+* Mon Oct 12 2026 roemer2201 <r.oliver@web.de> - 0.26.0-1
+- new extension "btrfs" (column "btrfs", active by default, no root
+  rights needed): every mounted btrfs filesystem with missing or
+  read-only devices, degraded mounts, the device error counters
+  (yellow while above zero, red for BTRFS_ERR_HOLD seconds after they
+  grew), unallocated space, metadata usage once no new metadata chunk
+  fits (the ENOSPC df does not show), the age of the last scrub and -
+  as root or via sudo (BTRFS_SUDO) - its result. Throughput, IOPS,
+  busiest device and transaction commits are graphed per filesystem
+  via split-NCV (server drop-ins). Hosts without btrfs report clear
+
 * Tue Oct 06 2026 roemer2201 <r.oliver@web.de> - 0.25.1-1
 - preserve systemd restart warnings for unloaded units and failed
   counter queries; report query failures as yellow without losing

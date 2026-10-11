@@ -73,7 +73,7 @@ task() { # task NAME
         "$DESTDIR$LAUNCHDIR/$1.cfg$SUF"
 }
 
-for ext in smart temp la memory disk opkg wifi if_link lxc claude systemd; do
+for ext in smart temp la memory disk opkg wifi if_link lxc claude systemd btrfs; do
     inst 0755 "extensions/$ext/$ext.sh" "$DESTDIR$EXTDIR/$ext.sh" || exit 1
     inst 0644 "extensions/$ext/$ext.cfg" "$DESTDIR$CFGDIR/$ext.cfg$SUF" || exit 1
     task "$ext" || exit 1
@@ -105,12 +105,13 @@ if [ "$DOCDIR" != "-" ]; then
 
     # Client-side documentation: one README per extension.
     for ext in smart temp la memory disk opkg fritzdsl fritzwan wifi \
-        if_link lxc claude systemd xymonext; do
+        if_link lxc claude systemd btrfs xymonext; do
         mkdir -p "$DESTDIR$DOCDIR/$ext" || exit 1
         inst 0644 "extensions/$ext/README.md" "$DESTDIR$DOCDIR/$ext/README.md" || exit 1
     done
     inst 0644 extensions/smart/sudoers.example "$DESTDIR$DOCDIR/smart/sudoers.example" || exit 1
     inst 0644 extensions/claude/sudoers.example "$DESTDIR$DOCDIR/claude/sudoers.example" || exit 1
+    inst 0644 extensions/btrfs/sudoers.example "$DESTDIR$DOCDIR/btrfs/sudoers.example" || exit 1
 
     # The launch snippets that are not installed (see SKIP_SNIPPETS)
     # ship here instead, so they can be put in place by hand.
@@ -125,7 +126,7 @@ if [ "$DOCDIR" != "-" ]; then
     # rrddefinitions.d directories. Every extension with RRD graphs has
     # them; "disk" uses the server's built-in handler and has none.
     for ext in smart temp la memory opkg fritzdsl fritzwan wifi \
-        if_link lxc systemd xymonext; do
+        if_link lxc systemd btrfs xymonext; do
         mkdir -p "$DESTDIR$DOCDIR/$ext/server" || exit 1
         inst 0644 "extensions/$ext/server/README.md" \
             "$DESTDIR$DOCDIR/$ext/server/README.md" || exit 1
