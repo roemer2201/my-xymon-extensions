@@ -8,6 +8,7 @@
 /etc/xymon/xymonserver.d/if_link.cfg
 /etc/xymon/xymonserver.d/lxc.cfg
 /etc/xymon/xymonserver.d/systemd.cfg
+/etc/xymon/xymonserver.d/btrfs.cfg
 /etc/xymon/xymonserver.d/xymonext.cfg
 /etc/xymon/graphs.d/smart.cfg
 /etc/xymon/graphs.d/la.cfg
@@ -19,6 +20,7 @@
 /etc/xymon/graphs.d/if_link.cfg
 /etc/xymon/graphs.d/lxc.cfg
 /etc/xymon/graphs.d/systemd.cfg
+/etc/xymon/graphs.d/btrfs.cfg
 /etc/xymon/graphs.d/xymonext.cfg
 /etc/xymon/rrddefinitions.d/if_link.cfg
 /etc/xymon/rrddefinitions.d/systemd.cfg

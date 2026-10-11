@@ -1,0 +1,40 @@
+#!/bin/sh
+# Fake btrfs(8) for the unit tests. Prints canned output recorded on
+# real hosts, selected by the mount point: "/" -> <dir>/usage._,
+# "/media/raid" -> <dir>/usage._media_raid. A missing file behaves
+# like an unknown path.
+#
+#   FAKEBTRFS_DIR   directory with the canned output
+#   FAKEBTRFS_USER  "yes": behave like btrfs-progs run by an ordinary
+#                   user (scrub status fails, usage warns on stderr)
+#   FAKEBTRFS_LOG   optional file that records every call
+set -u
+[ -n "${FAKEBTRFS_LOG:-}" ] && printf '%s\n' "$*" >> "$FAKEBTRFS_LOG"
+key() { printf '%s' "$1" | tr '/' '_'; }
+case "$*" in
+    --version)
+        echo "btrfs-progs v5.16.2"
+        ;;
+    "filesystem usage -b "*)
+        f="$FAKEBTRFS_DIR/usage.$(key "$4")"
+        [ -f "$f" ] || { echo "ERROR: cannot access '$4': No such file or directory" >&2; exit 1; }
+        if [ "${FAKEBTRFS_USER:-}" = yes ]; then
+            echo "WARNING: cannot read detailed chunk info, per-device usage will not be shown, run as root" >&2
+        fi
+        cat "$f"
+        ;;
+    "scrub status -R "*)
+        if [ "${FAKEBTRFS_USER:-}" = yes ]; then
+            echo "ERROR: getting dev info for scrub failed: Operation not permitted" >&2
+            exit 1
+        fi
+        f="$FAKEBTRFS_DIR/scrub.$(key "$4")"
+        [ -f "$f" ] || { echo "ERROR: cannot access '$4': No such file or directory" >&2; exit 1; }
+        cat "$f"
+        ;;
+    *)
+        echo "fakebtrfs: unsupported call: $*" >&2
+        exit 1
+        ;;
+esac
+exit 0

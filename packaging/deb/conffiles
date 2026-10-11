@@ -23,4 +23,6 @@
 /etc/xymon/clientlaunch.d/claude.cfg
 /etc/xymon/my-xymon-extensions/systemd.cfg
 /etc/xymon/clientlaunch.d/systemd.cfg
+/etc/xymon/my-xymon-extensions/btrfs.cfg
+/etc/xymon/clientlaunch.d/btrfs.cfg
 /etc/xymon/my-xymon-extensions/xymonext.cfg

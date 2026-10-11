@@ -1,0 +1,21 @@
+# sudoers rule for the Xymon "btrfs" extension.
+#
+# "btrfs scrub status" needs root rights (the status file in
+# /var/lib/btrfs is mode 0600, the ioctl requires CAP_SYS_ADMIN); the
+# Xymon client runs as user "xymon". Everything else the extension
+# reads works without this rule. Install it with visudo -f:
+#
+#   visudo -f /etc/sudoers.d/xymon-btrfs
+#
+# and set BTRFS_SUDO="yes" in my-xymon-extensions/btrfs.cfg. Keep
+# exactly one uncommented line, with the path that
+#   sudo -u xymon sh -c 'command -v btrfs'
+# prints (or set BTRFS_CMD to the path used here). The rule allows the
+# read-only "scrub status" query for any mount point and nothing else.
+# Do not name the file "xymon": hobbit-plugins ships /etc/sudoers.d/xymon.
+
+# Debian/Ubuntu (btrfs-progs installs /bin/btrfs = /usr/bin/btrfs):
+xymon ALL=(root) NOPASSWD: /usr/bin/btrfs scrub status -R *
+
+# Rocky/EL with a btrfs-enabled kernel and btrfs-progs from EPEL/ELRepo:
+#xymon ALL=(root) NOPASSWD: /usr/sbin/btrfs scrub status -R *

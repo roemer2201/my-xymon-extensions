@@ -46,6 +46,10 @@ Included extensions:
   systemd, so the column reports a clear status here - comment its
   clientlaunch.d snippet out or set SYSD_ENABLE=no in
   systemd.cfg to hide or silence it.
+* btrfs - btrfs filesystem health. btrfs is a Linux filesystem, so
+  the column reports a clear status here - comment its clientlaunch.d
+  snippet out or set BTRFS_ENABLE=no in btrfs.cfg to hide or silence
+  it.
 
 Requires net-mgmt/xymon-client and sysutils/smartmontools (>= 7.0).
 Activation steps (sudoers rule, clientlaunch.d include, server-side
