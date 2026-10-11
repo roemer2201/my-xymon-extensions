@@ -1,0 +1,4 @@
+/dev/mmcblk0p1 / btrfs rw,noatime,ssd,discard=async,space_cache,commit=5,subvolid=496,subvol=/@ 0 0
+tmpfs /tmp tmpfs rw,nosuid,nodev,noatime 0 0
+/dev/sda /srv btrfs rw,noatime,ssd,discard=async,space_cache,subvolid=257,subvol=/@ 0 0
+/dev/sda /srv/docker btrfs rw,noatime,ssd,discard=async,space_cache,subvolid=257,subvol=/@ 0 0

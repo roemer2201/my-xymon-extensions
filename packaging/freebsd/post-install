@@ -6,7 +6,7 @@
 ETC=${PKG_PREFIX:-/usr/local}/www/xymon/client/etc
 NEW=$ETC/my-xymon-extensions
 for cfg in smart temp la memory disk opkg fritzdsl fritzwan wifi \
-    if_link lxc claude systemd bcache xymonext; do
+    if_link lxc claude systemd bcache btrfs xymonext; do
     old=$ETC/$cfg.cfg
     dst=$NEW/$cfg.cfg
     [ -f "$old" ] || continue

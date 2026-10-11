@@ -63,6 +63,12 @@ Description: Portable Xymon client extensions
     cutoffs, with RRD graphs of hit ratio, requests, dirty data,
     cache usage and throughput, named after the device UUIDs. Reads
     sysfs only, no root rights; ships disabled.
+  * btrfs - btrfs filesystem health: missing or read-only devices,
+    degraded mounts, device error counters, unallocated space and
+    metadata usage (the ENOSPC that df does not show), age and - with
+    a sudo rule - result of the last scrub, plus throughput, IOPS,
+    device utilisation and commit times with RRD graphs. Active out
+    of the box; no root rights needed; clear on hosts without btrfs.
   * xymonext - what the extensions above cost this host: wall clock
     time, CPU time and bytes sent to the server, measured on every
     run and reported in one "xymonext" column with RRD graphs per

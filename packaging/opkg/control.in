@@ -31,7 +31,10 @@ Description: Portable Xymon client extensions with standalone runner
  and lxc-autostart); systemd - systemd service manager health
  (installed for completeness only: OpenWrt uses procd, so it is not
  in the default test list and reports clear); bcache - Linux bcache
- cache sets and devices (not in the default test list); xymonext - what the
+ cache sets and devices (not in the default test list); btrfs - btrfs
+ filesystem health (TurrisOS: the root filesystem): device errors,
+ unallocated space and metadata, scrub age and result, I/O and commit
+ rates; clear without btrfs; xymonext - what the
  tests above cost the router: wall clock time, CPU time and bytes
  sent per test, graphed per extension (the runner calls the
  extensions through its wrapper; switch it off with

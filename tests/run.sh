@@ -2755,6 +2755,375 @@ expect "$out" '^status testhost\.bc ' "column name is overridable via BCACHE_COL
 rm -rf "$BCROOT" "$BCSTATE"
 unset BCACHE_SYSFS
 
+echo "--- btrfs ---"
+# Fixtures recorded on two real hosts (values and file layout as found
+# in /sys/fs/btrfs, /proc/mounts, /proc/diskstats and btrfs-progs
+# output):
+#   sysfs, mounts, diskstats, cmd/   Ubuntu 22.04 workstation, kernel 6.8,
+#       btrfs-progs 5.16.2: "/" (+ /home) on two NVMe partitions in RAID1
+#       with no unallocated space left, /media/raid on six bcache devices
+#       in RAID1 with 2 historic read errors on devid 6
+#   diskstats-later                  the same host 881 s later
+#   sysfs-turris, mounts-turris, diskstats-turris, cmd-turris/
+#       Turris Omnia, TurrisOS 9.1.3, kernel 6.6, btrfs-progs 6.11:
+#       "/" on eMMC (single), /srv + /srv/docker on SATA (metadata DUP)
+# The sysfs tree is copied, so single attributes can be changed.
+BT="$TESTDIR/btrfs"
+BSYS="$TMP/btrfs-sys"
+BSTATE="$TMP/btrfs.testhost.state"
+BSCRUB="$TMP/btrfs-scrub"
+RAIDU=2221fe30-7ed7-4cee-9109-ed341b266b30
+ROOTU=38065fdd-24e0-449b-9f6a-b778cba05bc3
+unset BTRFS_ENABLE BTRFS_COLUMN BTRFS_NAMES BTRFS_EXCLUDE BTRFS_RO_OK \
+    BTRFS_UNALLOC_WARN BTRFS_UNALLOC_CRIT BTRFS_META_WARN BTRFS_META_CRIT \
+    BTRFS_ERR_COLOR BTRFS_ERR_NEW_COLOR BTRFS_ERR_HOLD BTRFS_SCRUB_MAXAGE \
+    BTRFS_SCRUB_COLOR BTRFS_SUDO BTRFS_SUDOCMD FAKEBTRFS_USER 2>/dev/null || true
+export BTRFS_CFG="$TMP/btrfs-none.cfg"
+export BTRFS_SYSFS="$BSYS" BTRFS_MOUNTS="$BT/mounts" BTRFS_DISKSTATS="$BT/diskstats"
+export BTRFS_CMD="$BT/fakebtrfs" FAKEBTRFS_DIR="$BT/cmd" BTRFS_SCRUBDIR="$BSCRUB"
+export BTRFS_UID=1000 FAKEBTRFS_USER=yes
+rm -rf "${BSYS:?}" "${BSCRUB:?}" "${BSTATE:?}"
+cp -r "$BT/sysfs" "$BSYS"
+mkdir -p "$BSCRUB"
+# The scrub status file of /media/raid, last written when its scrub
+# ended on 2026-07-23 (as on the real host); "/" was never scrubbed.
+touch -t 202607232226 "$BSCRUB/scrub.status.$RAIDU"
+
+btrfs_run() {
+    # shellcheck disable=SC2086  # TESTSH may be multi-word ("busybox sh")
+    $TESTSH "$REPO/extensions/btrfs/btrfs.sh"
+}
+# btrfs_status <output> -> the status message without the data message
+btrfs_status() {
+    printf '%s\n' "$1" | awk '/^data / { exit } { print }'
+}
+# btrfs_age <seconds> -- pretend the previous poll was <seconds> ago
+btrfs_age() {
+    awk -v t="$(( $(date +%s) - $1 ))" '$1 == "P" { $3 = t } { print }' \
+        "$BSTATE" > "$BSTATE.new" && mv "$BSTATE.new" "$BSTATE"
+}
+# btrfs_errage <seconds> -- pretend the last error increase was <seconds> ago
+btrfs_errage() {
+    awk -v t="$(( $(date +%s) - $1 ))" '$1 == "E" && $5 > 0 { $5 = t } { print }' \
+        "$BSTATE" > "$BSTATE.new" && mv "$BSTATE.new" "$BSTATE"
+}
+# btrfs_errs <uuid> <devid> <read_errs> -- set a read error counter
+btrfs_errs() {
+    printf 'write_errs 0\nread_errs %s\nflush_errs 0\ncorruption_errs 0\ngeneration_errs 0\n' \
+        "$3" > "$BSYS/$1/devinfo/$2/error_stats"
+}
+
+# --- first poll, as user xymon (no root, no sudo) ---------------------
+out=$(btrfs_run)
+rc=$?
+if [ "$rc" -ne 0 ]; then
+    echo "FAIL: btrfs.sh exited with $rc"
+    printf '%s\n' "$out"
+    exit 1
+fi
+expect "$out" '^status testhost\.btrfs yellow ' \
+    "first poll: yellow (no unallocated space, old scrub, errors on record)"
+expect "$out" ' - btrfs: media_raid: device errors on devid 6, last scrub [0-9]+ days ago; root: unallocated 0\.0 %, metadata 84\.9 % full, never scrubbed$' \
+    "summary names every issue per filesystem"
+expect "$out" '^&yellow root  / /home  \(38065fdd-24e0-449b-9f6a-b778cba05bc3\)$' \
+    "a filesystem mounted twice is reported once, named after its shortest mount point"
+expect "$out" '^&yellow media_raid  /media/raid  \(2221fe30' "mount point /media/raid becomes media_raid"
+expect "$out" 'Devices: 6 \(bcache0 bcache1 bcache2 bcache3 bcache4 bcache5\)   Profiles: data RAID1, metadata RAID1, system RAID1' \
+    "member devices and RAID profiles are listed"
+expect "$out" '^&yellow devid 6: read 2 \(counters since creation' "historic device errors are yellow"
+expect "$out" 'Device errors: none on devid 1 2 3 4 7$' "devices without errors are summarized"
+expect "$out" 'Size: 1\.81 TiB, allocated 1\.81 TiB, unallocated 2\.00 MiB \(0\.0 %\)   \[device size from btrfs filesystem usage\]' \
+    "unallocated space: device size from btrfs-progs minus allocated chunks"
+expect "$out" '^&yellow Unallocated space below 5 %' "no unallocated space is yellow"
+expect "$out" '^&yellow Metadata: 8\.02 GiB used \+ 512\.00 MiB global reserve of 10\.03 GiB allocated \(84\.9 %\) - NO room for a new metadata chunk \(needs 2\.00 GiB unallocated\)  \[yellow &gt;= 75 %\]$' \
+    "metadata incl. global reserve is checked when no new RAID1 chunk fits"
+expect "$out" '^   Metadata: 6\.87 GiB used \+ 512\.00 MiB global reserve of 8\.00 GiB allocated \(92\.1 %\) - can grow into unallocated space$' \
+    "full metadata chunks are fine while a new chunk fits"
+expect "$out" 'btrfs balance start -dusage=10 /" \(then 25, 50\)' "the balance hint names the mount point"
+expect "$out" '^&yellow Scrub: last activity [0-9]+ day\(s\) ago \(modification time of .*/scrub\.status\.&lt;uuid&gt;\), result unknown  \[yellow &gt; 35 days\]$' \
+    "without root the scrub age comes from the status file"
+expect "$out" '^&yellow Scrub: no record \(no status file in .*\), result unknown  \[yellow: never scrubbed\]$' \
+    "no status file means never scrubbed"
+expect "$out" 'scrub result not read \(needs root rights' "the footer says why the scrub result is missing"
+expect "$out" 'I/O and commit rates: shown from the next poll on' "first poll: no rates yet"
+expect "$out" '^root_unalloc : 2097152$' "data: unallocated bytes"
+expect "$out" '^root_metapct : 84\.94$' "data: metadata usage incl. global reserve"
+expect "$out" '^root_datapct : 74\.30$' "data: data chunk usage"
+expect "$out" '^media_raid_free : 719655632896$' "data: free space estimate matches btrfs filesystem usage"
+expect "$out" '^media_raid_errors : 2$' "data: sum of the device error counters"
+expect_not "$out" '_bps : |_commits : ' "data: no rates on the first poll"
+expect_not "$(ncv_view "$(btrfs_status "$out")")" '.' \
+    "the status message itself carries nothing the NCV parser would graph"
+expect "$(cat "$BSTATE")" "^P $ROOTU [0-9]+ 2126450 157830484 95489066 4355518736 76966 4076154\$" \
+    "state: summed I/O counters and commit counters"
+expect "$(cat "$BSTATE")" "^E $RAIDU 6 2 0\$" "state: error counter per devid"
+
+# --- second poll: the real sample 881 s later, one more read error ----
+btrfs_age 881
+printf 'commits 43430\nlast_commit_ms 115\nmax_commit_ms 9286\ntotal_commit_ms 6686134\n' \
+    > "$BSYS/$RAIDU/commit_stats"
+printf 'commits 76995\nlast_commit_ms 71\nmax_commit_ms 4663\ntotal_commit_ms 4078232\n' \
+    > "$BSYS/$ROOTU/commit_stats"
+btrfs_errs "$RAIDU" 6 3
+out=$(BTRFS_DISKSTATS="$BT/diskstats-later" btrfs_run)
+expect "$out" '^status testhost\.btrfs red ' "a growing error counter turns the column red"
+expect "$out" '^&red devid 6: read 3 - grew by 1 since the previous poll$' "... and says by how much"
+expect "$out" 'device errors on devid 6 growing' "... in the summary too"
+expect_rate "$out" root_write_bps 1150809 "write throughput summed over the member devices"
+expect_rate "$out" media_raid_write_iops 73.90 "write IOPS on the RAID"
+expect_rate "$out" root_busy 59.09 "utilisation of the busiest member device"
+expect "$out" 'busiest device nvme2n1p3 [0-9.]+ %' "the busiest device is named"
+expect_rate "$out" media_raid_commits 1.703 "commits per minute"
+expect "$out" '^media_raid_commitms : 147\.7$' "average commit duration in the interval"
+expect "$out" '^root_commitms : 71\.7$' "average commit duration, second filesystem"
+expect "$out" ' ms on average since the previous poll; last 71 ms, longest 4663 ms since mount' \
+    "commit statistics in the status"
+
+# --- error hold ---------------------------------------------------------
+out=$(btrfs_run)
+expect "$out" '^&red devid 6: read 3 - grew [0-9]+ min ago$' "the red color is held after the increase"
+btrfs_errage 1900
+out=$(btrfs_run)
+expect "$out" '^&yellow devid 6: read 3 \(counters since creation' \
+    "... and falls back to yellow after BTRFS_ERR_HOLD"
+btrfs_errs "$RAIDU" 6 0
+out=$(btrfs_run)
+expect "$out" 'Device errors: none on devid 1 2 3 4 6 7$' \
+    "a reset counter (btrfs device stats -z) is green again"
+btrfs_errs "$RAIDU" 6 2
+out=$(BTRFS_ERR_HOLD=0 BTRFS_ERR_NEW_COLOR=yellow btrfs_run)
+expect "$out" '^&yellow devid 6: read 2 - grew by 2' "BTRFS_ERR_NEW_COLOR"
+btrfs_errage 5
+out=$(BTRFS_ERR_HOLD=0 btrfs_run)
+expect "$out" '^&yellow devid 6: read 2 \(counters' \
+    "BTRFS_ERR_HOLD=0 colors only the poll that saw the increase"
+btrfs_errage 1900
+out=$(BTRFS_ERR_COLOR=green btrfs_run)
+expect "$out" '^&green devid 6: read 2' "BTRFS_ERR_COLOR=green only lists the errors"
+expect_not "$out" 'device errors on devid' "... and keeps them out of the summary"
+
+# --- scrub result with root rights --------------------------------------
+out=$(FAKEBTRFS_USER="" BTRFS_SUDO=yes BTRFS_SUDOCMD=env btrfs_run)
+expect "$out" '^&yellow Scrub: last started [0-9]+ day\(s\) ago \(Jul 23 2026 16:05:59\), finished after 6:20:53, no errors  \[yellow &gt; 35 days\]$' \
+    "via sudo: start, status, duration and result of the last scrub"
+expect "$out" '^&yellow Scrub: never run \(btrfs scrub status: no stats available\)  \[yellow: never scrubbed\]$' \
+    "via sudo: no stats available means never scrubbed"
+expect "$out" 'scrub result read via sudo' "the footer names the way the scrub result was read"
+printf '#!/bin/sh\necho "sudo: a password is required" >&2\nexit 1\n' > "$TMP/fakesudo"
+chmod 0755 "$TMP/fakesudo"
+out=$(BTRFS_SUDO=yes BTRFS_SUDOCMD="$TMP/fakesudo" btrfs_run)
+expect "$out" 'modification time of .*\(btrfs scrub status via sudo failed: sudo: a password is required\)' \
+    "a failing sudo falls back to the status file and says why"
+mkdir -p "$TMP/btrfs-cmd"
+cp "$BT/cmd/"* "$TMP/btrfs-cmd/"
+sed -e 's/uncorrectable_errors: 0/uncorrectable_errors: 3/' -e 's/csum_errors: 0/csum_errors: 5/' \
+    -e 's/corrected_errors: 0/corrected_errors: 2/' "$BT/cmd/scrub._media_raid" \
+    > "$TMP/btrfs-cmd/scrub._media_raid"
+out=$(FAKEBTRFS_DIR="$TMP/btrfs-cmd" FAKEBTRFS_USER="" BTRFS_UID=0 btrfs_run)
+expect "$out" '^&red Scrub: last started .*, 3 UNCORRECTABLE error\(s\)' "uncorrectable scrub errors are red"
+expect "$out" 'scrub found uncorrectable errors' "... and named in the summary"
+expect "$out" 'scrub result read as root' "as root the scrub result is read directly"
+sed -e 's/csum_errors: 0/csum_errors: 5/' -e 's/corrected_errors: 0/corrected_errors: 5/' \
+    -e 's/^Status: .*/Status:           aborted/' "$BT/cmd/scrub._media_raid" \
+    > "$TMP/btrfs-cmd/scrub._media_raid"
+out=$(FAKEBTRFS_DIR="$TMP/btrfs-cmd" FAKEBTRFS_USER="" BTRFS_UID=0 btrfs_run)
+expect "$out" '^&yellow Scrub: last started .*, aborted after 6:20:53, 5 error\(s\), 5 corrected - did not finish' \
+    "corrected scrub errors and an aborted scrub are yellow"
+touch "$BSCRUB/scrub.status.$RAIDU" "$BSCRUB/scrub.status.$ROOTU"
+out=$(btrfs_run)
+expect "$out" '^   Scrub: last activity 0 day\(s\) ago' "a recent scrub is green"
+out=$(BTRFS_SCRUB_MAXAGE=0 BTRFS_SCRUBDIR="$TMP/nowhere" btrfs_run)
+expect "$out" '^   Scrub: no record' "BTRFS_SCRUB_MAXAGE=0 switches the age check off"
+touch -t 202607232226 "$BSCRUB/scrub.status.$RAIDU"
+rm -f "${BSCRUB:?}/scrub.status.$ROOTU"
+
+# --- thresholds -------------------------------------------------------------
+out=$(BTRFS_META_CRIT=80 btrfs_run)
+expect "$out" '^&red Metadata: .*\[red &gt;= 80 %\]$' "BTRFS_META_CRIT"
+out=$(BTRFS_UNALLOC_WARN="" BTRFS_META_WARN="" btrfs_run)
+expect_not "$out" 'Unallocated space below|\[yellow &gt;= ' "empty thresholds switch the space checks off"
+out=$(BTRFS_UNALLOC_CRIT=1 btrfs_run)
+expect "$out" '^&red Unallocated space below 1 %' "BTRFS_UNALLOC_CRIT"
+
+# --- device and mount state -------------------------------------------------
+echo 1 > "$BSYS/$RAIDU/devinfo/3/missing"
+sed 's|/media/raid btrfs rw,|/media/raid btrfs rw,degraded,|' "$BT/mounts" > "$TMP/btrfs-mounts"
+out=$(BTRFS_MOUNTS="$TMP/btrfs-mounts" btrfs_run)
+expect "$out" '^status testhost\.btrfs red ' "a missing device turns the column red"
+expect "$out" '^&red devid 3: device missing$' "... naming the devid"
+expect "$out" '^&red Mounted degraded' "a degraded mount is red"
+echo 0 > "$BSYS/$RAIDU/devinfo/3/missing"
+echo 0 > "$BSYS/$RAIDU/devinfo/4/writeable"
+out=$(btrfs_run)
+expect "$out" '^&red devid 4: device not writeable$' "a device that is not writeable is red"
+echo 1 > "$BSYS/$RAIDU/devinfo/4/writeable"
+sed 's|/media/raid btrfs rw,|/media/raid btrfs ro,|' "$BT/mounts" > "$TMP/btrfs-mounts"
+out=$(BTRFS_MOUNTS="$TMP/btrfs-mounts" btrfs_run)
+expect "$out" '^&red Read-only: every mount of this filesystem is read-only' "a read-only filesystem is red"
+out=$(BTRFS_MOUNTS="$TMP/btrfs-mounts" BTRFS_RO_OK="media_*" btrfs_run)
+expect "$out" 'Mounted read-only \(allowed by BTRFS_RO_OK\)' \
+    "BTRFS_RO_OK accepts an intentionally read-only filesystem"
+sed 's|^/dev/nvme1n1p3 / btrfs rw,|/dev/nvme1n1p3 / btrfs ro,|' "$BT/mounts" > "$TMP/btrfs-mounts"
+out=$(BTRFS_MOUNTS="$TMP/btrfs-mounts" btrfs_run)
+expect_not "$out" 'Read-only:' "one read-only mount of several is no read-only filesystem"
+echo balance > "$BSYS/$RAIDU/exclusive_operation"
+mkdir -p "$BSYS/$RAIDU/allocation/data/single"
+out=$(btrfs_run)
+expect "$out" 'Running exclusive operation: balance' "a running balance is shown"
+expect_not "$out" 'Multiple data profiles' "two profiles during a balance are expected"
+echo none > "$BSYS/$RAIDU/exclusive_operation"
+out=$(btrfs_run)
+expect "$out" '^&yellow Multiple data profiles \(RAID1\+SINGLE\)' "two profiles without a balance are yellow"
+rmdir "${BSYS:?}/$RAIDU/allocation/data/single"
+
+# --- names and selection ----------------------------------------------------
+out=$(BTRFS_NAMES="$RAIDU=Raid-6x $ROOTU=system" btrfs_run)
+expect "$out" '^raid_6x_unalloc : ' "BTRFS_NAMES renames a filesystem (sanitized)"
+expect "$out" '^&yellow system  / /home' "... in the status as well"
+out=$(BTRFS_EXCLUDE="media_raid" btrfs_run)
+expect_not "$out" '^media_raid|&[a-z]+ media_raid' "BTRFS_EXCLUDE skips a filesystem"
+expect "$out" 'excluded media_raid \(2221fe30' "... and lists it as excluded"
+out=$(BTRFS_EXCLUDE="$RAIDU $ROOTU" btrfs_run)
+expect "$out" '^status testhost\.btrfs clear ' "excluding everything reports clear"
+out=$(BTRFS_COLUMN=fs btrfs_run)
+expect "$out" '^status testhost\.fs ' "column name is overridable via BTRFS_COLUMN"
+
+# Help never needs a valid sysfs/config path or a writable temporary directory.
+out=$(BTRFS_CFG="${TMP}/nonexistent" XYMONTMP="${TMP}/nonexistent" \
+    sh "${REPO}/extensions/btrfs/btrfs.sh" --help)
+expect "${out}" '^Usage: btrfs.sh' "btrfs help works before collecting data"
+expect "${out}" 'BTRFS_ERR_HOLD' "btrfs help documents the configuration interface"
+
+# --- review regressions: resets, glob patterns and invalid samples -----------
+# A new write error must be red even if a reset read counter lowers the sum.
+btrfs_errs "${RAIDU}" 6 10
+out=$(btrfs_run)
+printf 'write_errs 1\nread_errs 0\nflush_errs 0\ncorruption_errs 0\ngeneration_errs 0\n' \
+    > "${BSYS}/${RAIDU}/devinfo/6/error_stats"
+out=$(btrfs_run)
+expect "${out}" '^&red devid 6: write 1 - grew by 1 since the previous poll$' \
+    "a counter increase is detected even while another counter resets"
+btrfs_errs "${RAIDU}" 6 2
+out=$(btrfs_run)
+btrfs_errage 1900
+
+# A wildcard must not expand to repository files in the caller's cwd.
+out=$(BTRFS_EXCLUDE='*' btrfs_run)
+expect "${out}" '^status testhost\.btrfs clear ' "a wildcard excludes all filesystems in any cwd"
+
+# A deliberately read-only block device is expected for an allowed ro mount.
+echo 0 > "${BSYS}/${RAIDU}/devinfo/4/writeable"
+sed 's|/media/raid btrfs rw,|/media/raid btrfs ro,|' "${BT}/mounts" > "${TMP}/btrfs-mounts"
+out=$(BTRFS_MOUNTS="${TMP}/btrfs-mounts" BTRFS_RO_OK='media_*' btrfs_run)
+expect_not "${out}" 'device not writeable|Read-only:' "allowed read-only devices do not raise a state alarm"
+echo 1 > "${BSYS}/${RAIDU}/devinfo/4/writeable"
+
+# Unknown allocation is neither zero use nor a division by zero.
+mv "${BSYS}/${ROOTU}/allocation/data/disk_total" "${TMP}/btrfs-disk-total"
+out=$(btrfs_run)
+expect "${out}" 'Space: not available' "missing allocation attributes report unavailable space"
+expect_not "${out}" '^root_(free|unalloc|datapct|metapct) : ' "unknown space is not sent as zero-valued metrics"
+mv "${TMP}/btrfs-disk-total" "${BSYS}/${ROOTU}/allocation/data/disk_total"
+
+# Replacing a device with a larger counter must skip the first rate sample.
+out=$(btrfs_run)
+btrfs_age 300
+mv "${BSYS}/${ROOTU}/devices/nvme2n1p3" "${BSYS}/${ROOTU}/devices/replacement"
+awk '$3 == "nvme2n1p3" { $3 = "replacement"; $4 += 1000; $6 += 1000; $8 += 1000; $10 += 1000; $13 += 1000 } { print }' \
+    "${BT}/diskstats" > "${TMP}/btrfs-diskstats"
+out=$(BTRFS_DISKSTATS="${TMP}/btrfs-diskstats" btrfs_run)
+expect_not "${out}" '^root_(read_bps|write_bps|read_iops|write_iops|busy) : ' \
+    "a changed device set does not produce bogus throughput or utilisation"
+mv "${BSYS}/${ROOTU}/devices/replacement" "${BSYS}/${ROOTU}/devices/nvme2n1p3"
+
+# Per-device resets can be hidden by aggregate growth on another device.
+out=$(btrfs_run)
+btrfs_age 300
+awk '$3 == "nvme1n1p3" { $4 = 0; $6 = 0; $8 = 0; $10 = 0 }
+     $3 == "nvme2n1p3" { $4 += 10000000; $6 += 1000000000; $8 += 1000000000; $10 += 10000000000 }
+     { print }' "${BT}/diskstats" > "${TMP}/btrfs-diskstats"
+out=$(BTRFS_DISKSTATS="${TMP}/btrfs-diskstats" btrfs_run)
+expect_not "${out}" '^root_(read_bps|write_bps|read_iops|write_iops|busy) : ' \
+    "a member counter reset is detected even if summed counters grow"
+
+# Names must remain distinct after Xymon's 200-character split-NCV cutoff.
+longname=$(awk 'BEGIN { for (i = 0; i < 230; i++) printf "x" }')
+out=$(BTRFS_NAMES="${RAIDU}=${longname}a ${ROOTU}=${longname}b" btrfs_run)
+metriccount=$(printf '%s\n' "${out}" | awk '/_unalloc : / { seen[$1] = 1 } END { for (n in seen) c++; print c + 0 }')
+expect "${metriccount}" '^2$' "long filesystem names retain separate metrics"
+longmetrics=$(printf '%s\n' "${out}" | awk '/^[a-z0-9_]+ : / && length($1) > 200 { print }')
+expect_not "${longmetrics}" '.' "all metric names fit split-NCV's 200-character limit"
+
+# Equal labels use UUID suffixes for both filesystems, even with an exclusion.
+out=$(BTRFS_NAMES="${RAIDU}=same ${ROOTU}=same" btrfs_run)
+rootname="same_$(printf '%s' "${ROOTU}" | tr '-' '_')"
+expect "${out}" "^${rootname}_unalloc : " "duplicate labels use an unambiguous UUID suffix"
+out=$(BTRFS_NAMES="${RAIDU}=same ${ROOTU}=same" BTRFS_EXCLUDE="${RAIDU}" btrfs_run)
+expect "${out}" "^${rootname}_unalloc : " "excluding another filesystem does not rename the graph"
+
+# Mount escapes stay one record, while command arguments use the actual path.
+sed 's|/media/raid |/media/raid\\011tab\\012line\\040space |' "${BT}/mounts" > "${TMP}/btrfs-mounts"
+out=$(BTRFS_MOUNTS="${TMP}/btrfs-mounts" BTRFS_NAMES="${RAIDU}=escaped" FAKEBTRFS_LOG="${TMP}/btrfs-calls" btrfs_run)
+expect "${out}" '^&yellow escaped  /media/raid' "escaped tabs and newlines do not break mount mapping"
+expect_not "${out}" 'no mount point found' "escaped mounts remain attached to their filesystem"
+
+# Labels and mount points must not become executable HTML on the Xymon page.
+printf '<img src=x onerror=alert(1)>\n' > "${BSYS}/${RAIDU}/label"
+out=$(btrfs_run)
+expect "${out}" 'label &lt;img src=x onerror=alert\(1\)&gt;' "filesystem labels are escaped for HTML display"
+expect_not "${out}" '<img' "no executable HTML reaches the status page"
+printf '\n' > "${BSYS}/${RAIDU}/label"
+rm -f "${TMP}/btrfs-diskstats" "${TMP}/btrfs-calls"
+
+# --- older kernels and missing btrfs-progs ----------------------------------
+rm -f "${BSYS:?}/$ROOTU/commit_stats" "${BSYS:?}/$ROOTU/devinfo/1/error_stats" \
+    "${BSYS:?}/$ROOTU/devinfo/2/error_stats"
+out=$(BTRFS_CMD="$TMP/no-such-btrfs" btrfs_run)
+expect "$out" 'Device errors: not available \(devinfo/&lt;devid&gt;/error_stats needs kernel 5\.14\)' \
+    "without error_stats (kernel < 5.14) the counters are reported as not available"
+expect_not "$out" '^root_errors : ' "... and not graphed"
+expect_not "$out" '^root_commits : ' "without commit_stats (kernel < 6.0) no commit rates"
+expect "$out" 'unallocated 2\.00 MiB \(0\.0 %\)   \[device size from block devices\]' \
+    "without btrfs-progs the device size comes from the block devices"
+expect "$out" 'btrfs-progs not found' "... which the status says"
+
+# --- Turris Omnia: standalone runner as root, btrfs-progs 6.11 ----------------
+rm -f "${BSTATE:?}"
+turris_run() {
+    BTRFS_SYSFS="$BT/sysfs-turris" BTRFS_DISKSTATS="$BT/diskstats-turris" \
+        FAKEBTRFS_DIR="$BT/cmd-turris" FAKEBTRFS_USER="" BTRFS_UID=0 \
+        BTRFS_SCRUBDIR="$TMP/nowhere" btrfs_run
+}
+out=$(BTRFS_MOUNTS="$BT/mounts-turris" turris_run)
+expect "$out" '^&yellow root  /  \(0ba0d8bf' "Turris: the root filesystem"
+expect "$out" '^&yellow srv  /srv /srv/docker  \(12f22e38' \
+    "Turris: the label names a filesystem, both mounts are listed"
+expect "$out" 'Profiles: data SINGLE, metadata DUP, system DUP' "Turris: DUP metadata"
+expect "$out" 'Size: 7\.28 GiB, allocated 4\.93 GiB, unallocated 2\.36 GiB \(32\.3 %\)   \[device size from btrfs filesystem usage\]' \
+    "Turris: btrfs-progs 6.11 output (with Device slack) is parsed"
+expect "$out" '^root_free : 4556865536$' "Turris: free space estimate matches btrfs filesystem usage"
+expect "$out" '^&yellow Scrub: never run \(btrfs scrub status: no stats available\)' \
+    "Turris: as root the scrub status comes from btrfs-progs, even without /var/lib/btrfs"
+expect "$out" 'NO room for a new metadata chunk \(needs 2\.00 GiB unallocated\)$' \
+    "Turris: srv has no room for a new DUP metadata chunk but stays below the threshold"
+sed 's|^/dev/mmcblk0p1 |/dev/root |' "$BT/mounts-turris" > "$TMP/btrfs-mounts"
+out=$(BTRFS_MOUNTS="$TMP/btrfs-mounts" turris_run)
+expect "$out" '^&yellow root  /  \(0ba0d8bf' \
+    "a /dev/root mount is assigned to the only filesystem without a mount"
+
+# --- not applicable ---------------------------------------------------------
+mkdir -p "$TMP/btrfs-empty/features"
+out=$(BTRFS_SYSFS="$TMP/btrfs-empty" btrfs_run)
+expect "$out" '^status testhost\.btrfs clear .*not applicable' "no mounted btrfs reports clear"
+expect "$out" 'No btrfs filesystem is mounted' "... and says why"
+out=$(BTRFS_ENABLE=no btrfs_run)
+expect "$out" '^status testhost\.btrfs clear .*btrfs: disabled' "BTRFS_ENABLE=no reports a clear column"
+
+rm -rf "${BSYS:?}" "${BSCRUB:?}" "${TMP:?}/btrfs-cmd" "${TMP:?}/btrfs-empty"
+rm -f "${BSTATE:?}" "${TMP:?}/btrfs-mounts" "${TMP:?}/fakesudo"
+unset BTRFS_CFG BTRFS_SYSFS BTRFS_MOUNTS BTRFS_DISKSTATS BTRFS_CMD FAKEBTRFS_DIR \
+    BTRFS_SCRUBDIR BTRFS_UID FAKEBTRFS_USER
+
 # ----------------------------------------------------------------------
 echo "--- xymonext ---"
 
@@ -3828,7 +4197,7 @@ fi
 # list too), so a snippet there runs twice on a combined host - that is
 # what this guards against.
 # temp is missing on purpose - see the collision check further down.
-for snippet in smart la memory disk opkg fritzdsl fritzwan wifi if_link lxc claude systemd bcache; do
+for snippet in smart la memory disk opkg fritzdsl fritzwan wifi if_link lxc claude systemd bcache btrfs; do
     grep -qx "/etc/xymon/clientlaunch.d/$snippet.cfg" "$TMP/client-paths" || {
         echo "FAIL: $snippet snippet is not staged into clientlaunch.d"
         FAIL=1

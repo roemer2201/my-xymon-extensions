@@ -1,0 +1,25 @@
+Overall:
+    Device size:		        7818174464
+    Device allocated:		        5289017344
+    Device unallocated:		        2529157120
+    Device missing:		                 0
+    Device slack:		                 0
+    Used:			        3028164608
+    Free (estimated):		        4556865536	(min: 4556865536)
+    Free (statfs, df):		        4555759616
+    Data ratio:			              1.00
+    Metadata ratio:		              1.00
+    Global reserve:		          13680640	(used: 0)
+    Multiple profiles:		                no
+
+Data,single: Size:4739563520, Used:2711855104 (57.22%)
+   /dev/mmcblk0p1	4739563520
+
+Metadata,single: Size:545259520, Used:316293120 (58.01%)
+   /dev/mmcblk0p1	 545259520
+
+System,single: Size:4194304, Used:16384 (0.39%)
+   /dev/mmcblk0p1	   4194304
+
+Unallocated:
+   /dev/mmcblk0p1	2529157120
