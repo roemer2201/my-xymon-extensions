@@ -7,6 +7,7 @@
 /etc/xymon/xymonserver.d/wifi.cfg
 /etc/xymon/xymonserver.d/if_link.cfg
 /etc/xymon/xymonserver.d/lxc.cfg
+/etc/xymon/xymonserver.d/systemd.cfg
 /etc/xymon/xymonserver.d/xymonext.cfg
 /etc/xymon/graphs.d/smart.cfg
 /etc/xymon/graphs.d/la.cfg
@@ -17,8 +18,10 @@
 /etc/xymon/graphs.d/wifi.cfg
 /etc/xymon/graphs.d/if_link.cfg
 /etc/xymon/graphs.d/lxc.cfg
+/etc/xymon/graphs.d/systemd.cfg
 /etc/xymon/graphs.d/xymonext.cfg
 /etc/xymon/rrddefinitions.d/if_link.cfg
+/etc/xymon/rrddefinitions.d/systemd.cfg
 /etc/xymon/xymonserver.d/powerline.cfg
 /etc/xymon/graphs.d/powerline.cfg
 /etc/xymon/tasks.d/powerline.cfg

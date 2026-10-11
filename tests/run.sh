@@ -1829,6 +1829,331 @@ unset LXC_CFG FAKELXC_DIR FAKELXC_LS FAKELXC_INFO FAKELXC_AUTOSTART \
     FAKELXC_UCI FAKELXC_CGROUP FAKELXC_PROC
 
 # ----------------------------------------------------------------------
+echo "--- systemd ---"
+# The fixtures mirror a Rocky Linux HPC node: a failed timer service
+# (dnf-makecache), a failed wait-online unit, a failed mount, a service
+# with two automatic restarts on record (slurmd) and a unit that is
+# referenced but not installed (plymouth-start, LOAD not-found). The
+# fixture directory is copied, so the restart counters can be changed
+# between the polls.
+export FAKESYSTEMCTL="$TESTDIR/systemd/fakesystemctl"
+export FAKESYSD_RUNDIR="$TMP/sysd-run"
+export FAKESYSTEMCTL_DIR="$TMP/sysd-fx"
+export SYSD_CFG="$TESTDIR/systemd/systemd_test.cfg"
+unset SYSD_ENABLE SYSD_COLUMN SYSD_FAILED_COLOR SYSD_IGNORE SYSD_WARN \
+    SYSD_REQUIRED SYSD_DOWN_COLOR SYSD_TRANSITION_COLOR SYSD_RESTART_COLOR \
+    SYSD_RESTART_HOLD SYSD_RESTART_IGNORE FAKESYSTEMCTL_NONR 2>/dev/null || true
+SYSDSTATE="$TMP/systemd.testhost.state"
+rm -rf "$FAKESYSTEMCTL_DIR" "$SYSDSTATE"
+cp -r "$TESTDIR/systemd/data" "$FAKESYSTEMCTL_DIR"
+mkdir -p "$FAKESYSD_RUNDIR"
+
+sysd_run() {
+    # shellcheck disable=SC2086  # TESTSH may be multi-word ("busybox sh")
+    $TESTSH "$REPO/extensions/systemd/systemd.sh"
+}
+# sysd_status <output> -> the status message only, without a following
+# "data" message
+sysd_status() {
+    printf '%s\n' "$1" | awk '/^data / { exit } { print }'
+}
+# sysd_age <unit> <seconds> -- pretend the last restart of <unit> was
+# seen <seconds> ago (rewrites the state file)
+sysd_age() {
+    awk -v u="$1" -v t="$(( $(date +%s) - $2 ))" \
+        '($1 == "R" || $1 == "H") && $2 == u { $4 = t } { print }' "$SYSDSTATE" \
+        > "$SYSDSTATE.new" && mv "$SYSDSTATE.new" "$SYSDSTATE"
+}
+
+# First poll: failed units count, restart counters are only recorded
+out=$(sysd_run)
+rc=$?
+if [ "$rc" -ne 0 ]; then
+    echo "FAIL: systemd.sh exited with $rc"
+    printf '%s\n' "$out"
+    exit 1
+fi
+expect "$out" '^status testhost\.systemd red ' "failed units turn the column red"
+expect "$out" 'systemd: degraded, 3 failed unit\(s\)$' \
+    "summary names the system state and the number of failed units"
+expect "$out" '^&red System state: degraded$' \
+    "degraded is shown in the color of the failed units"
+expect "$out" '^&red scratch\.mount  failed  /scratch$' \
+    "failed units of every type are listed, not only services"
+expect_not "$out" 'plymouth' "a not-found unit that is merely inactive is no failure"
+expect "$out" 'first poll: the restart counters are recorded now' \
+    "first poll explains why no restarts are shown yet"
+expect_not "$out" '^data testhost\.systemd$' \
+    "no data message on the first poll - restarts are not known yet"
+expect "$(cat "$SYSDSTATE" 2>/dev/null)" '^R slurmd\.service 2 0 0$' \
+    "state file records the restart counter of every loaded service"
+expect_not "$(cat "$SYSDSTATE" 2>/dev/null)" 'plymouth|\.mount|\.timer' \
+    "only loaded services are tracked for restarts"
+
+# Second poll: slurmd restarted three more times
+printf 'slurmd.service 5\n' > "$FAKESYSTEMCTL_DIR/nrestarts"
+out=$(sysd_run)
+expect "$out" '^&yellow slurmd\.service  3 restart\(s\), the last one 0 min ago \(NRestarts=5\)$' \
+    "an automatic restart since the previous poll is listed in yellow"
+expect "$out" ', 1 service\(s\) restarted$' "summary counts the restarted services"
+expect "$out" '^data testhost\.systemd$' "data message for the RRD is sent from the second poll on"
+expect "$out" '^failed : 3$' "data: number of failed units"
+expect "$out" '^restarts : 3$' "data: restarts since the previous poll"
+expect_not "$(ncv_view "$(sysd_status "$out")")" '.' \
+    "the status message itself carries nothing the NCV parser would graph"
+
+# Ignore every failed unit from here on, so only the restarts color it
+export SYSD_IGNORE="*"
+out=$(sysd_run)
+expect "$out" '^status testhost\.systemd yellow ' \
+    "the restart color is held at the next poll (default 30 min)"
+expect "$out" 'slurmd\.service  3 restart\(s\)' "the held restart stays listed"
+expect "$out" '^restarts : 0$' "a held restart is not counted again in the graph"
+expect "$out" '^failed : 0$' "ignored failed units are not graphed"
+expect "$out" 'degraded, 0 failed unit\(s\) \(\+3 ignored\)' \
+    "summary mentions the ignored units"
+expect "$out" '^&clear dnf-makecache\.service  failed - ignored \(SYSD_IGNORE\)' \
+    "ignored failed units are still listed"
+expect "$out" 'degraded only because of ignored units' \
+    "a degraded state caused by ignored units is explained"
+
+sysd_age slurmd.service 1700
+out=$(sysd_run)
+expect "$out" '^status testhost\.systemd yellow ' "still yellow 28 min after the restart"
+sysd_age slurmd.service 1900
+out=$(sysd_run)
+expect "$out" '^status testhost\.systemd green ' "green again once the hold time is over"
+expect_not "$out" 'slurmd' "an expired restart is no longer listed"
+
+sysd_age slurmd.service 1900
+out=$(SYSD_RESTART_HOLD=3600 sysd_run)
+expect "$out" '^status testhost\.systemd yellow ' "SYSD_RESTART_HOLD extends the hold time"
+expect "$out" 'last 60 min' "the restart list names the hold time"
+
+sysd_age slurmd.service 60
+out=$(SYSD_RESTART_HOLD=0 sysd_run)
+expect "$out" '^status testhost\.systemd green ' \
+    "SYSD_RESTART_HOLD=0 colors only the poll that saw the restart"
+
+# A manual restart resets NRestarts; restarts after that still count
+sysd_age slurmd.service 1900
+printf 'slurmd.service 1\n' > "$FAKESYSTEMCTL_DIR/nrestarts"
+out=$(sysd_run)
+expect "$out" '^restarts : 1$' \
+    "a counter below the previous value counts as reset, its value as new restarts"
+expect "$out" 'slurmd\.service  1 restart\(s\)' \
+    "the hold window starts over after an expired one"
+
+printf 'slurmd.service 4\n' > "$FAKESYSTEMCTL_DIR/nrestarts"
+out=$(SYSD_RESTART_COLOR=green sysd_run)
+expect "$out" '^status testhost\.systemd green ' "SYSD_RESTART_COLOR=green never alarms"
+expect "$out" '^&green slurmd\.service  4 restart\(s\)' \
+    "... but restarts within the hold time add up and stay listed"
+expect "$out" '^restarts : 3$' "... and are still graphed"
+
+printf 'slurmd.service 6\n' > "$FAKESYSTEMCTL_DIR/nrestarts"
+out=$(SYSD_RESTART_IGNORE="slurm*" sysd_run)
+expect "$out" '^status testhost\.systemd green ' "SYSD_RESTART_IGNORE suppresses the alarm"
+expect "$out" '^&clear slurmd\.service  6 restart\(s\) - ignored' \
+    "an ignored restart is still listed"
+expect "$out" '^restarts : 0$' "an ignored restart is not graphed"
+
+# A service that appeared since the previous poll: all its restarts are new
+printf 'newd.service loaded active running New daemon\n' >> "$FAKESYSTEMCTL_DIR/units.txt"
+printf 'Id=newd.service\nLoadState=loaded\nActiveState=active\nSubState=running\nNRestarts=4\nDescription=New daemon\n' \
+    > "$FAKESYSTEMCTL_DIR/show/newd.service"
+out=$(SYSD_RESTART_IGNORE="slurm*" sysd_run)
+expect "$out" '^&yellow newd\.service  4 restart\(s\)' \
+    "a service loaded since the previous poll counts all its restarts"
+
+# Required units
+out=$(SYSD_REQUIRED="sshd nfs-server foo.service chronyd.service" sysd_run)
+expect "$out" '^status testhost\.systemd red ' "a required unit that is down turns the column red"
+expect "$out" '^&green sshd\.service  active \(running\)  OpenSSH server daemon$' \
+    "a name without suffix means .service"
+expect "$out" '^&red nfs-server\.service  inactive \(dead\)' "an inactive required unit is red"
+expect "$out" '^&red foo\.service  not found - no such unit on this host$' \
+    "a required unit that does not exist is red"
+expect "$out" '2 required unit\(s\) down' "summary counts the required units that are down"
+out=$(SYSD_REQUIRED="nfs-server" SYSD_DOWN_COLOR=yellow SYSD_RESTART_COLOR=green sysd_run)
+expect "$out" '^status testhost\.systemd yellow ' "SYSD_DOWN_COLOR=yellow"
+printf 'Id=ssh.service\nLoadState=loaded\nActiveState=activating\nSubState=auto-restart\nNRestarts=0\nDescription=OpenBSD Secure Shell server\n' \
+    > "$FAKESYSTEMCTL_DIR/show/sshd.service"
+out=$(SYSD_REQUIRED="sshd" SYSD_RESTART_COLOR=green sysd_run)
+expect "$out" '^&red sshd\.service \(= ssh\.service\)  activating \(auto-restart\)' \
+    "an alias shows the real unit, and waiting for an auto-restart counts as down"
+cp "$TESTDIR/systemd/data/show/sshd.service" "$FAKESYSTEMCTL_DIR/show/sshd.service"
+unset SYSD_IGNORE
+
+# Failed unit colors
+out=$(SYSD_IGNORE="NetworkManager* *.mount" SYSD_WARN="dnf-*" \
+    SYSD_RESTART_COLOR=green sysd_run)
+expect "$out" '^status testhost\.systemd yellow ' "SYSD_WARN turns a failed unit yellow only"
+expect "$out" '^&yellow dnf-makecache\.service  failed' "the SYSD_WARN unit is listed in yellow"
+out=$(SYSD_FAILED_COLOR=yellow SYSD_RESTART_COLOR=green sysd_run)
+expect "$out" '^status testhost\.systemd yellow ' "SYSD_FAILED_COLOR=yellow"
+
+# System states
+echo running > "$FAKESYSTEMCTL_DIR/state"
+out=$(SYSD_IGNORE="*" SYSD_RESTART_COLOR=green sysd_run)
+expect "$out" '^&green System state: running$' "a running system is green"
+echo starting > "$FAKESYSTEMCTL_DIR/state"
+out=$(SYSD_IGNORE="*" SYSD_RESTART_COLOR=green sysd_run)
+expect "$out" '^status testhost\.systemd yellow ' "a booting system is yellow"
+expect "$out" 'still booting' "... and says so"
+out=$(SYSD_IGNORE="*" SYSD_RESTART_COLOR=green SYSD_TRANSITION_COLOR=green sysd_run)
+expect "$out" '^status testhost\.systemd green ' "SYSD_TRANSITION_COLOR=green"
+echo maintenance > "$FAKESYSTEMCTL_DIR/state"
+out=$(SYSD_IGNORE="*" SYSD_RESTART_COLOR=green sysd_run)
+expect "$out" '^status testhost\.systemd red ' "maintenance mode is red"
+echo offline > "$FAKESYSTEMCTL_DIR/state"
+out=$(sysd_run)
+expect "$out" '^status testhost\.systemd clear ' \
+    "offline (another init system is PID 1) reports clear"
+
+# Errors are reported with systemctl's own message
+rm -f "$FAKESYSTEMCTL_DIR/state"
+out=$(sysd_run)
+expect "$out" '^status testhost\.systemd yellow .*cannot query systemd' \
+    "a failing is-system-running reports yellow"
+expect "$out" 'Failed to connect to bus' "... with the message of systemctl"
+echo degraded > "$FAKESYSTEMCTL_DIR/state"
+: > "$FAKESYSTEMCTL_DIR/units.fail"
+out=$(sysd_run)
+expect "$out" '^status testhost\.systemd yellow ' "a failing list-units reports yellow"
+expect "$out" 'Failed to list units: Connection timed out' "... with the message of systemctl"
+echo maintenance > "${FAKESYSTEMCTL_DIR}/state"
+out=$(sysd_run)
+expect "${out}" '^status testhost\.systemd red ' \
+    "a list-units failure cannot downgrade maintenance to yellow"
+expect "${out}" '^&red System state: maintenance$' \
+    "the known critical system state remains visible on query failure"
+echo degraded > "${FAKESYSTEMCTL_DIR}/state"
+rm -f "$FAKESYSTEMCTL_DIR/units.fail"
+
+# Restart holds survive unloading, including a snapshot with no services.
+# Reappearing units must use a fresh baseline, while retaining the event.
+export SYSD_IGNORE="*"
+cp "${TESTDIR}/systemd/data/units.txt" "${FAKESYSTEMCTL_DIR}/units.txt"
+rm -f "${SYSDSTATE}" "${FAKESYSTEMCTL_DIR}/nrestarts"
+sysd_run > /dev/null
+printf 'slurmd.service 3\n' > "${FAKESYSTEMCTL_DIR}/nrestarts"
+out=$(sysd_run)
+expect "${out}" '^&yellow slurmd\.service  1 restart\(s\)' \
+    "record a restart before the service is unloaded"
+awk '$1 != "slurmd.service"' "${FAKESYSTEMCTL_DIR}/units.txt" \
+    > "${FAKESYSTEMCTL_DIR}/units.new"
+mv "${FAKESYSTEMCTL_DIR}/units.new" "${FAKESYSTEMCTL_DIR}/units.txt"
+out=$(sysd_run)
+expect "${out}" '^status testhost\.systemd yellow ' \
+    "an unloaded unit keeps the restart color during the hold"
+expect "${out}" '^&yellow slurmd\.service  1 restart\(s\)' \
+    "an unloaded unit keeps its detected restart in the report"
+expect "${out}" '^restarts : 0$' "an unloaded held event is not graphed twice"
+expect "$(cat "${SYSDSTATE}")" '^H slurmd\.service 3 [0-9]+ 1$' \
+    "unloaded unit keeps its event without retaining the old baseline"
+out=$(sysd_run)
+expect "${out}" '^&yellow slurmd\.service  1 restart\(s\)' \
+    "the unloaded event survives more than one poll"
+cp "${TESTDIR}/systemd/data/units.txt" "${FAKESYSTEMCTL_DIR}/units.txt"
+printf 'slurmd.service 1\n' > "${FAKESYSTEMCTL_DIR}/nrestarts"
+out=$(sysd_run)
+expect "${out}" '^restarts : 1$' "a reloaded unit starts a new counter baseline"
+expect "${out}" '^&yellow slurmd\.service  2 restart\(s\)' \
+    "a reloaded unit adds new restarts to the held event"
+: > "${FAKESYSTEMCTL_DIR}/units.txt"
+out=$(sysd_run)
+expect "${out}" '^status testhost\.systemd yellow ' \
+    "the hold survives a snapshot with no loaded services at all"
+expect "${out}" '^restarts : 0$' "an empty service snapshot graphs no new restarts"
+sysd_age slurmd.service 1900
+out=$(sysd_run)
+expect "${out}" '^status testhost\.systemd green ' \
+    "an unloaded unit turns green once its hold expires"
+expect_not "${out}" 'slurmd' "an expired unloaded event disappears from the report"
+expect_not "$(cat "${SYSDSTATE}")" 'slurmd' \
+    "an expired unloaded event is removed from the state"
+
+# Query errors are warnings, not an unsupported property; preserve the
+# snapshot and held alarms so recovery counts from the last good query.
+cp "${TESTDIR}/systemd/data/units.txt" "${FAKESYSTEMCTL_DIR}/units.txt"
+echo running > "${FAKESYSTEMCTL_DIR}/state"
+rm -f "${SYSDSTATE}" "${FAKESYSTEMCTL_DIR}/nrestarts"
+sysd_run > /dev/null
+printf 'slurmd.service 3\n' > "${FAKESYSTEMCTL_DIR}/nrestarts"
+sysd_run > /dev/null
+cp "${SYSDSTATE}" "${SYSDSTATE}.saved"
+: > "${FAKESYSTEMCTL_DIR}/show.fail"
+out=$(SYSD_RESTART_COLOR=red sysd_run)
+expect "${out}" '^status testhost\.systemd red ' \
+    "a failed restart query preserves an unexpired critical restart alarm"
+expect "${out}" '^&red slurmd\.service  1 restart\(s\)' \
+    "a held event remains listed when querying counters fails"
+expect "${out}" '^&yellow Automatic restarts: cannot query counters:' \
+    "the failed restart query is explicitly marked as a warning"
+expect "${out}" 'Failed to get properties: Connection timed out' \
+    "the counter query keeps systemctl's diagnostic"
+expect_not "${out}" '^data testhost\.systemd$' \
+    "failed restart queries send no misleading metrics"
+if ! cmp -s "${SYSDSTATE}" "${SYSDSTATE}.saved"; then
+    echo "FAIL: a failed counter query changed the last successful snapshot"
+    FAIL=1
+fi
+sysd_age slurmd.service 1900
+out=$(sysd_run)
+expect "${out}" '^status testhost\.systemd yellow ' \
+    "a counter query failure warns even without any held alarm"
+expect_not "${out}" 'slurmd' "held alarms still expire during query failures"
+rm -f "${FAKESYSTEMCTL_DIR}/show.fail"
+printf 'slurmd.service 5\n' > "${FAKESYSTEMCTL_DIR}/nrestarts"
+out=$(sysd_run)
+expect "${out}" '^restarts : 2$' \
+    "recovery counts restarts since the last successful query"
+rm -f "${SYSDSTATE}"
+: > "${FAKESYSTEMCTL_DIR}/show.fail"
+out=$(sysd_run)
+expect "${out}" '^status testhost\.systemd yellow ' \
+    "a failed first counter query also warns"
+expect_not "${out}" '^data testhost\.systemd$' \
+    "a failed first counter query cannot initialize the RRD"
+if [ -e "${SYSDSTATE}" ]; then
+    echo "FAIL: a failed first counter query created a snapshot"
+    FAIL=1
+fi
+rm -f "${FAKESYSTEMCTL_DIR}/show.fail" "${SYSDSTATE}.saved"
+unset SYSD_IGNORE
+echo degraded > "${FAKESYSTEMCTL_DIR}/state"
+
+# systemd older than 235: no NRestarts, no restart check and no graph
+rm -f "$SYSDSTATE"
+FAKESYSTEMCTL_NONR=1 sysd_run > /dev/null
+out=$(FAKESYSTEMCTL_NONR=1 sysd_run)
+expect "$out" 'Automatic restarts: not available' "without NRestarts the restart check is skipped"
+expect "$out" '^status testhost\.systemd red ' "... and the rest of the test still works"
+expect_not "$out" '^data testhost\.systemd$' \
+    "... but no data message: the RRD needs both values from the start"
+out=$(SYSD_IGNORE="*" FAKESYSTEMCTL_NONR=1 sysd_run)
+expect "${out}" '^status testhost\.systemd green ' \
+    "an unsupported NRestarts property is not a counter query failure"
+
+# Not applicable / switched off
+out=$(SYSD_ENABLE=no sysd_run)
+expect "$out" '^status testhost\.systemd clear .*systemd: disabled' \
+    "SYSD_ENABLE=no reports a clear column"
+rmdir "$FAKESYSD_RUNDIR"
+out=$(sysd_run)
+expect "$out" '^status testhost\.systemd clear .*not applicable' \
+    "a host not booted with systemd reports clear"
+expect "$out" 'not managed by systemd' "... and says why"
+mkdir -p "$FAKESYSD_RUNDIR"
+
+out=$(SYSD_COLUMN=svc sysd_run)
+expect "$out" '^status testhost\.svc ' "column name is overridable via SYSD_COLUMN"
+
+rm -rf "$FAKESYSTEMCTL_DIR" "$FAKESYSD_RUNDIR" "$SYSDSTATE"
+unset SYSD_CFG FAKESYSTEMCTL FAKESYSD_RUNDIR FAKESYSTEMCTL_DIR
+
+# ----------------------------------------------------------------------
 echo "--- xymonext ---"
 
 # Install tree for the measurement wrapper plus fake extensions that
@@ -2901,7 +3226,7 @@ fi
 # list too), so a snippet there runs twice on a combined host - that is
 # what this guards against.
 # temp is missing on purpose - see the collision check further down.
-for snippet in smart la memory disk opkg fritzdsl fritzwan wifi if_link lxc claude; do
+for snippet in smart la memory disk opkg fritzdsl fritzwan wifi if_link lxc claude systemd; do
     grep -qx "/etc/xymon/clientlaunch.d/$snippet.cfg" "$TMP/client-paths" || {
         echo "FAIL: $snippet snippet is not staged into clientlaunch.d"
         FAIL=1
@@ -3022,6 +3347,8 @@ expect "$out" 'TODO: +rrddefinitions\.cfg does not read' \
     "postinst: missing rrddefinitions.d reported"
 expect "$out" 'optional directory .*/rrddefinitions\.d' \
     "postinst: prints the line to add for rrddefinitions.d"
+expect "$out" 'BEFORE their first data arrives' \
+    "postinst: rrddefinitions.d must precede the first RRD file"
 expect "$out" 'service xymon restart' "postinst: asks for a restart"
 
 # The client post-install reports the 0.20.0 config move only on an

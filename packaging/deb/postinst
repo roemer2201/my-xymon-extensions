@@ -118,6 +118,11 @@ The "wifi" extension ships disabled too: enable it (remove the
 The "if_link" extension (link state changes per network interface)
  is active out of the box and adds an "if_link" column. It stays
  green until you configure thresholds in /etc/xymon/my-xymon-extensions/if_link.cfg.
+The "systemd" extension is active out of the box and adds a "systemd"
+ column: system state, failed units and automatic service restarts
+ (a restart keeps the column yellow for 30 minutes). List the units
+ that must run in SYSD_REQUIRED, or set SYSD_ENABLE="no" to switch it
+ off, in /etc/xymon/my-xymon-extensions/systemd.cfg.
 The "lxc" extension ships disabled: on an LXC host, remove the
  DISABLED line from /etc/xymon/clientlaunch.d/lxc.cfg. It needs no
  configuration - which containers are supposed to run is taken from

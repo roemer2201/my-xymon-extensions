@@ -115,6 +115,9 @@ sh packaging/common/stage.sh "%{buildroot}" \
 %{xymonhome}/ext/claude-expiry.sh
 %config(noreplace) %{xymonhome}/etc/my-xymon-extensions/claude.cfg
 %config(noreplace) %{xymonhome}/etc/clientlaunch.d/claude.cfg
+%{xymonhome}/ext/systemd.sh
+%config(noreplace) %{xymonhome}/etc/my-xymon-extensions/systemd.cfg
+%config(noreplace) %{xymonhome}/etc/clientlaunch.d/systemd.cfg
 %{xymonhome}/ext/xymonext.sh
 %{xymonhome}/ext/xymonext-send.sh
 %config(noreplace) %{xymonhome}/etc/my-xymon-extensions/xymonext.cfg
@@ -140,7 +143,7 @@ if [ "$1" -ge 2 ]; then
     verify=$(rpm -V --nodeps %{name} 2>/dev/null)
 fi
 for cfg in smart temp la memory disk opkg fritzdsl fritzwan wifi \
-    if_link lxc claude xymonext; do
+    if_link lxc claude systemd xymonext; do
     if [ ! -e "$new/$cfg.cfg" ]; then
         echo "$cfg" >> "$state/replaceable"
     elif [ "$1" -ge 2 ] && ! echo "$verify" | grep -q " $new/$cfg.cfg\$"; then
@@ -160,7 +163,7 @@ state=%{_localstatedir}/lib/rpm-state/%{name}
 old=%{xymonhome}/etc
 new=%{xymonhome}/etc/my-xymon-extensions
 for cfg in smart temp la memory disk opkg fritzdsl fritzwan wifi \
-    if_link lxc claude xymonext; do
+    if_link lxc claude systemd xymonext; do
     if [ -f "$old/$cfg.cfg.rpmsave" ]; then
         src="$old/$cfg.cfg.rpmsave"
     elif [ -f "$old/$cfg.cfg" ]; then
@@ -218,6 +221,11 @@ The "wifi" extension ships disabled too: enable it (remove the
 The "if_link" extension (link state changes per network interface)
  is active out of the box and adds an "if_link" column. It stays
  green until you configure thresholds in %{xymonhome}/etc/my-xymon-extensions/if_link.cfg.
+The "systemd" extension is active out of the box and adds a "systemd"
+ column: system state, failed units and automatic service restarts
+ (a restart keeps the column yellow for 30 minutes). List the units
+ that must run in SYSD_REQUIRED, or set SYSD_ENABLE="no" to switch it
+ off, in %{xymonhome}/etc/my-xymon-extensions/systemd.cfg.
 The "lxc" extension ships disabled: on an LXC host, remove the
  DISABLED line from %{xymonhome}/etc/clientlaunch.d/lxc.cfg. Which
  containers are supposed to run is detected automatically
@@ -243,6 +251,23 @@ RRD graphs need a one-time setup on the Xymon SERVER (not here):
 EOF
 
 %changelog
+* Tue Oct 06 2026 roemer2201 <r.oliver@web.de> - 0.25.1-1
+- preserve systemd restart warnings for unloaded units and failed
+  counter queries; report query failures as yellow without losing
+  the previous counters, and never downgrade maintenance to yellow
+  when listing units fails
+
+* Mon Oct 05 2026 roemer2201 <r.oliver@web.de> - 0.25.0-1
+- new extension "systemd" (column "systemd", active by default): the
+  system state from systemctl is-system-running, every failed unit of
+  any type, optional required units (SYSD_REQUIRED) and automatic
+  service restarts, detected from the NRestarts counter and held in
+  the column color for SYSD_RESTART_HOLD seconds (default 30 min).
+  SYSD_ENABLE="no" switches it off (clear column); hosts not booted
+  with systemd report clear. The data message feeds an RRD graph of
+  failed units and restarts (server drop-ins, including MAX archives
+  in rrddefinitions.d)
+
 * Thu Sep 24 2026 roemer2201 <r.oliver@web.de> - 0.24.1-1
 - no change to this package. The version follows the repository-wide
   VERSION file, which 0.24.1 moved for the server-only fritz-wifi

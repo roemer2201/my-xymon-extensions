@@ -25,11 +25,13 @@ Description: Xymon server extensions and graph configuration
     at every start).
   * /etc/xymon/graphs.d/ - the graph definitions.
   * /etc/xymon/rrddefinitions.d/ - RRA archive layout; needed by the
-    if_link extension so that single link changes stay visible in
-    long-range graphs. Debian's rrddefinitions.cfg does not read this
-    drop-in directory, so one "optional directory" line has to be
-    added to rrddefinitions.cfg once - the post-install output says so
-    if it is missing.
+    if_link and systemd extensions so that single link changes and
+    service restarts stay visible in long-range graphs. Debian's
+    rrddefinitions.cfg does not read this drop-in directory, so one
+    "optional directory" line has to be added to rrddefinitions.cfg
+    once - the post-install output says so if it is missing. Add it
+    before the first data arrives: RRD files created without it keep
+    their archives and have to be deleted once.
  .
   * /etc/sudoers.d/my-xymon-extensions-server - the restricted sudo
     rule the powerline collector needs, installed with the rule
@@ -37,7 +39,7 @@ Description: Xymon server extensions and graph configuration
     granted until the admin uncomments that one line.
  .
  Covered extensions: smart, temp, la, memory, opkg, fritzdsl,
- fritzwan, wifi, if_link, lxc and xymonext. The server-only powerline
+ fritzwan, wifi, if_link, lxc, systemd and xymonext. The server-only powerline
  collector is included but disabled until configured with open-plc-utils
  and its sudo rule. So is the server-only fritz-wifi collector, which
  reads the Wi-Fi metadata of AVM FRITZ! devices (e.g. FRITZ!Powerline)

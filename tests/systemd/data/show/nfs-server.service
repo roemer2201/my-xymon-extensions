@@ -1,0 +1,6 @@
+Id=nfs-server.service
+LoadState=loaded
+ActiveState=inactive
+SubState=dead
+NRestarts=0
+Description=NFS server and services

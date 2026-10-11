@@ -58,6 +58,7 @@ my-xymon-extensions/
 | [wifi](extensions/wifi/) | `wifi` | Wi-Fi access point metadata via iw/nl80211 plus ubus/hostapd and iwinfo on OpenWrt: client counts per SSID interface, channel utilization and noise per radio, throughput, client airtime and TX retry rates — informational only (green/clear), RRD graphs; for OpenWrt/TurrisOS APs via the standalone runner |
 | [lxc](extensions/lxc/) | `lxc` | LXC containers of a host: which exist, which are supposed to run — taken from `lxc.start.auto`, OpenWrt's `/etc/config/lxc-auto` and `lxc-autostart -L`, so nothing has to be configured twice — and what each one costs in memory, CPU and network traffic; red when a container that should run does not, with one RRD file per container and metric so a new container never disturbs an existing graph |
 | [claude](extensions/claude/) | `claude` | Validity of the Claude Code login per account: of the two timestamps in `$HOME/.claude/.credentials.json` only the refresh token says how long the login lasts (the access token renews itself), so that is what is checked — yellow 10 days before it expires, red 5 — which is what keeps a headless `claude` session from dying silently; reading the 0600 credentials file is confined to a tiny sudo helper that takes a user name, never a path, and prints no token material |
+| [systemd](extensions/systemd/) | `systemd` | Health of the systemd service manager: system state, every failed unit of any type, optional required units, and automatic service restarts read from the `NRestarts` counter — a crash-looping service is "active" most of the time and never "failed" without a start limit, so the counter is the only place it shows; a restart keeps the column yellow for 30 minutes (configurable), RRD graph of failed units and restarts; active by default, no root rights needed, `clear` on hosts not booted with systemd |
 | [xymonext](extensions/xymonext/) | `xymonext` | What the extensions above cost this host: wall clock time, CPU time of the whole process tree and bytes sent to the server, measured on every run and graphed per test — thresholds on the runtime catch a hanging test; wraps the other extensions instead of being scheduled itself |
 
 ## Server-side setup: drop-in directories
@@ -72,7 +73,7 @@ ships them as ready-made drop-in files under
 |---|---|---|
 | `server/xymonserver.d/<name>.cfg` | `xymonserver.d/` | `TEST2RRD`, `NCV_*`/`SPLITNCV_*`, `GRAPHS*` |
 | `server/graphs.d/<name>.cfg` | `graphs.d/` | the `[graphname]` graph definitions |
-| `server/rrddefinitions.d/<name>.cfg` | `rrddefinitions.d/` | RRA archive layout (only `if_link` so far) |
+| `server/rrddefinitions.d/<name>.cfg` | `rrddefinitions.d/` | RRA archive layout (only `if_link` and `systemd` so far) |
 | `server/tasks.d/powerline.cfg` | `tasks.d/` | Server-only Powerline task, every 5 minutes; separate configuration in `my-xymon-extensions-server/` |
 | `server/tasks.d/fritz-wifi.cfg` | `tasks.d/` | Server-only fritz-wifi task, every 5 minutes; same separate configuration directory |
 
@@ -149,7 +150,10 @@ say so.
   not enough. `rrddefinitions.d/` does not exist there — create it and
   add `optional directory /etc/xymon/rrddefinitions.d` at the end of
   `rrddefinitions.cfg` once (the server package does the first half and
-  tells you about the second).
+  tells you about the second). Do it before the first `data` message
+  arrives: the archives are fixed when an RRD file is created, so files
+  created without the line have to be deleted once (see the
+  extension's `server/README.md`).
 - **Current upstream Xymon** ships every config file with a trailing
   `optional directory $XYMONHOME/etc/<name>.d`, so `graphs.d` and
   `rrddefinitions.d` work out of the box. Its drop-in directory for the
