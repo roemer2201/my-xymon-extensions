@@ -259,7 +259,7 @@ RRD graphs need a one-time setup on the Xymon SERVER (not here):
 EOF
 
 %changelog
-* Sun Oct 11 2026 roemer2201 <r.oliver@web.de> - 0.26.0-1
+* Mon Oct 12 2026 roemer2201 <r.oliver@web.de> - 0.27.0-1
 - new extension "bcache" (column "bcache", ships disabled): state of
   every bcache cache set, cache device and backing device from sysfs -
   red for an inconsistent backing device, one that is not running or
@@ -269,6 +269,26 @@ EOF
   softer conditions. RRD graphs of hit ratio, requests, dirty data,
   writeback rate, cache usage, bcacheN throughput and cache device
   I/O, named after the device UUIDs (server drop-ins)
+
+* Mon Oct 12 2026 roemer2201 <r.oliver@web.de> - 0.26.1-1
+- smart: keep checking health when graph names collide; warn about
+  different disks sharing a name and omit only duplicate RRD/DWPD data
+- smart: compare numeric serials and aliases literally, including
+  leading zeroes, and keep their DWPD histories separate
+- smart: reserve space for metric suffixes in split-NCV's 200-character
+  name limit and detect collisions after truncation
+
+* Sun Oct 11 2026 roemer2201 <r.oliver@web.de> - 0.26.0-1
+- smart: disks are named by their serial number instead of /dev/sdX
+  (DEVICE_NAMING="serial", the new default), so RRD files and graphs
+  follow a disk across reboots, port and slot changes. DEVICE_NAMING=
+  "path" restores the old names. Existing installations start new RRD
+  files; README.md shows how to rename the old ones.
+- smart: new diskalias <serial> <alias> to give a disk a readable name
+  in graphs and on the status page
+- smart: the status page shows each disk's serial number; a disk seen
+  through two paths (multipath) is reported once; SAS serial numbers
+  ("Serial number:") are read
 
 * Tue Oct 06 2026 roemer2201 <r.oliver@web.de> - 0.25.1-1
 - preserve systemd restart warnings for unloaded units and failed

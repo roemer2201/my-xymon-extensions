@@ -1,7 +1,10 @@
 # smart — Xymon **server** configuration
 
 The client extension sends a `data` message with one `NAME : VALUE`
-line per disk and metric (`sda_temp : 38`, `nvme0_wear : 3`, …).
+line per disk and metric (`WD_WCAVY1234567_temp : 38`,
+`S5GXNF0R123456A_wear : 3`, …). Disks are named by their serial number
+or an alias, not by `/dev/sdX` — see "Device naming" in the client
+README.
 The Xymon server turns those into RRD files and graphs via
 **split-NCV**. This is a one-time setup on the Xymon server host
 (which may run any OS — these are plain Xymon config changes).
