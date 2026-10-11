@@ -11,6 +11,14 @@
 #   - a "data" message with "NAME : VALUE" lines for RRD graphing
 #     (split-NCV on the Xymon server, see server/README.md).
 #
+# Disk names follow serials or configured aliases. Name collisions omit
+# duplicate graph data but never suppress a device's health checks.
+# Program flow:
+#   1. Load configuration and discover SMART/eMMC devices.
+#   2. Collect health metrics and resolve unique graph names.
+#   3. Update DWPD history for disks with an available graph name.
+#   4. Report all health checks and the deduplicated RRD data.
+#
 # Runs unmodified on Ubuntu, Rocky Linux (EL) and FreeBSD.
 # Configuration: $XYMONHOME/etc/my-xymon-extensions/smart.cfg (see the shipped smart.cfg).
 
@@ -304,8 +312,9 @@ safe_name() {
 
 # alias_for <serial> -> the alias declared with diskalias(), if any
 alias_for() {
-    [ "$1" != "-" ] || return 0
-    printf '%s' "$ALIASES" | awk -v s="$1" '$1 == s && NF > 1 { print $2; exit }'
+    [ "${1}" != "-" ] || return 0
+    printf '%s' "${ALIASES}" | awk -v s="${1}" \
+        '("x" $1) == ("x" s) && NF > 1 { print $2; exit }'
 }
 
 # disk_name <device path> <device() alias> <serial> -> name of the disk
@@ -313,28 +322,47 @@ alias_for() {
 # An explicit alias wins; then, with DEVICE_NAMING=serial, the serial
 # number, which follows the disk across reboots, port and slot changes;
 # the device path's basename (sda, nvme0) is the last resort.
+# SPLITNCV limits the entire key to 200 characters. Reserve 11 for the
+# longest built-in suffix (_dwpdrecent) before detecting collisions.
 disk_name() {
     dn=""
-    [ -n "$2" ] && dn=$(safe_name "$2")
-    [ -n "$dn" ] || dn=$(safe_name "$(alias_for "$3")")
-    if [ -z "$dn" ] && [ "$DEVICE_NAMING" != "path" ] && [ "$3" != "-" ]; then
-        dn=$(safe_name "$3")
+    [ -n "${2}" ] && dn=$(safe_name "${2}")
+    [ -n "${dn}" ] || dn=$(safe_name "$(alias_for "${3}")")
+    if [ -z "${dn}" ] && [ "${DEVICE_NAMING}" != "path" ] && [ "${3}" != "-" ]; then
+        dn=$(safe_name "${3}")
     fi
-    [ -n "$dn" ] || dn=$(safe_name "$(basename "$1")")
-    printf '%s' "$dn"
+    [ -n "${dn}" ] || dn=$(safe_name "$(basename "${1}")")
+    safe_name "$(printf '%s' "${dn}" | cut -c 1-189)"
 }
 
-# claim_name <name> <device path> -> true if the name was still free in
-# this run, and claims it. Fails, printing the device that already
-# holds it, for one disk seen twice (multipath, two device() lines) or
-# two disks sharing a name (DEVICE_NAMING=path behind a RAID
-# controller, a duplicate alias): either way one RRD file would be fed
-# twice per run.
+# claim_name <name> <device path> <serial> -> true if the name was free
+# in this run, and claims it. Fails, printing device|serial of its owner
+# so genuine multipath duplicates can be distinguished from conflicts.
+# Numeric names must compare as strings: 001 and 1 are different disks.
+# This covers one disk seen twice (multipath, two device() lines) or
+# two disks sharing a name (DEVICE_NAMING=path behind a RAID controller,
+# a duplicate alias): either way one RRD file would be fed twice per run.
 claim_name() {
-    awk -v n="$1" '$1 == n { print $2; found = 1; exit } END { exit !found }' \
-        "$WORKDIR/names" && return 1
-    printf '%s %s\n' "$1" "$2" >> "$WORKDIR/names"
+    awk -v n="${1}" '
+        ("x" $1) == ("x" n) { print $2 "|" $3; found = 1; exit }
+        END { exit !found }' "${WORKDIR}/names" && return 1
+    printf '%s %s %s\n' "${1}" "${2}" "${3}" >> "${WORKDIR}/names"
     return 0
+}
+
+# report_name_conflict <name> <device path> <serial> <owner device|serial>
+# Only a matching, known serial is a harmless duplicate. Other name
+# conflicts warn about missing graph coverage while health still runs.
+report_name_conflict() {
+    nc_owner="${4%%|*}"
+    nc_serial="${4#*|}"
+    nc_color=clear
+    if [ "${3}" = "-" ] || [ "${3}" != "${nc_serial}" ]; then
+        nc_color=yellow
+        OVERALL=$(worst "${OVERALL}" yellow)
+    fi
+    printf '&%s %s: RRD data omitted - name "%s" is already used by %s (health still checked; use a unique alias for different disks)\n' \
+        "${nc_color}" "${2}" "${1}" "${nc_owner}" >> "${NOTES}"
 }
 
 # cap_gib <smartctl output> -> drive capacity in GiB, empty if unknown
@@ -573,11 +601,6 @@ while IFS='|' read -r dev opts alias <&3; do
     [ "$name" != "$(safe_name "$serial")" ] \
         && [ "$name" != "$(safe_name "$(basename "$dev")")" ] \
         && devlabel="$dev [$name]"
-    if ! prev=$(claim_name "$name" "$dev"); then
-        printf '&clear %s: skipped - name "%s" is already used by %s (the same disk via a second path, or give it an alias)\n\n' \
-            "$dev" "$name" "$prev" >> "$STATUS"
-        continue
-    fi
     cap=$(cap_gib "$out")
 
     # Unknown to smartctl's drive database: vendor attributes keep their
@@ -680,6 +703,14 @@ while IFS='|' read -r dev opts alias <&3; do
         continue
     fi
 
+    # A name is claimed only after a usable result. Even when occupied,
+    # parse every health check; omit only graph data and DWPD state.
+    emit_data=yes
+    if ! prev=$(claim_name "${name}" "${dev}" "${serial}"); then
+        emit_data=no
+        report_name_conflict "${name}" "${dev}" "${serial}" "${prev}"
+    fi
+
     devcolor=green
     case "$health" in
         ""|PASSED|OK)
@@ -706,7 +737,7 @@ while IFS='|' read -r dev opts alias <&3; do
     w_prec=$(head -n 1 "$WORKDIR/written.precise" 2>/dev/null)
     is_num "$w_prec" || w_prec="$w_gib"
 
-    if is_num "$w_gib" && is_num "$cap"; then
+    if [ "${emit_data}" = yes ] && is_num "$w_gib" && is_num "$cap"; then
         # Lifetime average - no state involved, hence reboot-proof.
         # Below DWPD_MIN_HOURS the ratio is meaningless (dividing by a
         # handful of hours), so it is withheld rather than reported.
@@ -721,11 +752,11 @@ while IFS='|' read -r dev opts alias <&3; do
         # Rolling window: pick the newest sample that is at least one
         # window old, prune anything older than two windows, and drop
         # the whole history when the serial changed (disk replaced).
-        awk -v alias="$name" -v serial="$serial" -v now="$NOW" \
+        awk -v alias="${name}" -v serial="${serial}" -v now="${NOW}" \
             -v win="$((DWPD_WINDOW_HOURS * 3600))" \
             -v ret="$((DWPD_WINDOW_HOURS * 7200))" '
-            $1 == "S" && $2 == alias {
-                if ($3 != "-" && serial != "-" && $3 != serial) {
+            $1 == "S" && ("x" $2) == ("x" alias) {
+                if ($3 != "-" && serial != "-" && ("x" $3) != ("x" serial)) {
                     swapped = 1
                     next
                 }
@@ -804,7 +835,9 @@ while IFS='|' read -r dev opts alias <&3; do
             printf '&%s %s: %s=%s\n' "$c" "$devlabel" "$m" "$v" >> "$NOTES"
         fi
         pairs="$pairs $m=$v"
-        printf '%s_%s : %s\n' "$name" "$m" "$v" >> "$DATA"
+        if [ "${emit_data}" = yes ]; then
+            printf '%s_%s : %s\n' "${name}" "${m}" "${v}" >> "${DATA}"
+        fi
     done < "$WORKDIR/metrics"
 
     {
@@ -856,12 +889,6 @@ for dev in $MMCLIST; do
     [ "$name" != "$(safe_name "$serial")" ] \
         && [ "$name" != "$(safe_name "$(basename "$dev")")" ] \
         && devlabel="$dev [$name]"
-    if ! prev=$(claim_name "$name" "$dev"); then
-        printf '&clear %s: skipped - name "%s" is already used by %s (give it an alias)\n\n' \
-            "$dev" "$name" "$prev" >> "$STATUS"
-        continue
-    fi
-
     if [ -z "$MMC_UTILS" ]; then
         printf '&clear %s: eMMC device present but mmc-utils is not installed (OpenWrt: opkg install mmc-utils) - eMMC health not checked\n\n' \
             "$dev" >> "$STATUS"
@@ -922,6 +949,14 @@ for dev in $MMCLIST; do
         continue
     fi
 
+    # Share the graph namespace with SMART disks, retaining eMMC health
+    # checks even when an alias or serial has already claimed the name.
+    emit_data=yes
+    if ! prev=$(claim_name "${name}" "${dev}" "${serial}"); then
+        emit_data=no
+        report_name_conflict "${name}" "${dev}" "${serial}" "${prev}"
+    fi
+
     pairs=""
     if [ -n "$wear" ]; then
         c=$(metric_color wear "$wear")
@@ -930,7 +965,9 @@ for dev in $MMCLIST; do
             printf '&%s %s: wear=%s\n' "$c" "$devlabel" "$wear" >> "$NOTES"
         fi
         pairs=" wear=$wear"
-        printf '%s_wear : %s\n' "$name" "$wear" >> "$DATA"
+        if [ "${emit_data}" = yes ]; then
+            printf '%s_wear : %s\n' "${name}" "${wear}" >> "${DATA}"
+        fi
     fi
 
     {

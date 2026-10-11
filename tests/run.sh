@@ -353,7 +353,7 @@ rm -f "$TMP"/smart.*.state
 # --- device naming ----------------------------------------------------
 # Default DEVICE_NAMING=serial: the serial names the disk, so its RRD
 # files follow it across reboots and slot changes. diskalias() replaces
-# the serial, a disk seen twice (multipath) is reported once, SAS
+# the serial, a disk seen twice (multipath) emits data once, SAS
 # prints "Serial number:" and eMMC takes its serial from sysfs.
 # shellcheck disable=SC2086
 out=$(SMART_CFG="$TESTDIR/smart/smart_test_naming.cfg" \
@@ -364,7 +364,7 @@ expect "$out" '&green /dev/tssd - Samsung SSD 860 EVO 1TB - S/N S3Z8TEST - healt
     "serial naming: status line shows device path and serial"
 expect "$(printf '%s\n' "$out" | grep -c '^S3Z8TEST_temp ')" '^1$' \
     "a disk seen twice (multipath) is reported once"
-expect "$out" '&clear /dev/tssd2: skipped - name "S3Z8TEST" is already used by /dev/tssd' \
+expect "$out" '&clear /dev/tssd2: RRD data omitted - name "S3Z8TEST" is already used by /dev/tssd' \
     "the second path to the same disk is named in the status"
 expect "$out" '^Z1Z0_TEST_0000_temp : 34$' \
     "SAS \"Serial number:\" read; runs of odd characters become one _"
@@ -394,6 +394,118 @@ expect "$out" '^tmmc0_wear : 10$' "path naming: eMMC named by device"
 expect "$out" '^bay3_temp : 41$' "path naming: diskalias still applies"
 expect_not "$out" '^S3Z8TEST_' "path naming: no serial names"
 rm -f "$TMP"/smart.*.state
+
+# Naming regressions: name collisions must suppress only duplicate
+# RRD writes, never the SMART/eMMC health checks of another device.
+cat > "${TMP}/smart-naming.cfg" <<'EOF'
+SMARTCTL="${FAKESMARTCTL}"
+USE_SUDO="no"
+MMC_DEVICES="none"
+device /dev/tssd "" shared
+device /dev/tsda "" shared
+attrmap "ST4000DM004*" 194 none
+EOF
+# shellcheck disable=SC2086
+out=$(SMART_CFG="${TMP}/smart-naming.cfg" ${TESTSH} "${REPO}/extensions/smart/smart.sh")
+expect "${out}" '^status testhost\.smart yellow ' "alias collision does not hide a warning"
+expect "${out}" '&yellow /dev/tsda \[shared\]: pending=8' "colliding disk still checked"
+expect "${out}" 'RRD data omitted - name "shared" is already used by /dev/tssd' \
+    "name conflict explains the omitted graph data"
+expect "$(printf '%s\n' "${out}" | grep -c '^shared_temp : ')" '^1$' \
+    "alias collision produces only one RRD update"
+expect_not "${out}" '^shared_pending :' "different disks do not share an RRD series"
+
+cat > "${TMP}/smart-naming.cfg" <<'EOF'
+SMARTCTL="${FAKESMARTCTL}"
+USE_SUDO="no"
+MMC_DEVICES="none"
+device /dev/tssd
+device /dev/tssd-failed
+EOF
+# shellcheck disable=SC2086
+out=$(SMART_CFG="${TMP}/smart-naming.cfg" ${TESTSH} "${REPO}/extensions/smart/smart.sh")
+expect "${out}" '^status testhost\.smart red ' "second path cannot hide a failed SMART verdict"
+expect "${out}" '&red /dev/tssd-failed: SMART health reports "FAILED"' \
+    "failure through a second path remains visible"
+expect "$(printf '%s\n' "${out}" | grep -c '^S3Z8TEST_temp : ')" '^1$' \
+    "second path still produces only one RRD update"
+
+cat > "${TMP}/smart-naming.cfg" <<'EOF'
+SMARTCTL="${FAKESMARTCTL}"
+USE_SUDO="no"
+MMC_DEVICES="none"
+device /dev/tssd-unusable
+device /dev/tssd
+EOF
+# shellcheck disable=SC2086
+out=$(SMART_CFG="${TMP}/smart-naming.cfg" ${TESTSH} "${REPO}/extensions/smart/smart.sh")
+expect "${out}" '^S3Z8TEST_temp : 31$' "unusable first path does not reserve the graph name"
+expect_not "${out}" 'RRD data omitted' "first usable response owns the graph name"
+
+cat > "${TMP}/smart-naming.cfg" <<'EOF'
+SMARTCTL="${FAKESMARTCTL}"
+USE_SUDO="no"
+device /dev/tssd "" tmmc1
+MMC_UTILS="${FAKEMMC}"
+MMC_DEVICES="/dev/tmmc1"
+EOF
+# shellcheck disable=SC2086
+out=$(SMART_CFG="${TMP}/smart-naming.cfg" ${TESTSH} "${REPO}/extensions/smart/smart.sh")
+expect "${out}" '^status testhost\.smart yellow ' "SMART/eMMC collision does not hide wear"
+expect "${out}" '&yellow /dev/tmmc1: wear=80' "colliding eMMC is still checked"
+expect_not "${out}" '^tmmc1_wear : 80$' "colliding eMMC does not update another disk RRD"
+rm -f "${TMP}"/smart.*.state
+
+# Numeric names must neither collide nor mix their DWPD histories.
+cat > "${TMP}/smart-naming.cfg" <<'EOF'
+SMARTCTL="${FAKESMARTCTL}"
+USE_SUDO="no"
+MMC_DEVICES="none"
+device /dev/tnumeric0
+device /dev/tnumeric1
+EOF
+now=$(date +%s)
+{
+    printf 'S 001 001 %s 23188\n' "$((now - 25200))"
+    printf 'S 1 1 %s 21443\n' "$((now - 25200))"
+} > "${smart_state}"
+# shellcheck disable=SC2086
+out=$(SMART_CFG="${TMP}/smart-naming.cfg" ${TESTSH} "${REPO}/extensions/smart/smart.sh")
+expect "${out}" '^001_temp : 31$' "numeric serial keeps its leading zeroes"
+expect "${out}" '^1_temp : 41$' "numeric serial 1 is distinct from 001"
+expect_rate "${out}" 001_dwpdrecent 0.36959 "001 uses only its own DWPD history"
+expect_rate "${out}" 1_dwpdrecent 0.76685 "1 uses only its own DWPD history"
+expect "$(printf '%s\n' "${out}" | grep -c '^001_dwpdrecent : ')" '^1$' \
+    "numeric serial produces one recent DWPD sample"
+cat >> "${TMP}/smart-naming.cfg" <<'EOF'
+diskalias 001 padded
+diskalias 1 short
+EOF
+# shellcheck disable=SC2086
+out=$(SMART_CFG="${TMP}/smart-naming.cfg" ${TESTSH} "${REPO}/extensions/smart/smart.sh")
+expect "${out}" '^padded_temp : 31$' "diskalias matches 001 literally"
+expect "${out}" '^short_temp : 41$' "diskalias does not equate 1 with 001"
+rm -f "${TMP}"/smart.*.state
+
+# SPLITNCV truncates the whole dataset name at 200 characters. Reserve
+# space for _dwpdrecent so even long aliases retain every metric suffix.
+long_name=$(awk 'BEGIN { for (i = 0; i < 210; i++) printf "a" }')
+short_name=$(printf '%s' "${long_name}" | cut -c 1-189)
+cat > "${TMP}/smart-naming.cfg" <<'EOF'
+SMARTCTL="${FAKESMARTCTL}"
+USE_SUDO="no"
+MMC_DEVICES="none"
+EOF
+printf 'device /dev/tssd "" %s\ndevice /dev/tsdk "" %sb\n' \
+    "${long_name}" "${long_name}" >> "${TMP}/smart-naming.cfg"
+# shellcheck disable=SC2086
+out=$(SMART_CFG="${TMP}/smart-naming.cfg" ${TESTSH} "${REPO}/extensions/smart/smart.sh")
+expect "${out}" '^status testhost\.smart yellow ' "healthy disks with a name conflict still warn"
+expect "${out}" "^${short_name}_temp : 31$" "long name leaves room for the metric suffix"
+expect "${out}" "^${short_name}_wear : 9$" "long name preserves separate metric RRDs"
+expect "${out}" "RRD data omitted - name \"${short_name}\" is already used" \
+    "names colliding after truncation are detected"
+rm -f "${TMP}"/smart.*.state
 
 # ----------------------------------------------------------------------
 echo "--- fritzdsl ---"

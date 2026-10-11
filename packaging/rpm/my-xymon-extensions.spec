@@ -251,6 +251,14 @@ RRD graphs need a one-time setup on the Xymon SERVER (not here):
 EOF
 
 %changelog
+* Mon Oct 12 2026 roemer2201 <r.oliver@web.de> - 0.26.1-1
+- smart: keep checking health when graph names collide; warn about
+  different disks sharing a name and omit only duplicate RRD/DWPD data
+- smart: compare numeric serials and aliases literally, including
+  leading zeroes, and keep their DWPD histories separate
+- smart: reserve space for metric suffixes in split-NCV's 200-character
+  name limit and detect collisions after truncation
+
 * Sun Oct 11 2026 roemer2201 <r.oliver@web.de> - 0.26.0-1
 - smart: disks are named by their serial number instead of /dev/sdX
   (DEVICE_NAMING="serial", the new default), so RRD files and graphs

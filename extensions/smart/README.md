@@ -55,7 +55,10 @@ graphs would then silently continue with another disk's values.
 | device name (`DEVICE_NAMING="path"`, or no serial) | `sdb_temp : 38` |
 
 Characters other than `A-Z`, `a-z` and `0-9` become `_` (a run of them
-one `_`), exactly as `xymond_rrd` names the files. The serial comes from
+one `_`), exactly as `xymond_rrd` names the files. Disk names are limited
+to 189 characters to leave room for the longest metric suffix within
+Xymon's 200-character split-NCV key limit. Names that collide after
+normalization or truncation are handled as described below. The serial comes from
 `smartctl -i` (`Serial Number:` for ATA and NVMe, `Serial number:` for
 SAS) and for eMMC from `/sys/block/mmcblkN/device/serial`.
 
@@ -68,11 +71,20 @@ matched to the physical disk before anything is pulled:
 ```
 
 A disk reachable through two paths (multipath SAS, or listed twice) has
-one serial and is therefore reported only once; the second path shows
-as `clear` with a note. The same note appears when two different disks
-end up with one name — a duplicate alias, or `DEVICE_NAMING="path"`
+one serial and therefore produces only one set of RRD data. The second
+path gets a `clear` note about omitted graph data, but its health checks
+still run and can raise the column to yellow or red.
+
+If different disks end up with one name — a duplicate alias, names that
+normalize or truncate to the same string, or `DEVICE_NAMING="path"`
 with several disks behind one RAID controller device (`/dev/sda` with
-`-d megaraid,0` and `-d megaraid,1`), which serial naming tells apart.
+`-d megaraid,0` and `-d megaraid,1`) — the column is at least yellow.
+Only the first usable result feeds that name's RRDs and DWPD history;
+all disks still have their health checked. Assign unique aliases (or
+use serial naming for RAID disks) to restore graph coverage. A missing
+serial cannot prove that two paths are the same disk, so it also warns.
+Numeric serials and aliases are matched literally: `001` and `1` are
+different names.
 
 ### Switching an existing installation
 
