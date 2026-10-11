@@ -64,7 +64,7 @@ USERMAP=""             # filled by attrmap() from smart.cfg
 
 # device <path> [smartctl-options] [alias]
 # Explicitly declare a device to check (disables auto-discovery).
-# shellcheck disable=SC2317  # called indirectly from the sourced config
+# shellcheck disable=SC2317,SC2329  # called indirectly from the sourced config
 device() {
     DEVLIST="${DEVLIST}${1}|${2:-}|${3:-}
 "
@@ -73,7 +73,7 @@ device() {
 # attrmap <model-glob> <attr-id-or-name-glob> <metric|none> [raw|norm|invnorm|gib|lba|mib32]
 # Map an ATA SMART attribute to a canonical metric, overriding the
 # built-in map below. Matched before the built-in map, first hit wins.
-# shellcheck disable=SC2317  # called indirectly from the sourced config
+# shellcheck disable=SC2317,SC2329  # called indirectly from the sourced config
 attrmap() {
     USERMAP="${USERMAP}${1}|${2}|${3}|${4:-raw}
 "

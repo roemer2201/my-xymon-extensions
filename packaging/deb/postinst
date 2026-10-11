@@ -66,12 +66,25 @@ migrate_conffiles "$@"
 
 case "${1:-}" in
     configure)
-        cat <<'EOF'
+        # $2 is the version configured before this one, empty on a
+        # first install. Only an upgrade from before 0.20.0-1 had its
+        # config files moved by migrate_conffiles above.
+        if [ -n "${2:-}" ] &&
+           dpkg --compare-versions "$2" lt 0.20.0-1 2>/dev/null; then
+            cat <<'EOF'
 my-xymon-extensions: the per-extension configuration now lives in
  /etc/xymon/my-xymon-extensions/ instead of straight in /etc/xymon,
  which on Debian/Ubuntu is shared with the Xymon server and
  hobbit-plugins. dpkg has moved your files, edits included; the launch
  snippets stay in /etc/xymon/clientlaunch.d, where Xymon expects them.
+EOF
+        else
+            cat <<'EOF'
+my-xymon-extensions: configuration in /etc/xymon/my-xymon-extensions/,
+ launch snippets in /etc/xymon/clientlaunch.d/.
+EOF
+        fi
+        cat <<'EOF'
 To activate the "smart" extension:
  1. Grant the xymon user access to smartctl - see
     /usr/share/doc/my-xymon-extensions/smart/sudoers.example

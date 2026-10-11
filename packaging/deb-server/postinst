@@ -141,13 +141,16 @@ case "${1:-}" in
             todo=1
         fi
 
-        # Debian ships no rrddefinitions.d, so this one normally is a
-        # TODO. Only the if_link extension needs it.
+        # Debian's rrddefinitions.cfg reads no drop-in directory, so
+        # this one normally is a TODO. This package creates the
+        # directory, but the include line belongs in xymon's conffile.
+        # Only the if_link extension needs it.
         if wired "$ETC/rrddefinitions.cfg" 'rrddefinitions\.d'; then
             echo " ok:   rrddefinitions.cfg reads $ETC/rrddefinitions.d/"
         else
             echo " TODO: rrddefinitions.cfg does not read $ETC/rrddefinitions.d/"
-            echo "       (Debian ships no such drop-in directory) - add"
+            echo "       (this package installed the directory, but Debian's"
+            echo "       rrddefinitions.cfg has no include line for it) - add"
             echo "       this line at the end of $ETC/rrddefinitions.cfg"
             echo "         optional directory $ETC/rrddefinitions.d"
             echo "       Only the if_link graphs need it; without it they"
