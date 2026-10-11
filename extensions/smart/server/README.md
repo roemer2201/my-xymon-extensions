@@ -55,9 +55,11 @@ and each name is passed to `showgraph.sh` verbatim, which looks the name
 up in `graphs.cfg` and *does* use `FNPATTERN`.
 
 A graph whose RRD files do not exist on a given host — `smartspare` on a
-host without NVMe, `smartrealloc` on a host with nothing but NVMe — is
-drawn as an empty frame (title and axes, no data), not as a broken
-image, because `showgraph.sh` still emits a valid PNG.
+host without NVMe, `smartrealloc` on a host with nothing but NVMe — shows
+up as nothing at all: no frame, no title, only the zoom icon next to an
+invisible image. `showgraph.sh` answers with a valid but blank
+placeholder PNG when no file matches `FNPATTERN` (`web/showgraph.c`,
+`rrddbcount == 0`), not with an error and not with an empty graph.
 
 `smartdwpd` and `smartdwpdrecent` show disk writes per day. Note that
 `dwpdrecent` needs some history before it can report anything: a freshly
@@ -84,7 +86,26 @@ next client report, check that RRD files appear:
 ls $XYMONVAR/rrd/<clienthost>/smart,*
 ```
 
-Then the graphs show up on the host's trends page.
+(`$XYMONVAR` is `/var/lib/xymon` on Debian/Ubuntu.) The graphs appear
+on the host's **smart status page** — not on the trends page, see
+section 1.
+
+**Give it 10–15 minutes.** Right after the setup the status page
+already lists all graphs, but every one of them is the blank
+placeholder described above:
+
+- The RRD files are only created by the first `data` message that
+  arrives *after* the restart.
+- rrdtool needs at least two updates before it can draw a line; the
+  client reports every 5 minutes.
+- `xymond_rrd` caches updates before writing them to disk.
+
+If the graphs are still blank after that, check in this order: the
+`ls` above (no files: `TEST2RRD`/`SPLITNCV_smart` are not in effect for
+`xymond_rrd`, or the `[rrddata]` task is not running — see
+`/var/log/xymon/rrd-data.log`), then whether `graphs.d/smart.cfg` is
+read (an unknown graph name makes `showgraph.sh` return an error
+instead of an image, which the browser shows as a broken image).
 
 ## Alerting
 
