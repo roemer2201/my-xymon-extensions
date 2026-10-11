@@ -11,4 +11,5 @@
 /etc/xymon-standalone/my-xymon-extensions/if_link.cfg
 /etc/xymon-standalone/my-xymon-extensions/lxc.cfg
 /etc/xymon-standalone/my-xymon-extensions/claude.cfg
+/etc/xymon-standalone/my-xymon-extensions/systemd.cfg
 /etc/xymon-standalone/my-xymon-extensions/xymonext.cfg

@@ -1,0 +1,6 @@
+Id=user@1000.service
+LoadState=loaded
+ActiveState=active
+SubState=running
+NRestarts=0
+Description=User Manager for UID 1000

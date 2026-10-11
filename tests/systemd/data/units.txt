@@ -1,0 +1,16 @@
+-.mount                                  loaded    active   mounted   Root Mount
+auditd.service                           loaded    active   running   Security Auditing Service
+chronyd.service                          loaded    active   running   NTP client/server
+crond.service                            loaded    active   running   Command Scheduler
+dev-sda1.device                          loaded    active   plugged   QEMU_HARDDISK 1
+dnf-makecache.service                    loaded    failed   failed    dnf makecache
+dnf-makecache.timer                      loaded    active   waiting   dnf makecache --timer
+munge.service                            loaded    active   running   MUNGE authentication service
+nfs-server.service                       loaded    inactive dead      NFS server and services
+NetworkManager-wait-online.service       loaded    failed   failed    Network Manager Wait Online
+plymouth-start.service                   not-found inactive dead      plymouth-start.service
+scratch.mount                            loaded    failed   failed    /scratch
+slurmd.service                           loaded    active   running   Slurm node daemon
+sshd.service                             loaded    active   running   OpenSSH server daemon
+systemd-journald.service                 loaded    active   running   Journal Service
+user@1000.service                        loaded    active   running   User Manager for UID 1000

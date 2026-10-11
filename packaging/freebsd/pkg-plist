@@ -11,6 +11,7 @@ www/xymon/client/ext/if_link.sh
 www/xymon/client/ext/lxc.sh
 www/xymon/client/ext/claude.sh
 www/xymon/client/ext/claude-expiry.sh
+www/xymon/client/ext/systemd.sh
 www/xymon/client/ext/xymonext.sh
 www/xymon/client/ext/xymonext-send.sh
 @sample www/xymon/client/etc/my-xymon-extensions/smart.cfg.sample
@@ -36,6 +37,8 @@ www/xymon/client/ext/xymonext-send.sh
 @sample www/xymon/client/etc/clientlaunch.d/lxc.cfg.sample
 @sample www/xymon/client/etc/my-xymon-extensions/claude.cfg.sample
 @sample www/xymon/client/etc/clientlaunch.d/claude.cfg.sample
+@sample www/xymon/client/etc/my-xymon-extensions/systemd.cfg.sample
+@sample www/xymon/client/etc/clientlaunch.d/systemd.cfg.sample
 @sample www/xymon/client/etc/my-xymon-extensions/xymonext.cfg.sample
 share/doc/my-xymon-extensions/README.md
 share/doc/my-xymon-extensions/temp/README.md
@@ -84,6 +87,11 @@ share/doc/my-xymon-extensions/lxc/server/graphs.d/lxc.cfg
 share/doc/my-xymon-extensions/lxc/server/xymonserver.d/lxc.cfg
 share/doc/my-xymon-extensions/claude/README.md
 share/doc/my-xymon-extensions/claude/sudoers.example
+share/doc/my-xymon-extensions/systemd/README.md
+share/doc/my-xymon-extensions/systemd/server/README.md
+share/doc/my-xymon-extensions/systemd/server/graphs.d/systemd.cfg
+share/doc/my-xymon-extensions/systemd/server/rrddefinitions.d/systemd.cfg
+share/doc/my-xymon-extensions/systemd/server/xymonserver.d/systemd.cfg
 share/doc/my-xymon-extensions/xymonext/README.md
 share/doc/my-xymon-extensions/xymonext/server/README.md
 share/doc/my-xymon-extensions/xymonext/server/graphs.d/xymonext.cfg
