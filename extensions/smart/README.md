@@ -37,6 +37,66 @@ Additionally, the SMART overall health verdict (`PASSED`/`FAILED`) turns
 the column **red** on failure, and NVMe *Critical Warning* flags turn it
 yellow — independent of the metric thresholds.
 
+## Device naming
+
+Every disk is reported under a name — `S3Z8TEST_temp : 31` in the data
+message, `smart,S3Z8TEST_temp.rrd` on the server, `S3Z8TEST` in the
+graph legend. By default (`DEVICE_NAMING="serial"`) that name is the
+disk's **serial number**, because the device name is not stable:
+`/dev/sdb` can be a different disk after a reboot (detection order,
+a controller added, a disk moved to another port or replaced), and its
+graphs would then silently continue with another disk's values.
+
+| Source of the name, first match wins | Example data line |
+|---|---|
+| alias on a `device` line in `smart.cfg` | `raid0d0_temp : 38` |
+| `diskalias <serial> <alias>` in `smart.cfg` | `bay3_temp : 38` |
+| serial number (`DEVICE_NAMING="serial"`, default) | `WD_WCAVY1234567_temp : 38` |
+| device name (`DEVICE_NAMING="path"`, or no serial) | `sdb_temp : 38` |
+
+Characters other than `A-Z`, `a-z` and `0-9` become `_` (a run of them
+one `_`), exactly as `xymond_rrd` names the files. The serial comes from
+`smartctl -i` (`Serial Number:` for ATA and NVMe, `Serial number:` for
+SAS) and for eMMC from `/sys/block/mmcblkN/device/serial`.
+
+The status page always shows the device path, the serial as the drive
+reports it and, if one is set, the alias — so a yellow line can be
+matched to the physical disk before anything is pulled:
+
+```
+&yellow /dev/sde [bay3] - WDC WD2003FYYS-02W0B0 - S/N WD-WMAY01234567 - health: PASSED
+```
+
+A disk reachable through two paths (multipath SAS, or listed twice) has
+one serial and is therefore reported only once; the second path shows
+as `clear` with a note. The same note appears when two different disks
+end up with one name — a duplicate alias, or `DEVICE_NAMING="path"`
+with several disks behind one RAID controller device (`/dev/sda` with
+`-d megaraid,0` and `-d megaraid,1`), which serial naming tells apart.
+
+### Switching an existing installation
+
+Changing the naming — the update to 0.26.0, which made `serial` the
+default, included — starts **new RRD files**; Xymon cannot know that
+`smart,sdb_temp.rrd` and `smart,WD_WCAVY1234567_temp.rrd` are the same
+disk. The old files stop receiving data and drop out of the status
+page graphs by themselves after 24 hours (the page asks `showgraph`
+for `nostale` graphs). `dwpdrecent` restarts its window once.
+
+To keep the history, rename the old files on the Xymon server once,
+**with Xymon stopped**, and only for disks that were really the same
+disk all along:
+
+```sh
+cd /var/lib/xymon/rrd/<host>          # Debian/Ubuntu; $XYMONVAR/rrd elsewhere
+for f in smart,sdb_*.rrd; do
+    mv "$f" "smart,WD_WCAVY1234567_${f#smart,sdb_}"
+done
+```
+
+Otherwise simply delete the old `smart,sd*_*.rrd` files once the new
+graphs are populated.
+
 ## eMMC devices (Linux)
 
 eMMC (soldered flash on routers, SBCs, appliances — e.g. Turris Omnia)
@@ -267,7 +327,8 @@ and data messages to stdout instead of sending them.
 ## Server-side setup (graphs)
 
 The client sends one `data` message per run containing lines like
-`sda_temp : 38`, `nvme0_wear : 3`. Turning these into per-disk RRDs and
+`WD_WCAVY1234567_temp : 38`, `bay3_wear : 3` (see
+[Device naming](#device-naming)). Turning these into per-disk RRDs and
 graphs requires a one-time configuration on the **Xymon server** —
 see [`server/README.md`](server/README.md).
 

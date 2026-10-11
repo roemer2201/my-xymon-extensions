@@ -251,6 +251,18 @@ RRD graphs need a one-time setup on the Xymon SERVER (not here):
 EOF
 
 %changelog
+* Sun Oct 11 2026 roemer2201 <r.oliver@web.de> - 0.26.0-1
+- smart: disks are named by their serial number instead of /dev/sdX
+  (DEVICE_NAMING="serial", the new default), so RRD files and graphs
+  follow a disk across reboots, port and slot changes. DEVICE_NAMING=
+  "path" restores the old names. Existing installations start new RRD
+  files; README.md shows how to rename the old ones.
+- smart: new diskalias <serial> <alias> to give a disk a readable name
+  in graphs and on the status page
+- smart: the status page shows each disk's serial number; a disk seen
+  through two paths (multipath) is reported once; SAS serial numbers
+  ("Serial number:") are read
+
 * Tue Oct 06 2026 roemer2201 <r.oliver@web.de> - 0.25.1-1
 - preserve systemd restart warnings for unloaded units and failed
   counter queries; report query failures as yellow without losing

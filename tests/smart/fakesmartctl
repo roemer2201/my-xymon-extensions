@@ -23,6 +23,9 @@ datadir="$(dirname "$0")/data"
 case "$last" in
     /dev/tsda)   cat "$datadir/ata-seagate.txt" ;;
     /dev/tssd)   cat "$datadir/ata-samsung-ssd.txt" ;;
+    # the same disk once more, as a second multipath leg
+    /dev/tssd2)  cat "$datadir/ata-samsung-ssd.txt" ;;
+    /dev/tsas)   cat "$datadir/scsi-sas.txt" ;;
     /dev/tsdk)   cat "$datadir/ata-kingston-ssd.txt" ;;
     /dev/tsdc)   cat "$datadir/ata-kingston-kc600.txt" ;;
     /dev/tnvme0) cat "$datadir/nvme-samsung.txt" ;;

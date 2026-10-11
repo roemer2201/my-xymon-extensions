@@ -109,38 +109,38 @@ expect "$out" '&yellow /dev/tsda: pending=8' \
     "pending sectors flagged on tsda"
 expect "$out" '&yellow /dev/tsda: crc=3' \
     "CRC errors flagged on tsda"
-expect "$out" '&green /dev/tssd - Samsung SSD 860 EVO 1TB - health: PASSED' \
+expect "$out" '&green /dev/tssd - Samsung SSD 860 EVO 1TB - S/N S3Z8TEST - health: PASSED' \
     "tssd device line green with model and health"
 expect "$out" '&green /dev/tnvme0 - Samsung SSD 980 PRO 1TB' \
     "NVMe device line green"
 
 # Data (NCV) values - ATA disk
-expect "$out" '^tsda_temp : 39$' \
+expect "$out" '^ZFN1TEST_temp : 39$' \
     "attrmap override works: garbage 77 in 194 ignored, temp from 190 (39)"
-expect "$out" '^tsda_pending : 8$'  "tsda pending extracted"
-expect "$out" '^tsda_realloc : 0$'  "tsda realloc extracted"
-expect "$out" '^tsda_hours : 20573$' "tsda power-on hours extracted"
+expect "$out" '^ZFN1TEST_pending : 8$'  "tsda pending extracted"
+expect "$out" '^ZFN1TEST_realloc : 0$'  "tsda realloc extracted"
+expect "$out" '^ZFN1TEST_hours : 20573$' "tsda power-on hours extracted"
 
 # Data (NCV) values - SATA SSD (name-based mapping via drivedb names)
-expect "$out" '^tssd_wear : 9$' \
+expect "$out" '^S3Z8TEST_wear : 9$' \
     "SSD wear from Wear_Leveling_Count normalized value (100-91)"
-expect "$out" '^tssd_temp : 31$'    "SSD temp from Airflow_Temperature_Cel"
-expect "$out" '^tssd_written : 23288$' \
+expect "$out" '^S3Z8TEST_temp : 31$'    "SSD temp from Airflow_Temperature_Cel"
+expect "$out" '^S3Z8TEST_written : 23288$' \
     "written normalized to GiB from Total_LBAs_Written (512-byte LBAs)"
-expect_not "$out" 'tssd_[a-z]*ECC'  "unmapped attributes are not reported"
+expect_not "$out" 'S3Z8TEST_[a-z]*ECC'  "unmapped attributes are not reported"
 
 # Data (NCV) values - Kingston SSD: three attributes map to "wear"
 # (177 Wear_Leveling_Count -> 9, 231 SSD_Life_Left -> 10,
 # 233 Media_Wearout_Indicator -> 0, stuck at VALUE 100 on Kingston).
 # The worst value must win; the optimistic reading must not mask it.
-expect "$out" '&green /dev/tsdk - KINGSTON SUV500MS480G - health: PASSED' \
+expect "$out" '&green /dev/tsdk - KINGSTON SUV500MS480G - S/N 50026B7TEST - health: PASSED' \
     "Kingston device line green with model and health"
-expect "$out" '^tsdk_wear : 10$' \
+expect "$out" '^50026B7TEST_wear : 10$' \
     "wear is the worst of all wear-mapped attributes"
-expect "$out" '^tsdk_temp : 41$'     "Kingston temp from 194"
-expect "$out" '^tsdk_hours : 47708$' "Kingston power-on hours extracted"
-expect "$out" '^tsdk_written : 21543$' "written from Host_Writes_GiB (already GiB)"
-expect "$out" '^tsdk_read : 7410$'     "read from Host_Reads_GiB (already GiB)"
+expect "$out" '^50026B7TEST_temp : 41$'     "Kingston temp from 194"
+expect "$out" '^50026B7TEST_hours : 47708$' "Kingston power-on hours extracted"
+expect "$out" '^50026B7TEST_written : 21543$' "written from Host_Writes_GiB (already GiB)"
+expect "$out" '^50026B7TEST_read : 7410$'     "read from Host_Reads_GiB (already GiB)"
 
 # Data (NCV) values - Kingston KC600: not in smartctl's drive database,
 # so vendor attributes carry generic default names. 241/242 are labelled
@@ -148,30 +148,30 @@ expect "$out" '^tsdk_read : 7410$'     "read from Host_Reads_GiB (already GiB)"
 # Motion controller); the real wear sits in 231 (VALUE 99 -> 1% used)
 # while 177 Wear_Leveling_Count is stuck at VALUE 100. The built-in
 # model-specific ID map must recover all of that.
-expect "$out" '&green /dev/tsdc - KINGSTON SKC600MS512G - health: PASSED \(not in smartctl drive database\)' \
+expect "$out" '&green /dev/tsdc - KINGSTON SKC600MS512G - S/N 50026B7TEST2 - health: PASSED \(not in smartctl drive database\)' \
     "KC600 device line notes the missing drivedb entry"
-expect "$out" '^tsdc_written : 2549$' \
+expect "$out" '^50026B7TEST2_written : 2549$' \
     "KC600 written in GiB from 241 as 32-MiB units (81572/32)"
-expect "$out" '^tsdc_read : 1191$' \
+expect "$out" '^50026B7TEST2_read : 1191$' \
     "KC600 read in GiB from 242 as 32-MiB units (38109/32)"
-expect_not "$out" '^tsdc_written : 0$' \
+expect_not "$out" '^50026B7TEST2_written : 0$' \
     "KC600 written not misread as 512-byte LBAs"
-expect "$out" '^tsdc_wear : 1$' \
+expect "$out" '^50026B7TEST2_wear : 1$' \
     "KC600 wear from attribute 231 by ID (100-99), not stuck 177"
-expect "$out" '^tsdc_temp : 41$'    "KC600 temperature extracted"
-expect "$out" '^tsdc_hours : 1754$' "KC600 power-on hours extracted"
-expect "$out" '^tsdc_cycles : 39$'  "KC600 power cycles extracted"
+expect "$out" '^50026B7TEST2_temp : 41$'    "KC600 temperature extracted"
+expect "$out" '^50026B7TEST2_hours : 1754$' "KC600 power-on hours extracted"
+expect "$out" '^50026B7TEST2_cycles : 39$'  "KC600 power cycles extracted"
 
 # Data (NCV) values - NVMe
-expect "$out" '^tnvme0_temp : 41$'      "NVMe composite temperature"
-expect "$out" '^tnvme0_wear : 3$'       "NVMe Percentage Used"
-expect "$out" '^tnvme0_spare : 100$'    "NVMe Available Spare"
-expect "$out" '^tnvme0_hours : 8760$'   "NVMe hours (comma separator removed)"
-expect "$out" '^tnvme0_mediaerr : 0$'   "NVMe media errors"
-expect "$out" '^tnvme0_unsafeshut : 42$' "NVMe unsafe shutdowns"
-expect "$out" '^tnvme0_written : 15784$' \
+expect "$out" '^S5GXTEST_temp : 41$'      "NVMe composite temperature"
+expect "$out" '^S5GXTEST_wear : 3$'       "NVMe Percentage Used"
+expect "$out" '^S5GXTEST_spare : 100$'    "NVMe Available Spare"
+expect "$out" '^S5GXTEST_hours : 8760$'   "NVMe hours (comma separator removed)"
+expect "$out" '^S5GXTEST_mediaerr : 0$'   "NVMe media errors"
+expect "$out" '^S5GXTEST_unsafeshut : 42$' "NVMe unsafe shutdowns"
+expect "$out" '^S5GXTEST_written : 15784$' \
     "NVMe written in GiB from Data Units Written (1000x512 bytes)"
-expect "$out" '^tnvme0_read : 22733$' \
+expect "$out" '^S5GXTEST_read : 22733$' \
     "NVMe read in GiB from Data Units Read"
 
 # eMMC devices (queried with mmc-utils, not smartctl)
@@ -190,15 +190,15 @@ expect "$out" '^tmmc1_wear : 80$' \
 # from drive-firmware counters only, so no state file is involved.
 # tssd: 23288 GiB / 931.5 GiB / 730 d, tsdk: 21543 / 447.1 / 1987.8,
 # tsdc: 2549 / 476.9 / 73.1, tnvme0: 15784 / 931.5 / 365.
-expect "$out" '^tssd_dwpd : 0\.03425$' \
+expect "$out" '^S3Z8TEST_dwpd : 0\.03425$' \
     "lifetime dwpd (ATA, 512-byte LBA writes, User Capacity)"
-expect "$out" '^tsdk_dwpd : 0\.02424$' \
+expect "$out" '^50026B7TEST_dwpd : 0\.02424$' \
     "lifetime dwpd (ATA, GiB-native writes)"
-expect "$out" '^tsdc_dwpd : 0\.07314$' \
+expect "$out" '^50026B7TEST2_dwpd : 0\.07314$' \
     "lifetime dwpd (32-MiB write units, drive not in smartctl database)"
-expect "$out" '^tnvme0_dwpd : 0\.04642$' \
+expect "$out" '^S5GXTEST_dwpd : 0\.04642$' \
     "lifetime dwpd (NVMe Data Units Written, namespace capacity)"
-expect_not "$out" '^tsda_dwpd' \
+expect_not "$out" '^ZFN1TEST_dwpd' \
     "no dwpd for a disk without a host-writes attribute (HDD)"
 expect "$out" 'dwpd=0\.03425' "dwpd also shown in the status section"
 
@@ -206,15 +206,15 @@ expect "$out" 'dwpd=0\.03425' "dwpd also shown in the status section"
 expect_not "$out" '_dwpdrecent' \
     "no dwpdrecent on the first run (state file was just created)"
 expect "$(cat "$TMP/smart.testhost.state" 2>/dev/null)" \
-    '^S tssd S3Z8TEST [0-9]+ 23288\.4[0-9]+$' \
+    '^S S3Z8TEST S3Z8TEST [0-9]+ 23288\.4[0-9]+$' \
     "sample keeps the drive's sub-GiB write resolution (512-byte LBAs)"
 expect "$(cat "$TMP/smart.testhost.state" 2>/dev/null)" \
-    '^S tsdc 50026B7TEST2 [0-9]+ 2549\.125' \
+    '^S 50026B7TEST2 50026B7TEST2 [0-9]+ 2549\.125' \
     "sample keeps sub-GiB resolution for 32-MiB write units too"
 expect "$(cat "$TMP/smart.testhost.state" 2>/dev/null)" \
-    '^S tsdk 50026B7TEST [0-9]+ 21543$' \
+    '^S 50026B7TEST 50026B7TEST [0-9]+ 21543$' \
     "GiB-native counter stays whole GiB - that is the drive's own limit"
-expect_not "$(cat "$TMP/smart.testhost.state" 2>/dev/null)" '^S tsda ' \
+expect_not "$(cat "$TMP/smart.testhost.state" 2>/dev/null)" '^S ZFN1TEST ' \
     "no sample seeded for a disk without writes/capacity data"
 
 # Status display must not contain NCV-style "name : value" lines other
@@ -258,14 +258,14 @@ now=$(date +%s)
 # machine.
 
 rm -f "$TMP"/smart.*.state
-printf 'S tssd S3Z8TEST %s 22788\n' "$((now - 108000))" > "$smart_state"
+printf 'S S3Z8TEST S3Z8TEST %s 22788\n' "$((now - 108000))" > "$smart_state"
 # shellcheck disable=SC2086
 out=$($TESTSH "$REPO/extensions/smart/smart.sh")
-expect "$out" '^tssd_dwpdrecent : 0\.429[0-9][0-9]$' \
+expect "$out" '^S3Z8TEST_dwpdrecent : 0\.429[0-9][0-9]$' \
     "dwpdrecent over the rolling window (500 GiB in 30h)"
-expect "$(cat "$smart_state")" '^S tssd S3Z8TEST [0-9]+ 23288\.4[0-9]+$' \
+expect "$(cat "$smart_state")" '^S S3Z8TEST S3Z8TEST [0-9]+ 23288\.4[0-9]+$' \
     "a new sample is appended after the sample interval"
-expect "$(cat "$smart_state")" '^S tssd S3Z8TEST [0-9]+ 22788$' \
+expect "$(cat "$smart_state")" '^S S3Z8TEST S3Z8TEST [0-9]+ 22788$' \
     "the reference sample is kept until it ages out of the window"
 
 # Warm-up: no sample old enough for the full 24h window yet, but the
@@ -273,57 +273,57 @@ expect "$(cat "$smart_state")" '^S tssd S3Z8TEST [0-9]+ 22788$' \
 # that shorter span instead of leaving the graph empty for a whole day.
 # 100.413 GiB over 7h on a 931.5 GiB disk -> 0.36959 writes per day.
 rm -f "$TMP"/smart.*.state
-printf 'S tssd S3Z8TEST %s 23188\n' "$((now - 25200))" > "$smart_state"
+printf 'S S3Z8TEST S3Z8TEST %s 23188\n' "$((now - 25200))" > "$smart_state"
 # shellcheck disable=SC2086
 out=$($TESTSH "$REPO/extensions/smart/smart.sh")
-expect "$out" '^tssd_dwpdrecent : 0\.369[0-9][0-9]$' \
+expect "$out" '^S3Z8TEST_dwpdrecent : 0\.369[0-9][0-9]$' \
     "dwpdrecent reported during warm-up over the oldest sample"
 
 # Below the warm-up threshold nothing is reported yet.
 rm -f "$TMP"/smart.*.state
-printf 'S tssd S3Z8TEST %s 23188\n' "$((now - 10800))" > "$smart_state"
+printf 'S S3Z8TEST S3Z8TEST %s 23188\n' "$((now - 10800))" > "$smart_state"
 # shellcheck disable=SC2086
 out=$($TESTSH "$REPO/extensions/smart/smart.sh")
-expect_not "$out" '^tssd_dwpdrecent' \
+expect_not "$out" '^S3Z8TEST_dwpdrecent' \
     "no dwpdrecent before DWPD_WARMUP_HOURS has elapsed"
 
 # A full-window reference wins over the warm-up fallback: with samples
 # at 30h and 7h the 30h one must be used (0.08624, not 0.36959).
 rm -f "$TMP"/smart.*.state
 {
-    printf 'S tssd S3Z8TEST %s 23188\n' "$((now - 108000))"
-    printf 'S tssd S3Z8TEST %s 23188\n' "$((now - 25200))"
+    printf 'S S3Z8TEST S3Z8TEST %s 23188\n' "$((now - 108000))"
+    printf 'S S3Z8TEST S3Z8TEST %s 23188\n' "$((now - 25200))"
 } > "$smart_state"
 # shellcheck disable=SC2086
 out=$($TESTSH "$REPO/extensions/smart/smart.sh")
-expect "$out" '^tssd_dwpdrecent : 0\.086[0-9][0-9]$' \
+expect "$out" '^S3Z8TEST_dwpdrecent : 0\.086[0-9][0-9]$' \
     "full window takes precedence over the warm-up fallback"
 
 # Reference younger than the window: no value yet, sample untouched.
 rm -f "$TMP"/smart.*.state
-printf 'S tssd S3Z8TEST %s 23000\n' "$((now - 60))" > "$smart_state"
+printf 'S S3Z8TEST S3Z8TEST %s 23000\n' "$((now - 60))" > "$smart_state"
 # shellcheck disable=SC2086
 out=$($TESTSH "$REPO/extensions/smart/smart.sh")
-expect_not "$out" '^tssd_dwpdrecent' \
+expect_not "$out" '^S3Z8TEST_dwpdrecent' \
     "no dwpdrecent before the window has elapsed"
-expect "$(cat "$smart_state")" "^S tssd S3Z8TEST $((now - 60)) 23000\$" \
+expect "$(cat "$smart_state")" "^S S3Z8TEST S3Z8TEST $((now - 60)) 23000\$" \
     "sample kept unchanged while the window is still filling"
 
 # Losing or corrupting the state must never yield a wrong value: each
 # of these silently re-seeds and simply reports nothing this round.
 for c in "corrupt:S tssd" \
-         "swapped:S tssd OLDSERIAL $((now - 108000)) 100" \
-         "reset:S tssd S3Z8TEST $((now - 108000)) 99999" \
-         "stale:S tssd S3Z8TEST $((now - 999999)) 100"; do
+         "swapped:S S3Z8TEST OLDSERIAL $((now - 108000)) 100" \
+         "reset:S S3Z8TEST S3Z8TEST $((now - 108000)) 99999" \
+         "stale:S S3Z8TEST S3Z8TEST $((now - 999999)) 100"; do
     rm -f "$TMP"/smart.*.state
     printf '%s\n' "${c#*:}" > "$smart_state"
     # shellcheck disable=SC2086
     out=$($TESTSH "$REPO/extensions/smart/smart.sh")
     rc=$?
     [ "$rc" -eq 0 ] || { echo "FAIL: smart.sh exited $rc on ${c%%:*} state"; FAIL=1; }
-    expect_not "$out" '^tssd_dwpdrecent' \
+    expect_not "$out" '^S3Z8TEST_dwpdrecent' \
         "no dwpdrecent value from ${c%%:*} state"
-    expect "$(cat "$smart_state")" '^S tssd S3Z8TEST [0-9]+ 23288\.4[0-9]+$' \
+    expect "$(cat "$smart_state")" '^S S3Z8TEST S3Z8TEST [0-9]+ 23288\.4[0-9]+$' \
         "${c%%:*} state is silently re-seeded"
 done
 
@@ -348,6 +348,51 @@ out=$(SMART_CFG="$TESTDIR/smart/smart_test_dwpd.cfg" \
     $TESTSH "$REPO/extensions/smart/smart.sh")
 expect_not "$out" '_dwpd :' \
     "no lifetime dwpd below DWPD_MIN_HOURS power-on hours"
+rm -f "$TMP"/smart.*.state
+
+# --- device naming ----------------------------------------------------
+# Default DEVICE_NAMING=serial: the serial names the disk, so its RRD
+# files follow it across reboots and slot changes. diskalias() replaces
+# the serial, a disk seen twice (multipath) is reported once, SAS
+# prints "Serial number:" and eMMC takes its serial from sysfs.
+# shellcheck disable=SC2086
+out=$(SMART_CFG="$TESTDIR/smart/smart_test_naming.cfg" \
+    SMART_SYS_BLOCK="$TESTDIR/smart/sys" \
+    $TESTSH "$REPO/extensions/smart/smart.sh")
+expect "$out" '^S3Z8TEST_temp : 31$' "serial naming: data line named by serial"
+expect "$out" '&green /dev/tssd - Samsung SSD 860 EVO 1TB - S/N S3Z8TEST - health: PASSED' \
+    "serial naming: status line shows device path and serial"
+expect "$(printf '%s\n' "$out" | grep -c '^S3Z8TEST_temp ')" '^1$' \
+    "a disk seen twice (multipath) is reported once"
+expect "$out" '&clear /dev/tssd2: skipped - name "S3Z8TEST" is already used by /dev/tssd' \
+    "the second path to the same disk is named in the status"
+expect "$out" '^Z1Z0_TEST_0000_temp : 34$' \
+    "SAS \"Serial number:\" read; runs of odd characters become one _"
+expect "$out" '^Z1Z0_TEST_0000_realloc : 2$' "SAS grown defect list"
+expect "$out" 'ST4000NM0023 - S/N Z1Z0-TEST--0000 - health: OK' \
+    "status line shows the serial as the drive reports it"
+expect "$out" '^bay3_temp : 41$' "diskalias replaces the serial in data lines"
+expect_not "$out" '^S5GXTEST_' "no data under the serial once aliased"
+expect "$out" '&green /dev/tnvme0 \[bay3\] - Samsung SSD 980 PRO 1TB - S/N S5GXTEST' \
+    "status line shows the alias next to the device path"
+expect "$out" '^0x1a2b3c4d_wear : 10$' "eMMC named by its sysfs serial"
+expect "$out" '&green /dev/tmmc0 - eMMC, MMC 5\.1 - S/N 0x1a2b3c4d - health: Normal' \
+    "eMMC status line shows its serial"
+expect "$(cat "$TMP/smart.testhost.state" 2>/dev/null)" \
+    '^S S3Z8TEST S3Z8TEST [0-9]+ 23288\.4[0-9]+$' \
+    "DWPD state is keyed by the serial name"
+rm -f "$TMP"/smart.*.state
+
+# DEVICE_NAMING=path: the old behaviour (sda, nvme0); an alias still wins.
+# shellcheck disable=SC2086
+out=$(SMART_CFG="$TESTDIR/smart/smart_test_naming.cfg" \
+    SMART_SYS_BLOCK="$TESTDIR/smart/sys" SMART_TEST_NAMING=path \
+    $TESTSH "$REPO/extensions/smart/smart.sh")
+expect "$out" '^tssd_temp : 31$' "path naming: data line named by device"
+expect "$out" '^tsas_temp : 34$' "path naming: SAS disk named by device"
+expect "$out" '^tmmc0_wear : 10$' "path naming: eMMC named by device"
+expect "$out" '^bay3_temp : 41$' "path naming: diskalias still applies"
+expect_not "$out" '^S3Z8TEST_' "path naming: no serial names"
 rm -f "$TMP"/smart.*.state
 
 # ----------------------------------------------------------------------
@@ -2538,7 +2583,7 @@ expect "$captured" '^status turris,example,org\.smart yellow ' \
     "status message with comma-encoded FQDN from MACHINEDOTS"
 expect "$captured" '^data turris,example,org\.smart$' \
     "data message for the RRD graphs is sent too"
-expect "$captured" '^tsda_pending : 8$' \
+expect "$captured" '^ZFN1TEST_pending : 8$' \
     "NCV payload arrives through the standalone transport"
 expect "$captured" '^status turris,example,org\.temp yellow ' \
     "temp extension runs under the standalone runner"
