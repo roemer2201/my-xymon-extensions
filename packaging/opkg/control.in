@@ -30,7 +30,8 @@ Description: Portable Xymon client extensions with standalone runner
  does not (autostart taken from lxc.start.auto, /etc/config/lxc-auto
  and lxc-autostart); systemd - systemd service manager health
  (installed for completeness only: OpenWrt uses procd, so it is not
- in the default test list and reports clear); btrfs - btrfs
+ in the default test list and reports clear); bcache - Linux bcache
+ cache sets and devices (not in the default test list); btrfs - btrfs
  filesystem health (TurrisOS: the root filesystem): device errors,
  unallocated space and metadata, scrub age and result, I/O and commit
  rates; clear without btrfs; xymonext - what the

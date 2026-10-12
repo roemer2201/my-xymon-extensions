@@ -123,6 +123,9 @@ sh packaging/common/stage.sh "%{buildroot}" \
 %{xymonhome}/ext/systemd.sh
 %config(noreplace) %{xymonhome}/etc/my-xymon-extensions/systemd.cfg
 %config(noreplace) %{xymonhome}/etc/clientlaunch.d/systemd.cfg
+%{xymonhome}/ext/bcache.sh
+%config(noreplace) %{xymonhome}/etc/my-xymon-extensions/bcache.cfg
+%config(noreplace) %{xymonhome}/etc/clientlaunch.d/bcache.cfg
 %{xymonhome}/ext/btrfs.sh
 %config(noreplace) %{xymonhome}/etc/my-xymon-extensions/btrfs.cfg
 %config(noreplace) %{xymonhome}/etc/clientlaunch.d/btrfs.cfg
@@ -151,7 +154,7 @@ if [ "$1" -ge 2 ]; then
     verify=$(rpm -V --nodeps %{name} 2>/dev/null)
 fi
 for cfg in smart temp la memory disk opkg fritzdsl fritzwan wifi \
-    if_link lxc claude systemd btrfs xymonext; do
+    if_link lxc claude systemd bcache btrfs xymonext; do
     if [ ! -e "$new/$cfg.cfg" ]; then
         echo "$cfg" >> "$state/replaceable"
     elif [ "$1" -ge 2 ] && ! echo "$verify" | grep -q " $new/$cfg.cfg\$"; then
@@ -171,7 +174,7 @@ state=%{_localstatedir}/lib/rpm-state/%{name}
 old=%{xymonhome}/etc
 new=%{xymonhome}/etc/my-xymon-extensions
 for cfg in smart temp la memory disk opkg fritzdsl fritzwan wifi \
-    if_link lxc claude systemd btrfs xymonext; do
+    if_link lxc claude systemd bcache btrfs xymonext; do
     if [ -f "$old/$cfg.cfg.rpmsave" ]; then
         src="$old/$cfg.cfg.rpmsave"
     elif [ -f "$old/$cfg.cfg" ]; then
@@ -234,6 +237,11 @@ The "systemd" extension is active out of the box and adds a "systemd"
  (a restart keeps the column yellow for 30 minutes). List the units
  that must run in SYSD_REQUIRED, or set SYSD_ENABLE="no" to switch it
  off, in %{xymonhome}/etc/my-xymon-extensions/systemd.cfg.
+The "bcache" extension ships disabled: on a host with bcache devices,
+ uncomment the task in %{xymonhome}/etc/clientlaunch.d/bcache.cfg. It needs
+ no configuration; if $XYMONTMP is a tmpfs, set BCACHE_STATEDIR in
+ %{xymonhome}/etc/my-xymon-extensions/bcache.cfg so that vanished devices
+ are still detected after a reboot.
 The "btrfs" extension is active out of the box and adds a "btrfs"
  column for every mounted btrfs filesystem. Stock EL kernels have no
  btrfs, so the column is clear unless a btrfs-enabled kernel is used;
@@ -264,6 +272,21 @@ RRD graphs need a one-time setup on the Xymon SERVER (not here):
 EOF
 
 %changelog
+* Mon Oct 12 2026 roemer2201 <r.oliver@web.de> - 0.28.0-1
+- new extension "bcache" (column "bcache", ships disabled): state of
+  every bcache cache set, cache device and backing device from sysfs -
+  red for an inconsistent backing device, one that is not running or
+  has lost its cache set, io_disable, a cache exceeding the normal
+  writeback caching cutoff, and devices that vanished since an earlier
+  poll (remembered by UUID in BCACHE_STATEDIR); yellow for I/O errors,
+  missing or invalid core attributes and softer conditions. RRD graphs
+  of hit ratio, requests, dirty data, writeback rate, cache usage,
+  bcacheN throughput and cache device I/O, named after the device UUIDs
+  (server drop-ins)
+- bcache: rates restart after a reboot (boot id in the state file),
+  ambiguous 8-digit graph ids are rejected, the state file is private
+  and replaced atomically, failed reports return a nonzero exit status
+
 * Mon Oct 12 2026 roemer2201 <r.oliver@web.de> - 0.27.0-1
 - new extension "btrfs" (column "btrfs", active by default, no root
   rights needed): every mounted btrfs filesystem with missing or

@@ -46,6 +46,8 @@ Included extensions:
   systemd, so the column reports a clear status here - comment its
   clientlaunch.d snippet out or set SYSD_ENABLE=no in
   systemd.cfg to hide or silence it.
+* bcache - Linux bcache cache sets and devices; Linux-only, reports a
+  clear status on FreeBSD and ships disabled.
 * btrfs - btrfs filesystem health. btrfs is a Linux filesystem, so
   the column reports a clear status here - comment its clientlaunch.d
   snippet out or set BTRFS_ENABLE=no in btrfs.cfg to hide or silence

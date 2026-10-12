@@ -12,5 +12,6 @@
 /etc/xymon-standalone/my-xymon-extensions/lxc.cfg
 /etc/xymon-standalone/my-xymon-extensions/claude.cfg
 /etc/xymon-standalone/my-xymon-extensions/systemd.cfg
+/etc/xymon-standalone/my-xymon-extensions/bcache.cfg
 /etc/xymon-standalone/my-xymon-extensions/btrfs.cfg
 /etc/xymon-standalone/my-xymon-extensions/xymonext.cfg

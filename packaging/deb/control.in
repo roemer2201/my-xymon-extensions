@@ -57,6 +57,12 @@ Description: Portable Xymon client extensions
     restarts (Restart=, from the NRestarts counter; the color is held
     for 30 minutes), with an RRD graph of failed units and restarts.
     Active out of the box; no root rights needed.
+  * bcache - Linux bcache: state of every cache set, cache device and
+    backing device (inconsistent, not running, cache device missing,
+    I/O errors, vanished devices), cache usage against the writeback
+    cutoffs, with RRD graphs of hit ratio, requests, dirty data,
+    cache usage and throughput, named after the device UUIDs. Reads
+    sysfs only, no root rights; ships disabled.
   * btrfs - btrfs filesystem health: missing or read-only devices,
     degraded mounts, device error counters, unallocated space and
     metadata usage (the ENOSPC that df does not show), age and - with

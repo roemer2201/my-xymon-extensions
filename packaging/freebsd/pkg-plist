@@ -12,6 +12,7 @@ www/xymon/client/ext/lxc.sh
 www/xymon/client/ext/claude.sh
 www/xymon/client/ext/claude-expiry.sh
 www/xymon/client/ext/systemd.sh
+www/xymon/client/ext/bcache.sh
 www/xymon/client/ext/btrfs.sh
 www/xymon/client/ext/xymonext.sh
 www/xymon/client/ext/xymonext-send.sh
@@ -40,6 +41,8 @@ www/xymon/client/ext/xymonext-send.sh
 @sample www/xymon/client/etc/clientlaunch.d/claude.cfg.sample
 @sample www/xymon/client/etc/my-xymon-extensions/systemd.cfg.sample
 @sample www/xymon/client/etc/clientlaunch.d/systemd.cfg.sample
+@sample www/xymon/client/etc/my-xymon-extensions/bcache.cfg.sample
+@sample www/xymon/client/etc/clientlaunch.d/bcache.cfg.sample
 @sample www/xymon/client/etc/my-xymon-extensions/btrfs.cfg.sample
 @sample www/xymon/client/etc/clientlaunch.d/btrfs.cfg.sample
 @sample www/xymon/client/etc/my-xymon-extensions/xymonext.cfg.sample
@@ -95,6 +98,10 @@ share/doc/my-xymon-extensions/systemd/server/README.md
 share/doc/my-xymon-extensions/systemd/server/graphs.d/systemd.cfg
 share/doc/my-xymon-extensions/systemd/server/rrddefinitions.d/systemd.cfg
 share/doc/my-xymon-extensions/systemd/server/xymonserver.d/systemd.cfg
+share/doc/my-xymon-extensions/bcache/README.md
+share/doc/my-xymon-extensions/bcache/server/README.md
+share/doc/my-xymon-extensions/bcache/server/graphs.d/bcache.cfg
+share/doc/my-xymon-extensions/bcache/server/xymonserver.d/bcache.cfg
 share/doc/my-xymon-extensions/btrfs/README.md
 share/doc/my-xymon-extensions/btrfs/sudoers.example
 share/doc/my-xymon-extensions/btrfs/server/README.md
