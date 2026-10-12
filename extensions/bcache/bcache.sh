@@ -60,7 +60,7 @@
 #   1. Load configuration and collect sysfs attributes.
 #   2. Evaluate health, remembered devices and counter differences.
 #   3. Atomically persist private state and send status/data messages.
-# Version: 1.0.2 (2026-10-12)
+# Version: 1.0.3 (2026-10-12)
 
 set -u
 
@@ -393,14 +393,6 @@ function short(id,   s) {
 }
 
 function isuuid(id) { return id ~ /^[0-9a-f]+-[0-9a-f]+-[0-9a-f]+-[0-9a-f]+-[0-9a-f]+$/ }
-
-function human(b) {
-    if (b == "") return "?"
-    if (b >= 1099511627776) return sprintf("%.1fT", b / 1099511627776)
-    if (b >= 1073741824) return sprintf("%.1fG", b / 1073741824)
-    if (b >= 1048576) return sprintf("%.1fM", b / 1048576)
-    return sprintf("%.1fk", b / 1024)
-}
 
 function ncv(name, val) {
     if (val == "" || BADID[METRICID]) return

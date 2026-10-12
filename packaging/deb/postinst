@@ -128,7 +128,6 @@ The "bcache" extension ships disabled: on a host with bcache devices,
  no configuration; if $XYMONTMP is a tmpfs, set BCACHE_STATEDIR in
  /etc/xymon/my-xymon-extensions/bcache.cfg so that vanished devices
  are still detected after a reboot.
-
 The "btrfs" extension is active out of the box and adds a "btrfs"
  column for every mounted btrfs filesystem (clear on hosts without
  one): device state and errors, unallocated space, metadata, scrub

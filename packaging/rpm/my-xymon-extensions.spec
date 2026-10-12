@@ -126,7 +126,6 @@ sh packaging/common/stage.sh "%{buildroot}" \
 %{xymonhome}/ext/bcache.sh
 %config(noreplace) %{xymonhome}/etc/my-xymon-extensions/bcache.cfg
 %config(noreplace) %{xymonhome}/etc/clientlaunch.d/bcache.cfg
-
 %{xymonhome}/ext/btrfs.sh
 %config(noreplace) %{xymonhome}/etc/my-xymon-extensions/btrfs.cfg
 %config(noreplace) %{xymonhome}/etc/clientlaunch.d/btrfs.cfg
@@ -243,7 +242,6 @@ The "bcache" extension ships disabled: on a host with bcache devices,
  no configuration; if $XYMONTMP is a tmpfs, set BCACHE_STATEDIR in
  %{xymonhome}/etc/my-xymon-extensions/bcache.cfg so that vanished devices
  are still detected after a reboot.
-
 The "btrfs" extension is active out of the box and adds a "btrfs"
  column for every mounted btrfs filesystem. Stock EL kernels have no
  btrfs, so the column is clear unless a btrfs-enabled kernel is used;

@@ -2755,6 +2755,7 @@ expect "$out" '^status testhost\.bc ' "column name is overridable via BCACHE_COL
 rm -rf "$BCROOT" "$BCSTATE"
 unset BCACHE_SYSFS
 
+# ----------------------------------------------------------------------
 echo "--- btrfs ---"
 # Fixtures recorded on two real hosts (values and file layout as found
 # in /sys/fs/btrfs, /proc/mounts, /proc/diskstats and btrfs-progs
