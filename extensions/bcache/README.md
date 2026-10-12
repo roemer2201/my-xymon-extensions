@@ -7,8 +7,9 @@ state, dirty data, hit ratio, cache usage and throughput.
 
 - **Column:** `bcache` (override with `BCACHE_COLUMN`).
 - **Platforms:** Linux with bcache (`CONFIG_BCACHE`, e.g. Ubuntu).
-  Everything is read from sysfs: no additional monitoring tool, no root rights (sysfs attributes
-  are readable by unprivileged users). Hosts without bcache report `clear`. Not tested on
+  Everything is read from sysfs: no additional monitoring tool, no root
+  rights (every attribute read here is mode 0444). Hosts without bcache
+  report `clear`. Not tested on
   OpenWrt/TurrisOS and not in the standalone runner's default list.
 - **Reference system:** Ubuntu 24.04, kernel 6.8, one cache set on an
   NVMe partition, six HDD backing devices in writeback mode (the test
@@ -141,8 +142,9 @@ Notes on the numbers:
   extension uses the exact `stats_total` counters and computes the
   difference between two polls instead. The state file also stores the
   Linux boot id: after a reboot the first poll supplies only gauges,
-  even if the new counters already exceed their previous values. Requests are counted per I/O as
-  bcache sees it; a partial hit counts as a miss.
+  even if the new counters already exceed their previous values.
+  Requests are counted per I/O as bcache sees it; a partial hit counts
+  as a miss.
 - Byte values like `dirty_data` or `written` come out of `bch_hprint()`
   with about three significant digits (`9.6G`, `2.5T`, units of 1024).
   Fine for a gauge — the dirty data graph moves in steps of 0.1 GiB —

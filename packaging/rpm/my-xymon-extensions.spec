@@ -273,18 +273,19 @@ EOF
 
 %changelog
 * Mon Oct 12 2026 roemer2201 <r.oliver@web.de> - 0.28.0-1
-- bcache: validate core health attributes, retain alarms without sysfs,
-  reset rates across boots, reject ambiguous graph ids, save private
-  state securely and propagate report failures
 - new extension "bcache" (column "bcache", ships disabled): state of
   every bcache cache set, cache device and backing device from sysfs -
   red for an inconsistent backing device, one that is not running or
-  has lost its cache set, io_disable, a cache exceeding the normal writeback
-  caching cutoff, and devices that vanished since an earlier poll
-  (remembered by UUID in BCACHE_STATEDIR); yellow for I/O errors and
-  softer conditions. RRD graphs of hit ratio, requests, dirty data,
-  writeback rate, cache usage, bcacheN throughput and cache device
-  I/O, named after the device UUIDs (server drop-ins)
+  has lost its cache set, io_disable, a cache exceeding the normal
+  writeback caching cutoff, and devices that vanished since an earlier
+  poll (remembered by UUID in BCACHE_STATEDIR); yellow for I/O errors,
+  missing or invalid core attributes and softer conditions. RRD graphs
+  of hit ratio, requests, dirty data, writeback rate, cache usage,
+  bcacheN throughput and cache device I/O, named after the device UUIDs
+  (server drop-ins)
+- bcache: rates restart after a reboot (boot id in the state file),
+  ambiguous 8-digit graph ids are rejected, the state file is private
+  and replaced atomically, failed reports return a nonzero exit status
 
 * Mon Oct 12 2026 roemer2201 <r.oliver@web.de> - 0.27.0-1
 - new extension "btrfs" (column "btrfs", active by default, no root

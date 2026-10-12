@@ -2644,6 +2644,9 @@ if [ -r /proc/sys/kernel/random/boot_id ]; then
     expect_not "$out" '_hitpct|_rdops|_ssdrd' "a new boot never mixes cumulative counters with persistent state"
 fi
 expect "$out" '^17e640c6_dirty : 9\.60$' "reboot still reports gauges"
+if [ -r /proc/sys/kernel/random/boot_id ]; then
+    expect "$out" 'First poll since a reboot' "the status page explains the missing rates after a reboot"
+fi
 expect "$(cat "$BCSTATE")" '^SEEN B 17e640c6-' "reboot preserves vanished-device memory"
 bc_age 300
 bc_set block/sdf/bcache/stats_total/cache_hits 2571360

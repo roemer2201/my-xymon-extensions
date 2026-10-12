@@ -768,6 +768,8 @@ END {
     if (nfree) printf "\n" > statusf
     if (PREVT == "")
         printf "First poll (or no state file from the previous one): hit ratios, request and I/O rates appear from the next poll on.\n" > statusf
+    else if (rebooted)
+        printf "First poll since a reboot: the counters started over, hit ratios, request and I/O rates appear from the next poll on.\n" > statusf
     printf "<!-- ncv_skipend -->\n" > statusf
 
     # summary for the status line, and the color for the shell
