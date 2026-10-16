@@ -48,6 +48,17 @@ sysupgrade): `standalone.cfg` for the runner itself plus one
 symlink to `/etc/xymon-standalone`, so the extensions find their
 config through `$XYMONHOME/etc/my-xymon-extensions/<name>.cfg` as on a full client.
 
+Upgrading from 0.19.0 or older moves the per-extension files from
+`/etc/xymon-standalone/` into `my-xymon-extensions/`. A file you
+edited replaces the new default there (the default is kept as
+`<name>.cfg-opkg`, opkg's own naming); an unchanged one is simply
+replaced by the new default - the package compares it with the
+checksum opkg recorded when it installed the file. opkg prints
+`Not deleting modified conffile` and `file_sha256sum_alloc: Failed to
+open file` for every old file during that one upgrade: it checks the
+old files after it has already deleted them as obsolete. Both messages
+are harmless; nothing is lost.
+
 ### Manual (three files + extension)
 
 ```sh

@@ -272,6 +272,13 @@ RRD graphs need a one-time setup on the Xymon SERVER (not here):
 EOF
 
 %changelog
+* Fri Oct 16 2026 roemer2201 <r.oliver@web.de> - 0.28.1-1
+- no change to this package. The opkg package (OpenWrt/TurrisOS) no
+  longer keeps an unchanged pre-0.20.0 default config on an upgrade
+  from 0.19.0 or older: its preinst compares the old file with the
+  checksum opkg recorded at install time, and only an edited file
+  replaces the new default (which then lands in <name>.cfg-opkg)
+
 * Mon Oct 12 2026 roemer2201 <r.oliver@web.de> - 0.28.0-1
 - new extension "bcache" (column "bcache", ships disabled): state of
   every bcache cache set, cache device and backing device from sysfs -
