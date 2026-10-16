@@ -3,12 +3,37 @@
 # 0.20.0 in its my-xymon-extensions/ subdirectory. Stash every old file
 # whose new counterpart does not exist yet: that one is about to be
 # created from the package, so postinst may replace it with the stash.
+# An old file still equal to the default it was installed with is not
+# stashed: opkg deletes it, and the new default stays without a -opkg
+# copy next to it.
 ETC=${IPKG_INSTROOT:-}/etc/xymon-standalone
+STATUS=${IPKG_INSTROOT:-}/usr/lib/opkg/status
 STASH=$ETC/.cfg-migrate
+
+# pristine NAME - true if the old NAME.cfg matches the checksum opkg
+# recorded when it installed the file. While preinst runs, the status
+# file still describes the old package (opkg rewrites it at the end of
+# the command). opkg-lede records SHA-256, older opkg MD5; anything
+# that cannot be checked counts as edited and is stashed.
+pristine() {
+    want=$(awk -v f="/etc/xymon-standalone/$1.cfg" '
+        /^Package:/ { pkg = ($2 == "my-xymon-extensions") }
+        pkg && NF == 2 && $1 == f { print $2; exit }' "$STATUS" 2>/dev/null)
+    case ${#want} in
+        64) tool=sha256sum ;;
+        32) tool=md5sum ;;
+        *)  return 1 ;;
+    esac
+    command -v "$tool" >/dev/null 2>&1 || return 1
+    have=$("$tool" < "$ETC/$1.cfg") || return 1
+    [ "${have%% *}" = "$want" ]
+}
+
 rm -rf "$STASH"
 for cfg in smart temp la memory disk opkg fritzdsl fritzwan wifi \
     if_link lxc claude systemd bcache btrfs xymonext; do
-    if [ -f "$ETC/$cfg.cfg" ] && [ ! -e "$ETC/my-xymon-extensions/$cfg.cfg" ]; then
+    if [ -f "$ETC/$cfg.cfg" ] && [ ! -e "$ETC/my-xymon-extensions/$cfg.cfg" ] &&
+        ! pristine "$cfg"; then
         mkdir -p "$STASH" && cp -p "$ETC/$cfg.cfg" "$STASH/$cfg.cfg"
     fi
 done

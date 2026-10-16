@@ -4436,6 +4436,40 @@ else
     FAIL=1
 fi
 expect "$out" 'moved your .*la\.cfg' "opkg: postinst reports the move"
+# An old file opkg's status still records as installed unchanged is not
+# stashed: opkg deletes it and the new default stays without -opkg.
+# One whose checksum differs is migrated as before.
+if command -v sha256sum >/dev/null 2>&1; then
+    rm -rf "$OPKGROOT"; mkdir -p "$OE" "$OPKGROOT/usr/lib/opkg"
+    echo olddefault > "$OE/la.cfg"
+    echo edited > "$OE/memory.cfg"
+    sum=$(echo olddefault | sha256sum); sum=${sum%% *}
+    other=$(echo edited | sha256sum); other=${other%% *}
+    {
+        # another package's entry must not count for ours
+        printf 'Package: other\nConffiles:\n /etc/xymon-standalone/memory.cfg %s\n\n' "$other"
+        printf 'Package: my-xymon-extensions\nVersion: 0.18.0-1\nConffiles:\n'
+        printf ' /etc/xymon-standalone/la.cfg %s\n' "$sum"
+        printf ' /etc/xymon-standalone/memory.cfg %s\n\n' "$sum"
+    } > "$OPKGROOT/usr/lib/opkg/status"
+    IPKG_INSTROOT="$OPKGROOT" $TESTSH "$REPO/packaging/opkg/preinst"
+    rm -f "$OE/la.cfg" "$OE/memory.cfg"     # opkg: obsolete files
+    opkg_unpack; echo default > "$OE/my-xymon-extensions/memory.cfg"
+    out=$(IPKG_INSTROOT="$OPKGROOT" $TESTSH "$REPO/packaging/opkg/postinst")
+    if [ "$(cat "$OE/my-xymon-extensions/la.cfg")" = default ] &&
+       [ ! -e "$OE/my-xymon-extensions/la.cfg-opkg" ] &&
+       [ "$(cat "$OE/my-xymon-extensions/memory.cfg")" = edited ] &&
+       [ "$(cat "$OE/my-xymon-extensions/memory.cfg-opkg")" = default ]; then
+        echo "ok:   opkg: an unchanged old default gives way to the new one"
+    else
+        echo "FAIL: opkg: unchanged old default not told apart from an edited one"
+        FAIL=1
+    fi
+    expect_not "$out" 'moved your .*la\.cfg' "opkg: no move reported for an unchanged default"
+    expect "$out" 'moved your .*memory\.cfg' "opkg: an edited file is still moved"
+else
+    echo "skip: opkg unchanged-default detection (no sha256sum)"
+fi
 # Already upgraded to 0.20.0-0.23.0 and the new file edited since: keep both.
 rm -rf "$OPKGROOT"; mkdir -p "$OE/my-xymon-extensions"
 echo edited > "$OE/la.cfg"; echo mine > "$OE/my-xymon-extensions/la.cfg"
