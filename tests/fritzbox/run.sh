@@ -429,5 +429,34 @@ rc=${?}
 ok exit_is 0
 ok no_messages
 
+# --- graph coverage -------------------------------------------------------------------
+# Every RRD a full poll writes is drawn by exactly one graph, every graph
+# draws at least one, and GRAPHS_<column> lists exactly the graphs of that
+# column. FNPATTERNs here are plain ERE.
+reset_over
+run --set FRITZBOX_LAN_NEW_MAC=0
+SRVDIR=${REPO}/extensions/fritzbox/server
+cat "${SRVDIR}"/graphs.d/*.cfg | awk '/^\[/ { name = substr($0, 2, length($0) - 2) }
+     /^[[:space:]]*FNPATTERN / { sub(/^[[:space:]]*FNPATTERN /, ""); print name "|" $0 }' >"${TMP}/patterns"
+sed -n 's/^\[\(fritz[a-z]*,.*\.rrd\)\]$/\1/p' "${FB_MESSAGES}" | sort -u >"${TMP}/rrds"
+ok test -s "${TMP}/patterns"
+ok test "$(wc -l <"${TMP}/rrds")" -ge 40
+: >"${TMP}/covered"
+while IFS='|' read -r gname gpat; do
+    if grep -E "^${gpat}\$" "${TMP}/rrds" >>"${TMP}/covered"; then :
+    else printf 'FAIL: fritzbox graph %s matches none of the emitted RRDs\n' "${gname}"; FAIL=1; fi
+done <"${TMP}/patterns"
+ok test -z "$(sort "${TMP}/covered" | uniq -d)"
+ok test -z "$(sort -u "${TMP}/covered" | grep -Fxv -f - "${TMP}/rrds")"
+for c in ${COLUMNS}; do
+    sed -n "s/^GRAPHS_${c}=\"\(.*\)\"\$/\1/p" "${SRVDIR}"/xymonserver.d/*.cfg | tr ',' '\n' | sort >"${TMP}/listed"
+    awk -F'|' -v c="${c}" '{ split($2, p, ","); if (p[1] == c) print $1 }' "${TMP}/patterns" | sort -u >"${TMP}/defined"
+    ok cmp -s "${TMP}/listed" "${TMP}/defined"
+    # fritzdsl/fritzwan kept their graph names, none of which is the
+    # column name: they are on the status page only, as up to 0.28.
+    case "${c}" in fritzdsl|fritzwan) ;; *) ok grep -q "^GRAPHS+=.*,${c}[,\"]" "${SRVDIR}"/xymonserver.d/*.cfg ;; esac
+    ok grep -q "^TEST2RRD+=.*[,\"]${c}[,\"]" "${SRVDIR}"/xymonserver.d/*.cfg
+done
+
 if [ "${FAIL}" -eq 0 ]; then echo "fritzbox: all tests passed"; fi
 exit "${FAIL}"

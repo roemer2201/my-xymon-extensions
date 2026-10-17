@@ -292,6 +292,110 @@ fi
 if sh "${REPO}/extensions/powerline/powerline-read.sh" topology eth0 extra >/dev/null 2>&1; then
     printf '%s\n' 'FAIL: helper accepted extra argument'; FAIL=1
 fi
+# --- occasional adapters and change texts ---------------------------------
+# "garage" is plugged in now and then: every change is yellow for the hold
+# time with a text that says what changed, it never escalates to flapping
+# (for itself or for its peer), and it is never forgotten.
+POWERLINE_STATE_DIR=${TMP}/occasional-state POWERLINE_HOSTS=${TMP}/occasional-hosts
+POWERLINE_MAPPING=${TMP}/occasional-map
+export POWERLINE_STATE_DIR POWERLINE_HOSTS POWERLINE_MAPPING
+cp "${HERE}/hosts" "${POWERLINE_HOSTS}"
+printf '%s\n' '192.168.5.8 garage.lan #' >>"${POWERLINE_HOSTS}"
+printf '%s\n' '02:00:00:00:00:0C garage.lan occasional' >"${POWERLINE_MAPPING}"
+ok poll 500000 both
+ok has '^status\+15 powerline1,lan.powerline green '
+ok poll 500300 garage
+ok has '^status\+15 garage,lan.powerline yellow '
+ok has '^Last change 0 minute\(s\) ago: New adapter detected\.$'
+ok has '^Last change 0 minute\(s\) ago: Peer added: 02000000000c \(garage\.lan\)\.$'
+ok has '^status\+15 powerline1,lan.powerline yellow '
+ok has '^status\+15 powerline3,lan.powerline green '
+ok poll 500600 garage
+ok has '^Last change 5 minute\(s\) ago: New adapter detected\.$'
+ok poll 500900 both
+ok has '^status\+15 garage,lan.powerline yellow '
+ok has '^Last change 0 minute\(s\) ago: Adapter disappeared\.$'
+ok has '^Last change 0 minute\(s\) ago: Peer lost: 02000000000c \(garage\.lan\)\.$'
+# Plugged in and out for hours: an ordinary adapter would be red by now.
+t=502700
+while [ "${t}" -le 513500 ]; do
+    if [ $(((t - 502700) / 1800 % 2)) -eq 0 ]; then ok poll "${t}" garage; else ok poll "${t}" both; fi
+    t=$((t + 1800))
+done
+ok lacks 'state flapping'
+ok has '^status\+15 garage,lan.powerline yellow '
+ok has '^status\+15 powerline1,lan.powerline yellow '
+ok has 'Last change 0 minute\(s\) ago: Adapter is back\.$'
+ok poll 513800 both
+ok poll 517500 both
+ok has '^status\+15 garage,lan.powerline green '
+ok has '^Adapter 02000000000c is not plugged in \(occasional adapter\)\.$'
+ok has '^status\+15 powerline1,lan.powerline green '
+ok lacks 'Last change'
+# Never forgotten, even long past the retention of one day.
+ok poll 700000 both
+ok grep -q '^state|02000000000c|0|garage.lan|' "${POWERLINE_STATE_DIR}/state"
+ok has '^status\+15 garage,lan.powerline green '
+# Ordinary adapters still get the precise text.
+ok poll 700300 local
+ok has '^Last change 0 minute\(s\) ago: Adapter disappeared\.$'
+ok has '^Last change 0 minute\(s\) ago: Peer lost: e8df701d65a6 \(powerline3\.lan\)\.$'
+# Old state files (11 fields, before 0.29) are still accepted.
+awk -F'|' '$1 == "state" { NF = 11 } 1' OFS='|' "${POWERLINE_STATE_DIR}/state" >"${TMP}/state11"
+cp "${TMP}/state11" "${POWERLINE_STATE_DIR}/state"
+ok poll 700600 local
+ok has '^status\+15 powerline1,lan.powerline yellow '
+# A third field other than "occasional" is a broken mapping.
+printf '%s\n' '02:00:00:00:00:0C garage.lan sometimes' >"${POWERLINE_MAPPING}"
+if poll 700900 local; then printf '%s\n' 'FAIL: bad mapping flag accepted'; FAIL=1; fi
+ok grep -q 'Cannot parse static mapping' "${TMP}/stderr"
+
+# --- FRITZ!Box view from the fritzbox collector's hand-over file ----------
+POWERLINE_STATE_DIR=${TMP}/fritz-state POWERLINE_HOSTS=${HERE}/hosts POWERLINE_MAPPING=''
+POWERLINE_FRITZBOX_DIR=${TMP}/fritzbox
+export POWERLINE_STATE_DIR POWERLINE_HOSTS POWERLINE_MAPPING POWERLINE_FRITZBOX_DIR
+mkdir -p "${POWERLINE_FRITZBOX_DIR}"
+# homeplug EPOCH - the reference box's list, written at EPOCH.
+homeplug() {
+    {
+        printf '# fritzbox homeplug fritz.box %s\n' "${1}"
+        printf '%s\n' 'F0:B0:14:84:C5:3C|1|0|failed|FRITZ!Powerline 1220E|Upstairs' \
+            'E8:DF:70:1D:65:A6|0|1|succeeded|FRITZ!Powerline 1260E|Downstairs'
+    } >"${POWERLINE_FRITZBOX_DIR}/fritz.box.homeplug"
+}
+homeplug 599940
+ok poll 600000 both
+ok has '^status\+15 powerline1,lan.powerline green '
+ok has '^FRITZ!Box view \(fritz\.box\): "Upstairs", FRITZ!Powerline 1220E, active, last firmware update failed\.$'
+ok has '^status\+15 powerline3,lan.powerline yellow '
+ok has '^FRITZ!Box view \(fritz\.box\): "Downstairs", FRITZ!Powerline 1260E, not active, firmware update available\.$'
+ok has '^The FRITZ!Box reports this adapter as not active\.$'
+POWERLINE_FRITZBOX_UPDATE_FAILED=yellow; export POWERLINE_FRITZBOX_UPDATE_FAILED
+ok poll 600300 both
+ok has '^status\+15 powerline1,lan.powerline yellow '
+unset POWERLINE_FRITZBOX_UPDATE_FAILED
+# A stale list is only noted; it colors nothing.
+homeplug 599400
+ok poll 600600 both
+ok has '^status\+15 powerline3,lan.powerline green '
+ok has '^FRITZ!Box view \(fritz\.box\): stale, 20 minute\(s\) old - is the fritzbox collector running\?$'
+# An adapter missing from a fresh list is noted.
+homeplug 600840
+grep -v '^E8:DF' "${POWERLINE_FRITZBOX_DIR}/fritz.box.homeplug" >"${TMP}/homeplug"
+mv "${TMP}/homeplug" "${POWERLINE_FRITZBOX_DIR}/fritz.box.homeplug"
+ok poll 600900 both
+ok has '^FRITZ!Box view: this adapter is not in the box.s adapter list\.$'
+# Malformed lines and files are ignored, never fatal.
+printf '%s\n' 'garbage' >"${POWERLINE_FRITZBOX_DIR}/other.homeplug"
+printf '%s\n' 'F0:B0:14:84:C5:3C|x|y|z' >>"${POWERLINE_FRITZBOX_DIR}/fritz.box.homeplug"
+ok poll 601200 both
+ok has '^status\+15 powerline1,lan.powerline green '
+rm -rf "${POWERLINE_FRITZBOX_DIR}"
+ok poll 601500 both
+ok lacks 'FRITZ!Box view'
+unset POWERLINE_FRITZBOX_DIR
+POWERLINE_STATE_DIR=${TMP}/new-state; export POWERLINE_STATE_DIR
+
 # --- graph coverage ----------------------------------------------------
 # Every emitted RRD is drawn by exactly one graph, and every graph draws at
 # least one RRD. FNPATTERN is PCRE; its only PCRE-ism is "(?:", so turning

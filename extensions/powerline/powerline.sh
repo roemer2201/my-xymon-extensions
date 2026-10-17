@@ -3,7 +3,8 @@
 # adapter, plus collector health on the Xymon server; never edits hosts.cfg.
 # Program flow:
 # 1. Resolve config (defaults < config < environment < CLI), validate inputs.
-# 2. Lock persistent state, read effective hosts and passive neighbor cache.
+# 2. Lock persistent state, read effective hosts, passive neighbor cache,
+#    static mapping and the fritzbox collector's adapter lists.
 # 3. Discover topology, query each adapter/link through the restricted helper.
 # 4. Calculate identity, interval metrics and persistent change/flap timers.
 # 5. Deliver status and native trends data, then atomically commit state.
@@ -37,6 +38,10 @@ Usage: powerline.sh [--config FILE] [--interface IFACE] [--set KEY=VALUE]
     POWERLINE_IP (ip), POWERLINE_COLLECTOR_HOST (MACHINEDOTS/MACHINE)
     POWERLINE_TX_PHY_WARN/CRIT, POWERLINE_RX_PHY_WARN/CRIT (off; minimum Mbps)
     POWERLINE_TX_PB_WARN/CRIT, POWERLINE_RX_PB_WARN/CRIT (off; maximum percent)
+    POWERLINE_FRITZBOX_DIR (XYMONVAR/fritzbox; the fritzbox collector's
+      adapter lists, a missing directory switches the FRITZ!Box view off)
+    POWERLINE_FRITZBOX_MAX_AGE (900 seconds; older lists are only noted)
+    POWERLINE_FRITZBOX_UPDATE_FAILED (green = note only | yellow)
     POWERLINE_SILENT, POWERLINE_VERBOSE, POWERLINE_DRY_RUN (0)
     POWERLINE_NOW (epoch seconds; replay tests only, normally system clock)
   -h, --help          Show this help without accessing devices or state.
@@ -53,7 +58,7 @@ EOF
 setting() {
     # shellcheck disable=SC2163 # Export a validated NAME=VALUE, not positional $1.
     case "${1%%=*}" in
-        POWERLINE_ENABLED|POWERLINE_IFACE|POWERLINE_LIFETIME|POWERLINE_CHANGE_MINUTES|POWERLINE_FLAP_MINUTES|POWERLINE_MAX_SAMPLE_GAP|POWERLINE_RETENTION_DAYS|POWERLINE_STATE_DIR|POWERLINE_MAPPING|POWERLINE_HOSTS|POWERLINE_XYMONCFG|POWERLINE_HELPER|POWERLINE_SUDO|POWERLINE_IP|POWERLINE_COLLECTOR_HOST|POWERLINE_TX_PHY_WARN|POWERLINE_TX_PHY_CRIT|POWERLINE_RX_PHY_WARN|POWERLINE_RX_PHY_CRIT|POWERLINE_TX_PB_WARN|POWERLINE_TX_PB_CRIT|POWERLINE_RX_PB_WARN|POWERLINE_RX_PB_CRIT|POWERLINE_SILENT|POWERLINE_VERBOSE|POWERLINE_DRY_RUN|POWERLINE_NOW) export "${1}" ;;
+        POWERLINE_ENABLED|POWERLINE_IFACE|POWERLINE_LIFETIME|POWERLINE_CHANGE_MINUTES|POWERLINE_FLAP_MINUTES|POWERLINE_MAX_SAMPLE_GAP|POWERLINE_RETENTION_DAYS|POWERLINE_STATE_DIR|POWERLINE_MAPPING|POWERLINE_HOSTS|POWERLINE_XYMONCFG|POWERLINE_HELPER|POWERLINE_SUDO|POWERLINE_IP|POWERLINE_COLLECTOR_HOST|POWERLINE_TX_PHY_WARN|POWERLINE_TX_PHY_CRIT|POWERLINE_RX_PHY_WARN|POWERLINE_RX_PHY_CRIT|POWERLINE_TX_PB_WARN|POWERLINE_TX_PB_CRIT|POWERLINE_RX_PB_WARN|POWERLINE_RX_PB_CRIT|POWERLINE_FRITZBOX_DIR|POWERLINE_FRITZBOX_MAX_AGE|POWERLINE_FRITZBOX_UPDATE_FAILED|POWERLINE_SILENT|POWERLINE_VERBOSE|POWERLINE_DRY_RUN|POWERLINE_NOW) export "${1}" ;;
         *) printf 'Unknown setting: %s\n' "${1%%=*}" >&2; exit 2 ;;
     esac
 }
@@ -96,6 +101,8 @@ POWERLINE_HELPER=${BASE}/powerline-read.sh POWERLINE_SUDO=sudo POWERLINE_IP=ip
 POWERLINE_COLLECTOR_HOST=${MACHINEDOTS:-${MACHINE:-}}
 POWERLINE_TX_PHY_WARN=off POWERLINE_TX_PHY_CRIT=off POWERLINE_RX_PHY_WARN=off POWERLINE_RX_PHY_CRIT=off
 POWERLINE_TX_PB_WARN=off POWERLINE_TX_PB_CRIT=off POWERLINE_RX_PB_WARN=off POWERLINE_RX_PB_CRIT=off
+POWERLINE_FRITZBOX_DIR=${XYMONVAR:-}/fritzbox POWERLINE_FRITZBOX_MAX_AGE=900
+POWERLINE_FRITZBOX_UPDATE_FAILED=green
 POWERLINE_SILENT=0 POWERLINE_VERBOSE=0 POWERLINE_DRY_RUN=0 POWERLINE_NOW=$(date +%s)
 if [ -r "${config}" ]; then
     # Trusted admin-owned file; separate server package path is intentional.
@@ -113,7 +120,7 @@ ${saved_env}
 ${cli}
 EOF
 export POWERLINE_NOW POWERLINE_CHANGE_MINUTES POWERLINE_FLAP_MINUTES POWERLINE_MAX_SAMPLE_GAP
-export POWERLINE_RETENTION_DAYS
+export POWERLINE_RETENTION_DAYS POWERLINE_FRITZBOX_MAX_AGE POWERLINE_FRITZBOX_UPDATE_FAILED
 export POWERLINE_TX_PHY_WARN POWERLINE_TX_PHY_CRIT POWERLINE_RX_PHY_WARN POWERLINE_RX_PHY_CRIT
 export POWERLINE_TX_PB_WARN POWERLINE_TX_PB_CRIT POWERLINE_RX_PB_WARN POWERLINE_RX_PB_CRIT
 LC_ALL=C
@@ -153,11 +160,12 @@ Powerline collector failed. See the powerline task log; inventory not updated." 
 }
 
 # Validate numeric settings before arithmetic, path use or packet delivery.
-for n in "${POWERLINE_LIFETIME}" "${POWERLINE_CHANGE_MINUTES}" "${POWERLINE_FLAP_MINUTES}" "${POWERLINE_MAX_SAMPLE_GAP}" "${POWERLINE_NOW}"; do
+for n in "${POWERLINE_LIFETIME}" "${POWERLINE_CHANGE_MINUTES}" "${POWERLINE_FLAP_MINUTES}" "${POWERLINE_MAX_SAMPLE_GAP}" "${POWERLINE_NOW}" "${POWERLINE_FRITZBOX_MAX_AGE}"; do
     case "${n}" in ''|*[!0-9]*) fail 'Expected positive integer timer' ;; esac
     [ "${n}" -gt 0 ] || fail 'Timer must be positive'
 done
 case "${POWERLINE_RETENTION_DAYS}" in ''|*[!0-9]*) fail 'Retention must be a whole number of days' ;; esac
+case "${POWERLINE_FRITZBOX_UPDATE_FAILED}" in green|yellow) ;; *) fail 'POWERLINE_FRITZBOX_UPDATE_FAILED must be green or yellow' ;; esac
 for n in "${POWERLINE_ENABLED}" "${POWERLINE_SILENT}" "${POWERLINE_VERBOSE}" "${POWERLINE_DRY_RUN}"; do
     case "${n}" in 0|1) ;; *) fail 'Boolean settings must be 0 or 1' ;; esac
 done
@@ -214,10 +222,36 @@ awk '{for(i=2;i<NF;i++) if($i=="lladdr") {
 # existing but unusable one is an error worth turning every adapter red.
 if [ -n "${POWERLINE_MAPPING}" ] && [ -e "${POWERLINE_MAPPING}" ]; then
     [ -r "${POWERLINE_MAPPING}" ] || fail 'Static mapping exists but is not readable'
-    awk 'NF && $1!~/^#/ {if(NF!=2) exit 1; m=tolower($1); gsub(/:/,"",m); print "map|" m "|" $2}' \
-        "${POWERLINE_MAPPING}" >>"${work}/identity" || fail 'Cannot parse static mapping'
+    # "MAC host [occasional]"; "-" as host marks an adapter occasional
+    # without mapping it.
+    awk 'NF && $1!~/^#/ {
+        if(NF<2 || NF>3 || (NF==3 && $3!="occasional")) exit 1
+        m=tolower($1); gsub(/:/,"",m)
+        if($2!="-") print "map|" m "|" $2
+        if(NF==3) print "occasional|" m
+    }' "${POWERLINE_MAPPING}" >>"${work}/identity" || fail 'Cannot parse static mapping'
 elif [ -n "${POWERLINE_MAPPING}" ]; then
     log debug "No static mapping file at ${POWERLINE_MAPPING}; using discovery only"
+fi
+
+# FRITZ!Box view: the adapter lists the fritzbox collector hands over,
+# read as data. A missing directory or file just means no view; a
+# malformed file is skipped (the awk side validates every field).
+if [ -n "${POWERLINE_FRITZBOX_DIR}" ] && [ -d "${POWERLINE_FRITZBOX_DIR}" ]; then
+    for hp in "${POWERLINE_FRITZBOX_DIR}"/*.homeplug; do
+        [ -f "${hp}" ] && [ -r "${hp}" ] || continue
+        awk -v now="${POWERLINE_NOW}" '
+            NR == 1 {
+                if ($1 != "#" || $2 != "fritzbox" || $3 != "homeplug" || $5 !~ /^[0-9]+$/) exit
+                box = $4; age = now - $5; if (age < 0) age = 0; ok = 1; next
+            }
+            ok {
+                if (split($0, f, "|") != 6) next
+                m = tolower(f[1]); gsub(/:/, "", m)
+                gsub(/[^ -~]/, "", f[5]); gsub(/[^ -~]/, "", f[6])
+                print "fritz|" m "|" f[2] "|" f[3] "|" f[4] "|" box "|" age "|" f[5] "|" f[6]
+            }' "${hp}" >>"${work}/identity" || log error "Cannot read ${hp}"
+    done
 fi
 
 # Fixed read-only operations through sudo -n. stdin is /dev/null: query runs

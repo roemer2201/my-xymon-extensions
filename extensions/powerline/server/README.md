@@ -46,7 +46,7 @@ takes effect at the next run without a restart. `--help` lists all settings.
 ## Identity
 
 An adapter is matched to a Xymon host by, in this order: static mapping
-(powerline.map: `PLC-MAC hostname`), its BDA in the mapping, then passive
+(powerline.map: `PLC-MAC hostname [occasional]`), its BDA in the mapping, then passive
 IPv4 neighbor entries against hosts.cfg (CLIENT aliases included, includes
 expanded by `xymoncfg`). No DNS, no ARP probing. A local adapter is matched
 by its PLC MAC only, its BDA may be the server's own NIC. A known identity
@@ -68,6 +68,50 @@ POWERLINE_RETENTION_DAYS (default 1) after it was last seen; then it is
 forgotten, and its column goes purple once the last status expires (15
 minutes later) - drop it in Xymon or remove the host. 0 keeps absent
 adapters forever.
+
+While a change keeps an adapter yellow, its status says what changed:
+`Last change N minute(s) ago:` followed by `New adapter detected.`,
+`Adapter disappeared.`, `Adapter is back.`, or `Peer added: MAC (host).` /
+`Peer lost: MAC (host).` for its peers.
+
+### Occasional adapters
+
+An adapter that is only plugged in now and then (in a garage, say) is
+marked with a third field in powerline.map:
+
+```
+02:00:00:00:00:0C  garage.lan  occasional
+02:00:00:00:00:0E  -           occasional
+```
+
+(`-` marks it without mapping it to a host.) Its appearing and
+disappearing is yellow for POWERLINE_CHANGE_MINUTES like any change, but
+it never counts towards **state flapping** - neither for itself nor for a
+peer whose only change is that adapter. It is never forgotten (no purple
+column); while it is away its column is green with `Adapter ... is not
+plugged in (occasional adapter).`
+
+## FRITZ!Box view
+
+The [fritzbox collector](../../fritzbox/server/README.md) reads the
+FRITZ!Box's own list of powerline adapters (TR-064 `X_AVM-DE_Homeplug`)
+and hands it over in `$XYMONVAR/fritzbox/<box>.homeplug`; powerline.sh
+reads every such file in POWERLINE_FRITZBOX_DIR (default
+`$XYMONVAR/fritzbox`, a missing directory switches this off) and adds a
+line to the adapter whose PLC MAC matches:
+
+```
+FRITZ!Box view (fritz.box): "Upstairs", FRITZ!Powerline 1220E, active, last firmware update failed.
+```
+
+A firmware update the box offers is **yellow**. A failed last update is a
+note only - the box may keep reporting it until an update succeeds;
+POWERLINE_FRITZBOX_UPDATE_FAILED=yellow colors it. The box calling an
+adapter "not active" that powerline sees, an adapter missing from the
+box's list, or a list older than POWERLINE_FRITZBOX_MAX_AGE (900 s - the
+fritzbox collector is down or cannot reach the box) are notes and change
+no color. No password or TR-064 request is involved on this side: the
+collectors only share the file.
 
 Failures are not absence: a timeout, empty or unparsable output, a permission
 error or a broken hosts/neighbor lookup turns the collector and all known

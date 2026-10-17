@@ -7,6 +7,8 @@ BEGIN { FS = "|"; OFS = "|"; now = ENVIRON["POWERLINE_NOW"] + 0
     flap = ENVIRON["POWERLINE_FLAP_MINUTES"] * 60
     gap = ENVIRON["POWERLINE_MAX_SAMPLE_GAP"] + 0
     retention = ENVIRON["POWERLINE_RETENTION_DAYS"] * 86400
+    fzmax = ENVIRON["POWERLINE_FRITZBOX_MAX_AGE"] + 0
+    fzfailed = ENVIRON["POWERLINE_FRITZBOX_UPDATE_FAILED"]
 }
 function safehost(h) { return h ~ /^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/ && length(h) < 200 }
 function validmac(m) { return length(m) == 12 && m ~ /^[0-9a-f]+$/ }
@@ -67,6 +69,25 @@ function threshold(m, metric, value, warn, crit, low, label) {
         severity(m, 1, label " warning (" sprintf("%.3f", value) ").")
 }
 function metric(m, p, k, v) { values[m SUBSEP p SUBSEP k] = v }
+# An occasional adapter is plugged in only now and then (powerline.map,
+# third field): its comings and goings never escalate to flapping, and it
+# is never forgotten. Matched like the mapping: PLC MAC or REM BDA.
+function occ(m) { return (m in occasional) || (role[m] != "LOC" && bda[m] != "" && bda[m] in occasional) }
+# peerdiff(old, new) - the peers in one comma list and not in the other,
+# as "+mac" and "-mac" words; ndiff/nocc count them and their occasional ones.
+function peerdiff(o, n,   a, b, i, x, out) {
+    split(o, a, ","); split(n, b, ",")
+    for (x in inold) delete inold[x]
+    for (x in innew) delete innew[x]
+    for (i in a) if (a[i] != "") inold[a[i]] = 1
+    for (i in b) if (b[i] != "") innew[b[i]] = 1
+    out = ""; ndiff = 0; nocc = 0
+    for (x in innew) if (!(x in inold)) { out = out " +" x; ndiff++; if (occ(x)) nocc++ }
+    for (x in inold) if (!(x in innew)) { out = out " -" x; ndiff++; if (occ(x)) nocc++ }
+    return out
+}
+# peername(p) - "mac (host)" when the peer resolved to a host.
+function peername(p) { return (p in host) ? p " (" host[p] ")" : p }
 
 $1 == "baseline" {
     if (NF != 2 || $2 != 1 || baseline) fatal = "Invalid baseline marker"
@@ -100,14 +121,34 @@ $1 == "map" {
         fatal = "Invalid or conflicting static mapping"
     mapping[$2] = tolower($3); next
 }
+$1 == "occasional" {
+    if (!validmac($2)) { fatal = "Invalid occasional adapter in the static mapping"; next }
+    occasional[$2] = 1; next
+}
+# FRITZ!Box view of an adapter, from the fritzbox collector's hand-over
+# file: mac|active|update available|update result|box|age|model|name.
+# Data only; a malformed line is skipped, never fatal. With several boxes
+# the freshest entry wins.
+$1 == "fritz" {
+    if (NF != 9 || !validmac($2) || $3 !~ /^[01]?$/ || $4 !~ /^[01]?$/ || $5 !~ /^[A-Za-z_-]*$/ ||
+        !safehost($6) || !uint($7) || $8 !~ /^[ -~]*$/ || $9 !~ /^[ -~]*$/) next
+    if (($2 in fzbox) && fzage[$2] <= $7 + 0) next
+    fzactive[$2] = $3; fzavail[$2] = $4; fzresult[$2] = $5; fzbox[$2] = $6
+    fzage[$2] = $7 + 0; fzmodel[$2] = $8; fzname[$2] = $9
+    if ($7 + 0 <= fzmax) fzfresh = 1
+    next
+}
+# Field 12, the text of the last change, was added in 0.29; state files of
+# older versions have 11 fields.
 $1 == "state" {
-    if (NF != 11 || !validmac($2) || !safehost($4) || $3 !~ /^[01]$/ ||
+    if ((NF != 11 && NF != 12) || !validmac($2) || !safehost($4) || $3 !~ /^[01]$/ ||
         $5 !~ /^(LOC|REM)$/ || !validmac($6) || $7 !~ /^[0-9]+$/ ||
         $8 !~ /^[0-9]+$/ || $9 !~ /^[0-9]+$/ || $10 !~ /^[0-9]+$/ ||
         $7 + 0 > now || $9 + 0 > now) { fatal = "Invalid state file or clock moved backwards"; next }
     m = $2; known[m] = 1; previous[m] = $3; oldhost[m] = $4
     role[m] = $5; bda[m] = $6; lastseen[m] = $7 + 0
     start[m] = $8 + 0; changed[m] = $9 + 0; changes[m] = $10 + 0; oldsig[m] = $11
+    event[m] = (NF == 12 && $12 ~ /^[ -~]*$/) ? $12 : ""
     next
 }
 $1 == "counter" {
@@ -158,11 +199,23 @@ END {
     # An adapter absent for longer than the retention is forgotten: no state,
     # no status, no series. Its column then goes purple; drop it in Xymon.
     for (m in known)
-        if (!retention || now - lastseen[m] <= retention) inventory[m] = 1
+        if (!retention || now - lastseen[m] <= retention || occ(m)) inventory[m] = 1
     print "baseline|1" > snapshot
     for (m in inventory) {
         current = (m in present) ? 1 : 0
         transition = (m in known) ? (current != previous[m] || (current && signature[m] != oldsig[m])) : baseline
+        # What changed, for the status text; worded later, once every
+        # adapter has its host. A change caused only by occasional adapters
+        # (the adapter itself, or peers that are all occasional) is "soft":
+        # yellow for the hold time like any change, but it does not count
+        # towards flapping.
+        soft = 0
+        if (transition) {
+            if (!(m in known)) evkind[m] = "new"
+            else if (current != previous[m]) evkind[m] = current ? "back" : "gone"
+            else { evkind[m] = "peers"; evpeers[m] = peerdiff(oldsig[m], signature[m]) }
+            if (occ(m) || (evkind[m] == "peers" && ndiff > 0 && nocc == ndiff)) soft = 1
+        }
         # Settle before an event only if the quiet deadline was passed; an
         # event exactly at the deadline must not produce a one-poll green gap.
         if (start[m] && now - changed[m] >= hold && (!transition || now - changed[m] > hold)) {
@@ -170,7 +223,8 @@ END {
         }
         if (transition) {
             if (!start[m]) start[m] = now
-            changed[m] = now; changes[m]++
+            changed[m] = now
+            if (!soft) changes[m]++
         }
         if (start[m]) {
             if (now - start[m] >= flap && changes[m] > 1)
@@ -182,10 +236,28 @@ END {
             lastseen[m] = now
             note(m, "Adapter " m " (" role[m] "). TX/RX are relative to this adapter.")
         }
-        # Accepted absence intentionally has no disappearance text.
+        # Accepted absence intentionally has no disappearance text - except
+        # for an occasional adapter, whose absence is its normal state.
+        else if (occ(m) && !start[m]) note(m, "Adapter " m " is not plugged in (occasional adapter).")
         printf "%s", "" > (outdir "/" host[m] ".metrics")
         metric(m, "self", "present", current)
-        print "state", m, current, host[m], role[m], bda[m], lastseen[m]+0, start[m]+0, changed[m]+0, changes[m]+0, signature[m] > snapshot
+    }
+    # The change texts need the hosts of the peers, so they come second.
+    # The text of the last change stays in the state and is shown for as
+    # long as the change keeps the adapter yellow.
+    for (m in inventory) {
+        if (evkind[m] == "new") event[m] = "New adapter detected."
+        else if (evkind[m] == "back") event[m] = "Adapter is back."
+        else if (evkind[m] == "gone") event[m] = "Adapter disappeared."
+        else if (evkind[m] == "peers") {
+            event[m] = ""; nw = split(evpeers[m], words, " ")
+            for (i = 1; i <= nw; i++)
+                event[m] = event[m] (event[m] == "" ? "" : " ") (substr(words[i], 1, 1) == "+" ? "Peer added: " : "Peer lost: ") peername(substr(words[i], 2)) "."
+        }
+        if (start[m] && event[m] != "")
+            note(m, "Last change " int((now - changed[m]) / 60) " minute(s) ago: " event[m])
+        if (!start[m]) event[m] = ""
+        print "state", m, (m in present) ? 1 : 0, host[m], role[m], bda[m], lastseen[m]+0, start[m]+0, changed[m]+0, changes[m]+0, signature[m], event[m] > snapshot
     }
     # Every snapshot is a GAUGE; interval rates are separately named GAUGEs.
     # Samples above 2^53 cannot be differenced reliably with portable awk.
@@ -232,6 +304,24 @@ END {
         metric(m, p, "rx_all_fec_interval_pct", "U")
         if (bp in deltas && bf in deltas && ep in deltas && ef in deltas && deltas[bp] + deltas[bf] > 0)
             metric(m, p, "rx_all_fec_interval_pct", sprintf("%.6f", 100 * (deltas[ep]+deltas[ef]) / (4160*(deltas[bp]+deltas[bf]))))
+    }
+    # The FRITZ!Box view: the box's own record of the adapter. Only a fresh
+    # file counts; an update the box offers is yellow, a failed one only
+    # when configured, everything else is a note.
+    for (m in inventory) {
+        if (m in fzbox) {
+            if (fzage[m] > fzmax) {
+                note(m, "FRITZ!Box view (" fzbox[m] "): stale, " int(fzage[m] / 60) " minute(s) old - is the fritzbox collector running?")
+                continue
+            }
+            txt = "FRITZ!Box view (" fzbox[m] "): \"" fzname[m] "\", " (fzmodel[m] == "" ? "unknown model" : fzmodel[m]) ", " (fzactive[m] == "1" ? "active" : "not active")
+            if (fzavail[m] == "1") severity(m, 1, txt ", firmware update available.")
+            else if (fzresult[m] == "failed" && fzfailed == "yellow") severity(m, 1, txt ", last firmware update failed.")
+            else if (fzresult[m] == "failed") note(m, txt ", last firmware update failed.")
+            else note(m, txt ".")
+            if (fzactive[m] != "1" && (m in present)) note(m, "The FRITZ!Box reports this adapter as not active.")
+        }
+        else if (fzfresh && (m in present)) note(m, "FRITZ!Box view: this adapter is not in the box's adapter list.")
     }
     # NCV rejects U/NaN. Native data HOST.trends passes U straight to RRD,
     # preserving gaps before consolidation, with no fabricated sentinel.
