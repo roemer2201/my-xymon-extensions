@@ -1,0 +1,13 @@
+<?xml version="1.0"?>
+<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
+<s:Body>
+<u:GetGenericDeviceEntryResponse xmlns:u="urn:dslforum-org:service:X_AVM-DE_Homeplug:1">
+<NewMACAddress>02:00:00:00:00:a3</NewMACAddress>
+<NewActive>1</NewActive>
+<NewName>Downstairs</NewName>
+<NewModel>FRITZ!Powerline 1260E</NewModel>
+<NewUpdateAvailable>0</NewUpdateAvailable>
+<NewUpdateSuccessful>failed</NewUpdateSuccessful>
+</u:GetGenericDeviceEntryResponse>
+</s:Body>
+</s:Envelope>

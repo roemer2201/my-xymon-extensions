@@ -1,0 +1,13 @@
+<?xml version="1.0"?>
+<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
+<s:Body>
+<u:GetInfoResponse xmlns:u="urn:dslforum-org:service:X_AVM-DE_MyFritz:1">
+<NewEnabled>1</NewEnabled>
+<NewDeviceRegistered>1</NewDeviceRegistered>
+<NewDynDNSName>abc.myfritz.example</NewDynDNSName>
+<NewPort>0</NewPort>
+<NewState>myfritz_ok</NewState>
+<NewEmail>owner@example.net</NewEmail>
+</u:GetInfoResponse>
+</s:Body>
+</s:Envelope>

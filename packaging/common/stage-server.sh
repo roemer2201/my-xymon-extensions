@@ -62,7 +62,10 @@ SKIP_EXTENSIONS="temp"
 # Every extension that produces RRD graphs. "disk" is missing on
 # purpose: it reports into the standard disk column and is handled by
 # the server's built-in parser, so it needs no server-side config.
-EXTENSIONS="smart temp la memory opkg fritzdsl fritzwan wifi if_link lxc systemd bcache btrfs xymonext powerline fritz-wifi"
+# fritzbox reports several columns and ships one drop-in per column
+# group (fritzdsl.cfg, fritzwan.cfg, fritzbox.cfg), so every *.cfg of an
+# extension's drop-in directory is installed, not only <ext>.cfg.
+EXTENSIONS="smart temp la memory opkg wifi if_link lxc systemd bcache btrfs xymonext powerline fritz-wifi fritzbox"
 
 skipped() { # skipped NAME
     for skip in $SKIP_EXTENSIONS; do
@@ -74,10 +77,11 @@ skipped() { # skipped NAME
 for ext in $EXTENSIONS; do
     skipped "$ext" && continue
     for dropin in xymonserver.d graphs.d rrddefinitions.d tasks.d; do
-        src="extensions/$ext/server/$dropin/$ext.cfg"
-        [ -f "$src" ] || continue
-        mkdir -p "$DESTDIR$ETCDIR/$dropin" || exit 1
-        instsub 0644 "$src" "$DESTDIR$ETCDIR/$dropin/$ext.cfg$SUF" || exit 1
+        for src in "extensions/$ext/server/$dropin/"*.cfg; do
+            [ -f "$src" ] || continue
+            mkdir -p "$DESTDIR$ETCDIR/$dropin" || exit 1
+            instsub 0644 "$src" "$DESTDIR$ETCDIR/$dropin/${src##*/}$SUF" || exit 1
+        done
     done
 done
 
@@ -100,6 +104,14 @@ done
 inst 0755 extensions/fritz-wifi/fritz-wifi.sh "$DESTDIR$BINDIR/fritz-wifi.sh" || exit 1
 instsub 0644 extensions/fritz-wifi/fritz-wifi.cfg \
     "$DESTDIR$ETCDIR/my-xymon-extensions-server/fritz-wifi.cfg$SUF" || exit 1
+
+# The server-only fritzbox collector (TR-064 over curl; the former
+# fritzdsl and fritzwan client extensions are two of its modules). It
+# shares fritz-wifi's password file, which no package installs.
+inst 0755 extensions/fritzbox/fritzbox.sh "$DESTDIR$BINDIR/fritzbox.sh" || exit 1
+for file in fritzbox.cfg fritzbox-log.rules; do
+    instsub 0644 "extensions/fritzbox/$file" "$DESTDIR$ETCDIR/my-xymon-extensions-server/$file$SUF" || exit 1
+done
 
 # powerline's sudo rule, installed with the rule commented out (powerline
 # ships disabled). Mode 0440; no dot in the name (sudo would ignore it);

@@ -1,0 +1,12 @@
+<?xml version="1.0"?>
+<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
+<s:Body>
+<u:GetInfoResponse xmlns:u="urn:dslforum-org:service:X_AVM-DE_RemoteAccess:1">
+<NewEnabled>0</NewEnabled>
+<NewPort>0</NewPort>
+<NewUsername>remoteuser</NewUsername>
+<NewLetsEncryptEnabled>0</NewLetsEncryptEnabled>
+<NewLetsEncryptState></NewLetsEncryptState>
+</u:GetInfoResponse>
+</s:Body>
+</s:Envelope>

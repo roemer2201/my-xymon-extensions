@@ -1,0 +1,22 @@
+<?xml version="1.0"?>
+<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
+<s:Body>
+<u:GetStatisticsTotalResponse xmlns:u="urn:dslforum-org:service:WANDSLInterfaceConfig:1">
+<NewReceiveBlocks>877494987</NewReceiveBlocks>
+<NewTransmitBlocks>472549333</NewTransmitBlocks>
+<NewCellDelin>0</NewCellDelin>
+<NewLinkRetrain>1</NewLinkRetrain>
+<NewInitErrors>0</NewInitErrors>
+<NewInitTimeouts>0</NewInitTimeouts>
+<NewLossOfFraming>0</NewLossOfFraming>
+<NewErroredSecs>1125</NewErroredSecs>
+<NewSeverelyErroredSecs>16</NewSeverelyErroredSecs>
+<NewFECErrors>510562096</NewFECErrors>
+<NewATUCFECErrors>532305</NewATUCFECErrors>
+<NewHECErrors>0</NewHECErrors>
+<NewATUCHECErrors>0</NewATUCHECErrors>
+<NewCRCErrors>3102</NewCRCErrors>
+<NewATUCCRCErrors>30</NewATUCCRCErrors>
+</u:GetStatisticsTotalResponse>
+</s:Body>
+</s:Envelope>

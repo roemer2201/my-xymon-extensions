@@ -79,13 +79,9 @@ for ext in smart temp la memory disk opkg wifi if_link lxc claude systemd bcache
     task "$ext" || exit 1
 done
 
-inst 0755 extensions/fritzdsl/fritzdsl.sh "$DESTDIR$EXTDIR/fritzdsl.sh" || exit 1
-inst 0644 extensions/fritzdsl/fritzdsl.cfg "$DESTDIR$CFGDIR/fritzdsl.cfg$SUF" || exit 1
-task fritzdsl || exit 1
-
-inst 0755 extensions/fritzwan/fritzwan.sh "$DESTDIR$EXTDIR/fritzwan.sh" || exit 1
-inst 0644 extensions/fritzwan/fritzwan.cfg "$DESTDIR$CFGDIR/fritzwan.cfg$SUF" || exit 1
-task fritzwan || exit 1
+# fritzdsl and fritzwan were client extensions up to 0.28; since 0.29
+# they are modules of the server-only fritzbox collector
+# (stage-server.sh), so no client package ships them any more.
 
 # The "claude" extension reads credentials files that are only
 # readable for root, through this helper (called via sudo).
@@ -104,7 +100,7 @@ if [ "$DOCDIR" != "-" ]; then
     inst 0644 README.md "$DESTDIR$DOCDIR/README.md" || exit 1
 
     # Client-side documentation: one README per extension.
-    for ext in smart temp la memory disk opkg fritzdsl fritzwan wifi \
+    for ext in smart temp la memory disk opkg wifi \
         if_link lxc claude systemd bcache btrfs xymonext; do
         mkdir -p "$DESTDIR$DOCDIR/$ext" || exit 1
         inst 0644 "extensions/$ext/README.md" "$DESTDIR$DOCDIR/$ext/README.md" || exit 1
@@ -125,7 +121,7 @@ if [ "$DOCDIR" != "-" ]; then
     # files for the Xymon server's xymonserver.d, graphs.d and (rarely)
     # rrddefinitions.d directories. Every extension with RRD graphs has
     # them; "disk" uses the server's built-in handler and has none.
-    for ext in smart temp la memory opkg fritzdsl fritzwan wifi \
+    for ext in smart temp la memory opkg wifi \
         if_link lxc systemd bcache btrfs xymonext; do
         mkdir -p "$DESTDIR$DOCDIR/$ext/server" || exit 1
         inst 0644 "extensions/$ext/server/README.md" \

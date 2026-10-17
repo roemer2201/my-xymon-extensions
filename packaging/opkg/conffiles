@@ -5,8 +5,6 @@
 /etc/xymon-standalone/my-xymon-extensions/memory.cfg
 /etc/xymon-standalone/my-xymon-extensions/disk.cfg
 /etc/xymon-standalone/my-xymon-extensions/opkg.cfg
-/etc/xymon-standalone/my-xymon-extensions/fritzdsl.cfg
-/etc/xymon-standalone/my-xymon-extensions/fritzwan.cfg
 /etc/xymon-standalone/my-xymon-extensions/wifi.cfg
 /etc/xymon-standalone/my-xymon-extensions/if_link.cfg
 /etc/xymon-standalone/my-xymon-extensions/lxc.cfg

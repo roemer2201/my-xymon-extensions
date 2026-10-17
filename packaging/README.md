@@ -66,7 +66,7 @@ on a host that is both server and client the extensions could end up
 running twice. The deb migrates the files with
 `dpkg-maintscript-helper mv_conffile` (called from `preinst`,
 `postinst` and `postrm`, as that helper requires), so a snippet you
-edited — an enabled `fritzdsl`, say — arrives at the new path with your
+edited — an enabled `wifi`, say — arrives at the new path with your
 changes intact; dpkg then asks about it with its usual conffile prompt,
 because your version differs from the shipped one. The post-install
 also points out a leftover `directory /etc/xymon/tasks.d` line in

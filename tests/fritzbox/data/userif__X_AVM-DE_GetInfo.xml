@@ -1,0 +1,13 @@
+<?xml version="1.0"?>
+<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
+<s:Body>
+<u:X_AVM-DE_GetInfoResponse xmlns:u="urn:dslforum-org:service:UserInterface:1">
+<NewX_AVM-DE_AutoUpdateMode>all</NewX_AVM-DE_AutoUpdateMode>
+<NewX_AVM-DE_UpdateTime>2026-08-17T03:36:34+02:00</NewX_AVM-DE_UpdateTime>
+<NewX_AVM-DE_LastFwVersion>271.08.20,124684</NewX_AVM-DE_LastFwVersion>
+<NewX_AVM-DE_LastInfoUrl>http://download.example.net/info_de.txt</NewX_AVM-DE_LastInfoUrl>
+<NewX_AVM-DE_CurrentFwVersion>271.08.26</NewX_AVM-DE_CurrentFwVersion>
+<NewX_AVM-DE_UpdateSuccessful>succeeded</NewX_AVM-DE_UpdateSuccessful>
+</u:X_AVM-DE_GetInfoResponse>
+</s:Body>
+</s:Envelope>

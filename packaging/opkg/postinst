@@ -7,7 +7,7 @@ ETC=${IPKG_INSTROOT:-}/etc/xymon-standalone
 NEW=$ETC/my-xymon-extensions
 STASH=$ETC/.cfg-migrate
 same() { [ "$(md5sum < "$1")" = "$(md5sum < "$2")" ]; }
-for cfg in smart temp la memory disk opkg fritzdsl fritzwan wifi \
+for cfg in smart temp la memory disk opkg wifi \
     if_link lxc claude systemd bcache btrfs xymonext; do
     old=$ETC/$cfg.cfg
     dst=$NEW/$cfg.cfg

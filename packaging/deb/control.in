@@ -30,14 +30,6 @@ Description: Portable Xymon client extensions
   * opkg - pending package updates on opkg-based systems
     (OpenWrt/TurrisOS; task disabled by default: hosts with a full
     Xymon client have no opkg).
-  * fritzdsl - AVM FRITZ!Box DSL line monitoring via TR-064 (curl):
-    line state, sync rate, noise margin, attenuation and error
-    counters with thresholds and RRD graphing support; polls the box
-    from the Xymon server, no software on the box.
-  * fritzwan - AVM FRITZ!Box WAN throughput monitoring (curl):
-    physical link state, average throughput, link capacity and
-    utilization from the box's 64-bit UPnP counters (TR-064
-    fallback), with optional utilization thresholds and RRD graphs.
   * wifi - Wi-Fi access point metadata via iw/nl80211 (task disabled
     by default: full clients are rarely APs): client counts, channel
     utilization, airtime, throughput, TX retries and noise floor

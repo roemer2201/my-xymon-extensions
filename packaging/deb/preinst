@@ -18,6 +18,9 @@ set -e
 #            /etc/xymon into /etc/xymon/my-xymon-extensions/. The
 #            launch snippets stay in clientlaunch.d, which is Xymon's
 #            own drop-in directory and has to be.
+#  0.29.0-1  fritzdsl and fritzwan leave this package: they are modules
+#            of the server-only fritzbox collector now
+#            (my-xymon-extensions-server).
 #
 # The moves are chained, so an upgrade from any of those versions lands
 # on the current layout. mv_conffile/rm_conffile only ever touch files
@@ -30,7 +33,7 @@ migrate_conffiles() {
     [ -n "${DPKG_MAINTSCRIPT_NAME:-}" ] || return 0
     dpkg-maintscript-helper supports mv_conffile >/dev/null 2>&1 || return 0
 
-    for snippet in smart la memory disk opkg fritzdsl fritzwan wifi if_link; do
+    for snippet in smart la memory disk opkg wifi if_link; do
         dpkg-maintscript-helper mv_conffile \
             "/etc/xymon/tasks.d/$snippet.cfg" \
             "/etc/xymon/clientlaunch.d/$snippet.cfg" \
@@ -53,12 +56,26 @@ migrate_conffiles() {
     # 0.20.0-1: config files into this package's own directory. temp is
     # in the list: its CONFIG file is ours - only its launch snippet
     # and its server drop-ins are hobbit-plugins' territory.
-    for cfg in smart temp la memory disk opkg fritzdsl fritzwan wifi \
+    for cfg in smart temp la memory disk opkg wifi \
         if_link lxc claude xymonext; do
         dpkg-maintscript-helper mv_conffile \
             "/etc/xymon/$cfg.cfg" \
             "/etc/xymon/my-xymon-extensions/$cfg.cfg" \
             0.20.0-1 -- "$@"
+    done
+
+    # 0.29.0-1: fritzdsl and fritzwan are gone from this package. Their
+    # configs and launch snippets go too, wherever an older version left
+    # them; one you edited is kept as .dpkg-bak by the helper (its
+    # settings map to the fritzbox collector's config, see its README).
+    for ext in fritzdsl fritzwan; do
+        for path in "/etc/xymon/tasks.d/$ext.cfg" \
+            "/etc/xymon/clientlaunch.d/my-xymon-extensions-$ext.cfg" \
+            "/etc/xymon/clientlaunch.d/$ext.cfg" \
+            "/etc/xymon/$ext.cfg" \
+            "/etc/xymon/my-xymon-extensions/$ext.cfg"; do
+            dpkg-maintscript-helper rm_conffile "$path" 0.29.0-1~ -- "$@"
+        done
     done
 }
 

@@ -1,0 +1,22 @@
+<?xml version="1.0"?>
+<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
+<s:Body>
+<u:X_AVM-DE_GetDSLInfoResponse xmlns:u="urn:dslforum-org:service:WANDSLInterfaceConfig:1">
+<NewSNRGds>16</NewSNRGds>
+<NewSNRGus>16</NewSNRGus>
+<NewSNRpsds>0,0,94,96</NewSNRpsds>
+<NewSNRpsus>0,98,90</NewSNRpsus>
+<NewSNRMTds>512</NewSNRMTds>
+<NewSNRMTus>512</NewSNRMTus>
+<NewLATNds>8,17,29,127,127</NewLATNds>
+<NewLATNus>3,14,21,127,127</NewLATNus>
+<NewFECErrors>510562096</NewFECErrors>
+<NewCRCErrors>3102</NewCRCErrors>
+<NewLinkStatus>Up</NewLinkStatus>
+<NewModulationType>VDSL</NewModulationType>
+<NewCurrentProfile>35b</NewCurrentProfile>
+<NewUpstreamCurrRate>46719</NewUpstreamCurrRate>
+<NewDownstreamCurrRate>240017</NewDownstreamCurrRate>
+</u:X_AVM-DE_GetDSLInfoResponse>
+</s:Body>
+</s:Envelope>

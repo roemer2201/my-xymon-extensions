@@ -1,0 +1,17 @@
+<?xml version="1.0"?>
+<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
+<s:Body>
+<u:GetDeviceLogResponse xmlns:u="urn:dslforum-org:service:DeviceInfo:1">
+<NewDeviceLog>17.10.26 05:07:31 IPv6-Präfix wurde erfolgreich aktualisiert. Neues Präfix: 2001:db8:4d:4500::/56
+17.10.26 04:52:31 IPv6-Präfix wurde erfolgreich bezogen. Neues Präfix: 2001:db8:4d:4500::/56
+17.10.26 04:52:30 Internetverbindung IPv6 wurde erfolgreich hergestellt. IP-Adresse: 2001:db8:ffff:775::1
+17.10.26 04:52:30 Internetverbindung wurde erfolgreich hergestellt. IP-Adresse: 198.51.100.97, DNS-Server: 198.51.100.53 und 198.51.100.54, Gateway: 198.51.100.1, Breitband-PoP: POP01, LineID: EXAMPLE.LINE.01
+17.10.26 04:52:24 Internetverbindung wurde getrennt.
+17.10.26 04:52:24 Internetverbindung IPv6 wurde getrennt, Präfix nicht mehr gültig.
+17.10.26 04:52:24 Die Internetverbindung wird kurz unterbrochen, um der Zwangstrennung durch den Anbieter zuvorzukommen.
+14.10.26 09:45:32 Internettelefonie mit 4930123456 über sip.example.net war nicht erfolgreich. Ursache: Request Timeout (408)
+14.10.26 05:10:53 IPv6-Präfix wurde erfolgreich aktualisiert. Neues Präfix: 2001:db8:1b:3b00::/56
+14.10.26 04:55:46 Die Internetverbindung wird kurz unterbrochen, um der Zwangstrennung durch den Anbieter zuvorzukommen.</NewDeviceLog>
+</u:GetDeviceLogResponse>
+</s:Body>
+</s:Envelope>

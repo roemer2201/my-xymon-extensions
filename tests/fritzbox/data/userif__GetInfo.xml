@@ -1,0 +1,17 @@
+<?xml version="1.0"?>
+<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
+<s:Body>
+<u:GetInfoResponse xmlns:u="urn:dslforum-org:service:UserInterface:1">
+<NewUpgradeAvailable>0</NewUpgradeAvailable>
+<NewPasswordRequired>0</NewPasswordRequired>
+<NewPasswordUserSelectable>1</NewPasswordUserSelectable>
+<NewWarrantyDate>0001-01-01T00:00:00</NewWarrantyDate>
+<NewX_AVM-DE_Version></NewX_AVM-DE_Version>
+<NewX_AVM-DE_DownloadURL></NewX_AVM-DE_DownloadURL>
+<NewX_AVM-DE_InfoURL>http://download.example.net/info_de.txt</NewX_AVM-DE_InfoURL>
+<NewX_AVM-DE_UpdateState>Stopped</NewX_AVM-DE_UpdateState>
+<NewX_AVM-DE_BuildType>Release</NewX_AVM-DE_BuildType>
+<NewX_AVM-DE_SetupAssistantStatus>1</NewX_AVM-DE_SetupAssistantStatus>
+</u:GetInfoResponse>
+</s:Body>
+</s:Envelope>

@@ -1,0 +1,26 @@
+<?xml version="1.0"?>
+<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
+<s:Body>
+<u:GetAddonInfosResponse xmlns:u="urn:schemas-upnp-org:service:WANCommonInterfaceConfig:1">
+<NewByteSendRate>3375</NewByteSendRate>
+<NewByteReceiveRate>10115</NewByteReceiveRate>
+<NewPacketSendRate>0</NewPacketSendRate>
+<NewPacketReceiveRate>0</NewPacketReceiveRate>
+<NewTotalBytesSent>1657266107</NewTotalBytesSent>
+<NewTotalBytesReceived>119136988</NewTotalBytesReceived>
+<NewAutoDisconnectTime>0</NewAutoDisconnectTime>
+<NewIdleDisconnectTime>0</NewIdleDisconnectTime>
+<NewDNSServer1>198.51.100.53</NewDNSServer1>
+<NewDNSServer2>198.51.100.54</NewDNSServer2>
+<NewVoipDNSServer1>198.51.100.53</NewVoipDNSServer1>
+<NewVoipDNSServer2>198.51.100.54</NewVoipDNSServer2>
+<NewUpnpControlEnabled>1</NewUpnpControlEnabled>
+<NewRoutedBridgedModeBoth>1</NewRoutedBridgedModeBoth>
+<NewX_AVM_DE_TotalBytesSent64>186340859835</NewX_AVM_DE_TotalBytesSent64>
+<NewX_AVM_DE_TotalBytesReceived64>902062269148</NewX_AVM_DE_TotalBytesReceived64>
+<NewX_AVM_DE_WANAccessType>DSL</NewX_AVM_DE_WANAccessType>
+<NewX_AVM_DE_Layer1UpstreamMaxBitRate64>45486000</NewX_AVM_DE_Layer1UpstreamMaxBitRate64>
+<NewX_AVM_DE_Layer1DownstreamMaxBitRate64>233094000</NewX_AVM_DE_Layer1DownstreamMaxBitRate64>
+</u:GetAddonInfosResponse>
+</s:Body>
+</s:Envelope>

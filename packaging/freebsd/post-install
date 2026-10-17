@@ -5,7 +5,7 @@
 # the @sample copy happens before or after this script.
 ETC=${PKG_PREFIX:-/usr/local}/www/xymon/client/etc
 NEW=$ETC/my-xymon-extensions
-for cfg in smart temp la memory disk opkg fritzdsl fritzwan wifi \
+for cfg in smart temp la memory disk opkg wifi \
     if_link lxc claude systemd bcache btrfs xymonext; do
     old=$ETC/$cfg.cfg
     dst=$NEW/$cfg.cfg

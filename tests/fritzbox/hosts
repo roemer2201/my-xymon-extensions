@@ -1,0 +1,4 @@
+# hosts.cfg of the fritzbox tests (documentation addresses)
+192.0.2.1     fritz.box        # fritzbox
+192.0.2.2     powerline1.lan   # fritzwifi
+192.0.2.3     otherbox.lan     # noping
