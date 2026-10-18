@@ -260,11 +260,13 @@ EOF
 * Sun Oct 18 2026 roemer2201 <r.oliver@web.de> - 0.29.2-1
 - Full code review: propagate Xymon delivery failures, reserve private
   state temporary files, and avoid cwd-dependent glob filtering
-- Correct LXC cgroup matching (including LXC's -N retry names) and
-  inventory errors, partial df output and mixed-age opkg package feeds
+- Correct LXC cgroup matching (exact names first, then LXC's -N retry
+  names) and inventory errors, partial df output and mixed-age opkg
+  package feeds
 - smart: a device smartctl cannot open warns, a poll without usable
-  data is clear; the exit status is not evaluated (bit 2 also flags
-  failed optional commands with complete output)
+  data is clear; exit bit 2 warns only when the verdict or all metrics
+  are missing (it also flags failed optional commands with complete
+  output)
 - Harden standalone extension names and recipient validation, use nc -N
   when supported; the server-only fritzbox collector keeps its exposure
   baseline on failed settings queries

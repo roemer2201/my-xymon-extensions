@@ -324,13 +324,22 @@ cgroup_root_of() {
         cr_out=$(awk -v n="$2" '
             # A complete LXC component of the container; short names can
             # occur in unrelated parents such as machine.slice or user.slice.
+            function is_ct(s) {
+                return s == n || s == "lxc.payload." n || s == "lxc@" n ".service"
+            }
             # LXC appends -1, -2, ... while a lxc.payload.NAME cgroup of
             # an earlier run still exists (cgfsng.c, CGROUP_CREATE_RETRY).
-            function is_ct(s,   pl) {
-                if (s == n || s == "lxc@" n ".service") return 1
-                pl = "lxc.payload." n
-                if (s == pl) return 1
-                return index(s, pl "-") == 1 && substr(s, length(pl) + 2) ~ /^[0-9]+$/
+            # Such a name may also be a parent, e.g. container "cb" nested
+            # in "cb-1", so it only counts when no exact match exists.
+            function is_retry(s,   pl) {
+                pl = "lxc.payload." n "-"
+                return index(s, pl) == 1 && substr(s, length(pl) + 1) ~ /^[0-9]+$/
+            }
+            # prefix_to <index> -> the path up to and including c[index]
+            function prefix_to(m,   i, o) {
+                o = ""
+                for (i = 2; i <= m; i++) o = o "/" c[i]
+                return o
             }
             substr($0, 1, 3) == "0::" { p = substr($0, 4); next }
             p == "" {
@@ -345,11 +354,10 @@ cgroup_root_of() {
             END {
                 if (p == "") exit 1
                 k = split(p, c, "/")
-                out = ""
-                for (i = 2; i <= k; i++) {
-                    out = out "/" c[i]
-                    if (is_ct(c[i])) { print out; exit 0 }
-                }
+                for (i = 2; i <= k; i++)
+                    if (is_ct(c[i])) { print prefix_to(i); exit 0 }
+                for (i = 2; i <= k; i++)
+                    if (is_retry(c[i])) { print prefix_to(i); exit 0 }
                 exit 1
             }' "$LXC_PROC/$1/cgroup" 2>/dev/null)
     fi

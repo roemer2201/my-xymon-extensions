@@ -20,7 +20,7 @@ configuration precedence and platform interfaces are preserved.
 | P1 | Xymon delivery | Twelve client extensions discarded failed status/data delivery through a later conditional or unconditional `exit 0`. The wrapper/runner could call a lost report successful. | Return failure from send_report and propagate it through normal and early/clear exits. The measurement wrapper still intentionally preserves its child's exit status. |
 | P1 | if_link and LXC glob lists | Unquoted pattern lists expanded against cwd filenames before matching. Unrelated files could suppress monitored interfaces/containers or disable per-interface thresholds. | Disable pathname expansion while splitting pattern/word lists; retain case-based glob matching. |
 | P1 | LXC cgroup identity | Substring matching accepted a parent whose name contained the container name, attributing its resources to the container or losing its metrics. | Match complete known LXC cgroup components (plain name, lxc.payload.NAME with LXC's optional -N retry suffix, lxc@NAME.service). |
-| P2 | SMART/eMMC | Failed device queries and polls containing only skipped disks could still claim every monitored disk was healthy. | A device smartctl cannot open or identify warns; a poll without usable measurements stays clear. Recognized standby remains an intentional skip. The exit status is not evaluated (see follow-up). Unprivileged eMMC-only mode keeps its documented clear. |
+| P2 | SMART/eMMC | Failed device queries and polls containing only skipped disks could still claim every monitored disk was healthy. | A device smartctl cannot open or identify warns; a poll without usable measurements stays clear. Recognized standby remains an intentional skip. Exit bit 2 counts only when the verdict or all metrics are missing (see follow-up). Unprivileged eMMC-only mode keeps its documented clear. |
 | P2 | LXC inventory | Two failed lxc-ls calls were reported as no configured containers. | Distinguish a successful empty inventory from a failed query; report unknown/yellow with the diagnostic. Preserve the old-tool fallback. |
 | P2 | Disk coverage | df could return usable rows and a failure for an inaccessible filesystem, yet the column stayed green and its diagnostic was discarded. | Retain the useful rows, warn about incomplete coverage and include stderr without confusing the Xymon disk parser. |
 | P2 | opkg feed age | One fresh package feed hid other stale feeds. | Treat the feed set as stale when any existing feed exceeds the age limit. |
@@ -41,8 +41,15 @@ were adjusted:
   Thresholds failed" (`ataprint.cpp`), while health and attributes are
   printed in full - a permanent false yellow. Bits 0/1 (open/identify
   failed) already leave no "=== START OF" section, which the existing
-  check now reports as yellow. The bit test was removed; a fixture with
-  complete output and exit 4 pins this.
+  check now reports as yellow. Removing the bit test altogether (first
+  version of the follow-up) went too far: "Read SMART Data failed"
+  next to a separately passed health command then read as healthy, and
+  the diagnostic was lost (found in the review of #59). Bit 2 now counts
+  only when data the check needs is missing - the health verdict or
+  every metric - and smartctl's "failed" lines are shown with the
+  device. Fixtures pin complete output with exit 4 (green), a failed
+  attribute read with PASSED (yellow) and a SMART capable device without
+  any data (yellow).
 - **eMMC without root.** smart.sh documents that eMMC-only auto mode
   runs mmc unprivileged and shows failures as clear. The correction
   had turned this into a permanent yellow; it is clear again in exactly
@@ -51,7 +58,10 @@ were adjusted:
   while a cgroup of that name still exists (`cgfsng.c`,
   `CGROUP_CREATE_RETRY`). The exact match missed it and the directory
   fallback then picked the stale `lxc.payload.NAME`. The suffix is
-  accepted now (pinned by a regression).
+  accepted now, but only when no component of the path matches exactly:
+  a retry-like name can also be a parent, e.g. container `cb` nested in
+  `lxc.payload.cb-1` (found in the review of #59). Both cases are pinned
+  by regressions.
 - **fritzfw summary.** A failed settings query reported "port mapping
   list incomplete" and an unknown mapping count although the list was
   read completely. The summary now names the incomplete settings, and
@@ -69,8 +79,9 @@ READMEs document the new colors; the RPM changelog names the maintainer.
 ## Verification
 
 - The original full fixture suite passed before changes.
-- The new isolated cross-extension suite had 37 assertions (38 with the
-  LXC retry-name case added in the follow-up); 36 fail against
+- The new isolated cross-extension suite had 37 assertions (40 with the
+  LXC retry-name and SMART summary cases added in the follow-up); 36
+  fail against
   the original commit and all pass with the corrections. It covers both
   symlink-clobber paths, cwd collisions, a cgroup-parent collision, query
   failures, partial df output, mixed-age feeds, status/data transport

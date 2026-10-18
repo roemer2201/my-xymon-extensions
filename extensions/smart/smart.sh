@@ -567,6 +567,7 @@ while IFS='|' read -r dev opts alias <&3; do
 
     # shellcheck disable=SC2086  # $nsopt/$opts are intentionally word-split
     out=$(smartrun -i -H -A $nsopt $opts "$dev")
+    smart_rc=$?
 
     case "$out" in
         *"Device is in STANDBY"*|*"Device is in SLEEP"*)
@@ -575,13 +576,10 @@ while IFS='|' read -r dev opts alias <&3; do
             ;;
     esac
 
-    # The exit status is deliberately not evaluated: smartctl also sets
-    # bit 2 when an optional command fails (e.g. "Read SMART Thresholds
-    # failed", ataprint.cpp), while the output is still usable. Without
-    # any "=== START OF" section the device could not be opened or
-    # identified (bits 0/1). smartctl runs with root or sudo here (auto
-    # mode verifies that above), so this is a failure, not a missing
-    # prerequisite.
+    # Without any "=== START OF" section the device could not be opened
+    # or identified (exit bits 0/1). smartctl runs with root or sudo
+    # here (auto mode verifies that above), so this is a failure, not a
+    # missing prerequisite.
     if ! printf '%s\n' "$out" | grep -q "=== START OF"; then
         OVERALL=$(worst "${OVERALL}" yellow)
         # The summary must name the reason for the yellow column.
@@ -712,8 +710,35 @@ while IFS='|' read -r dev opts alias <&3; do
         END { for (m in v) print m, v[m] }' \
         "$WORKDIR/metrics.raw" | sort > "$WORKDIR/metrics"
 
+    # Exit bit 2: a SMART command failed. smartctl sets it for optional
+    # commands too, e.g. "Read SMART Thresholds failed" still prints the
+    # attributes (ataprint.cpp), so it only counts when data this check
+    # needs is missing: the health verdict or every metric ("Read SMART
+    # Data failed" next to a PASSED verdict). A device without SMART
+    # support is not applicable, not incomplete.
+    s_incomplete=""
+    s_diag=""
+    if [ "$((smart_rc & 4))" -ne 0 ] \
+        && { [ -z "$health" ] || [ ! -s "$WORKDIR/metrics" ]; } \
+        && ! printf '%s\n' "$out" | grep -Eq '^SMART support is: +Unavailable'; then
+        s_incomplete=yes
+        s_diag=$(printf '%s\n' "$out" | grep 'failed' | head -n 3)
+    fi
+
     if [ ! -s "$WORKDIR/metrics" ] && [ -z "$health" ]; then
-        printf '&clear %s (%s): no usable SMART data\n\n' "$devlabel" "$model" >> "$STATUS"
+        if [ -n "${s_incomplete}" ]; then
+            OVERALL=$(worst "${OVERALL}" yellow)
+            printf '&yellow %s: SMART query failed (smartctl exit %s)\n' \
+                "${devlabel}" "${smart_rc}" >> "${NOTES}"
+            {
+                printf '&yellow %s (%s): no usable SMART data, smartctl exit %s:\n' \
+                    "${devlabel}" "${model}" "${smart_rc}"
+                [ -n "${s_diag}" ] && printf '%s\n' "${s_diag}" | sed -e 's/^/    /'
+                printf '\n'
+            } >> "${STATUS}"
+        else
+            printf '&clear %s (%s): no usable SMART data\n\n' "$devlabel" "$model" >> "$STATUS"
+        fi
         continue
     fi
 
@@ -737,6 +762,11 @@ while IFS='|' read -r dev opts alias <&3; do
     if [ -n "$critwarn" ] && [ "$critwarn" != "0x00" ] && [ "$critwarn" != "0" ]; then
         devcolor=$(worst "$devcolor" yellow)
         printf '&yellow %s: NVMe critical warning flags set (%s)\n' "$devlabel" "$critwarn" >> "$NOTES"
+    fi
+    if [ -n "${s_incomplete}" ]; then
+        devcolor=$(worst "${devcolor}" yellow)
+        printf '&yellow %s: SMART query incomplete (smartctl exit %s)\n' \
+            "${devlabel}" "${smart_rc}" >> "${NOTES}"
     fi
 
     # --- DWPD -------------------------------------------------------
@@ -860,6 +890,7 @@ while IFS='|' read -r dev opts alias <&3; do
         [ -n "$health" ] && printf ' - health: %s' "$health"
         printf '%s\n' "$dbnote"
         [ -n "$pairs" ] && printf '    %s\n' "${pairs# }"
+        [ -n "${s_diag}" ] && printf '%s\n' "${s_diag}" | sed -e 's/^/    /'
         printf '\n'
     } >> "$STATUS"
 

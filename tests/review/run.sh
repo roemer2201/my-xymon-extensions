@@ -116,6 +116,15 @@ export LXC_CGROUPFS LXC_PROC LXC_IGNORE
 run extensions/lxc/lxc.sh
 ok has '^ca_ram : 1\.0$'
 ok has '^cb_ram : 2\.0$'
+# An exact name further down wins over a retry name above it: container
+# "cc" nested in a cgroup named like a retry of it.
+mkdir -p "${TMP}/proc/125" "${TMP}/cg/lxc.payload.cc-1/lxc.payload.cc"
+printf '0::/lxc.payload.cc-1/lxc.payload.cc/init.scope\n' >"${TMP}/proc/125/cgroup"
+printf '104857600\n' >"${TMP}/cg/lxc.payload.cc-1/memory.current"
+printf '4194304\n' >"${TMP}/cg/lxc.payload.cc-1/lxc.payload.cc/memory.current"
+printf 'cc RUNNING 125 0\n' >>"${TMP}/inventory"
+run extensions/lxc/lxc.sh
+ok has '^cc_ram : 4\.0$'
 ok has '^status reviewhost\.lxc green '
 # A failed inventory query cannot prove that no containers exist.
 LXC_LS=${TMP}/bin/fail

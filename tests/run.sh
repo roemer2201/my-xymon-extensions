@@ -487,6 +487,39 @@ expect "${out}" '^status testhost\.smart green ' "exit bit 2 with usable output 
 expect "${out}" '^S3Z8TEST_temp : 31$' "exit bit 2 with usable output is evaluated"
 rm -f "${TMP}"/smart.*.state
 
+# Exit bit 2 with data missing is a failed query: the attributes could
+# not be read although the separate health command passed.
+cat > "${TMP}/smart-naming.cfg" <<'EOF'
+SMARTCTL="${FAKESMARTCTL}"
+USE_SUDO="no"
+MMC_DEVICES="none"
+device /dev/tssd-readfail
+EOF
+# shellcheck disable=SC2086
+out=$(SMART_CFG="${TMP}/smart-naming.cfg" ${TESTSH} "${REPO}/extensions/smart/smart.sh")
+expect "${out}" '^status testhost\.smart yellow ' "failed attribute read with PASSED verdict warns"
+expect "${out}" '&yellow /dev/tssd-readfail: SMART query incomplete \(smartctl exit 4\)' \
+    "incomplete SMART query is named in the summary"
+expect "${out}" '^    Read SMART Data failed: Input/output error$' \
+    "smartctl's failure message is shown"
+expect_not "${out}" 'All monitored disks are healthy' \
+    "an incomplete query does not claim healthy disks"
+rm -f "${TMP}"/smart.*.state
+
+# Neither data nor verdict, but SMART capable: a failure, not "not applicable".
+cat > "${TMP}/smart-naming.cfg" <<'EOF'
+SMARTCTL="${FAKESMARTCTL}"
+USE_SUDO="no"
+MMC_DEVICES="none"
+device /dev/tssd-allfail
+EOF
+# shellcheck disable=SC2086
+out=$(SMART_CFG="${TMP}/smart-naming.cfg" ${TESTSH} "${REPO}/extensions/smart/smart.sh")
+expect "${out}" '^status testhost\.smart yellow ' "SMART capable device without any data warns"
+expect "${out}" '&yellow /dev/tssd-allfail: SMART query failed \(smartctl exit 4\)' \
+    "failed SMART query is named in the summary"
+rm -f "${TMP}"/smart.*.state
+
 cat > "${TMP}/smart-naming.cfg" <<'EOF'
 SMARTCTL="${FAKESMARTCTL}"
 USE_SUDO="no"
