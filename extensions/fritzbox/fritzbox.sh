@@ -17,7 +17,7 @@
 # NCV - keep an explicit U: a failed poll becomes a graph gap, never a
 # zero. Only read-only TR-064 actions are ever sent.
 #
-# Version: 1.0.4  (2026-10-18)
+# Version: 1.0.5  (2026-10-18)
 #
 # Program flow:
 # 1. Resolve settings (defaults < config < environment < CLI), validate
@@ -35,7 +35,7 @@
 # Usage: fritzbox.sh --config FILE [--host NAME] [--dry-run] [--help]
 set -u
 CONFIG_NAME=fritzbox.cfg
-SCRIPT_VERSION=1.0.4
+SCRIPT_VERSION=1.0.5
 
 usage() {
     cat <<'EOF'
@@ -525,11 +525,16 @@ fmt_duration() {
     printf '%dd %dh %dm' "$(($1 / 86400))" "$(($1 % 86400 / 3600))" "$(($1 % 3600 / 60))"
 }
 
-# clean TEXT - a device string for status text: no control characters,
-# no "|" (record separator), at most 120 characters. XML escapes stay:
-# the Xymon status page is HTML.
+# clean TEXT [MAX] - a device string for status text: no control
+# characters, no "|" (record separator), at most MAX bytes (default 120).
+# The box sends UTF-8 and the cut counts bytes (LC_ALL=C), so a
+# character split at the end is removed. XML escapes stay: the Xymon
+# status page is HTML.
+u8_lead=$(printf '\300-\377') u8_lead3=$(printf '\340-\377')
+u8_lead4=$(printf '\360-\377') u8_cont=$(printf '\200-\277')
 clean() {
-    printf '%s' "${1}" | tr -d '\001-\037\177|' | cut -c1-120
+    printf '%s' "${1}" | tr -d '\001-\037\177|' | cut -b "1-${2:-120}" |
+        sed -E "s/([${u8_lead}]|[${u8_lead3}][${u8_cont}]|[${u8_lead4}][${u8_cont}][${u8_cont}])\$//"
 }
 
 # mask TEXT - FRITZBOX_MASK=1 hides addresses and long numbers (public
@@ -1323,7 +1328,7 @@ mod_log() {
     # Holds: every new non-green entry keeps its color for HOLD_MINUTES.
     holds_active "${l_state}" >"${cdir}/holds"
     awk '$1 == "new" && $3 != "green"' "${cdir}/classified" | while read -r l_n l_c l_k l_rest; do
-        hold_add "${l_k}" "$(mask "${l_rest%%|*} [${l_c}] ${l_rest#*|}" | cut -c1-200)"
+        hold_add "${l_k}" "$(clean "$(mask "${l_rest%%|*} [${l_c}] ${l_rest#*|}")" 300)"
     done >>"${cdir}/holds"
     # Newest holds first, at most 50.
     awk '{ l[NR] = $0 } END { for (i = NR; i > 0 && i > NR - 50; i--) print l[i] }' "${cdir}/holds" >"${cdir}/holds.keep"
@@ -1360,7 +1365,7 @@ mod_log() {
     head -n "${FRITZBOX_LOG_SHOW}" "${cdir}/classified" | while read -r l_n l_c l_k l_rest; do
         if [ "${l_n}" = new ]; then l_mark="&${l_k}"; else l_mark='  -'; fi
         detail '  %s %s [%s]%s %s\n' "${l_mark}" "${l_rest%%|*}" "${l_c}" "$([ "${l_n}" = new ] && printf ' (new)')" \
-            "$(mask "$(clean "${l_rest#*|}")")"
+            "$(clean "$(mask "${l_rest#*|}")" 300)"
     done
     col_end
 }

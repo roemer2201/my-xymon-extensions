@@ -407,6 +407,25 @@ ok status fritzlog yellow '0 new entries'
 ok has '^&yellow rules file /nonexistent is not readable'
 reset_over
 
+# --- fritzlog: long texts end after 300 bytes, never inside a UTF-8
+# character, and are masked before the cut (a cut address stays hidden).
+rm -f "${STATE}/fritz.box.log"
+run --set FRITZBOX_MODULES=log
+l_uml=$(printf '\303\244')
+l_x=$(awk 'BEGIN { while (i++ < 299) printf "x" }')
+l_y=$(awk 'BEGIN { while (i++ < 290) printf "y" }')
+over deviceinfo__GetDeviceLog.xml "s|<NewDeviceLog>|<NewDeviceLog>18.10.26 00:12:00 ${l_x}${l_uml}tail\\
+18.10.26 00:11:00 ${l_y} 203.0.113.250\\
+|"
+run --set FRITZBOX_MODULES=log --set FRITZBOX_MASK=1
+ok status fritzlog yellow '2 new entries'
+ok has '^  &yellow 18\.10\.26 00:12:00 \[unmatched\] \(new\) x{299}$'
+ok has '^  &yellow 18\.10\.26 00:11:00 \[unmatched\] \(new\) y{290} x\.x\.x\.x$'
+ok has '^&yellow 18\.10\.26 00:12:00 \[unmatched\] x{270} \(60 min left\)$'
+ok has '^&yellow 18\.10\.26 00:11:00 \[unmatched\] y{270} \(60 min left\)$'
+ok lacks '203\.0\.113'
+reset_over
+
 # --- failed DSL statistics must not become a zero counter baseline ---------
 NOW=$((N0 + 300))
 cp "${FB_DATA}/fault401.xml" "${OVER}/wandslifconfig1__GetStatisticsTotal.xml"

@@ -55,9 +55,21 @@ extensions; see [Migration](#migration-from-the-fritzdsl-and-fritzwan-client-ext
 3. **hosts.cfg**: tag the box, e.g.
    `192.168.178.1  fritz.box  # fritzbox`. The collector connects to the
    IP address and reports on the host name.
-4. **Try it**: `sudo -u xymon xymoncmd /usr/lib/xymon/server/ext/fritzbox.sh
-   --config /etc/xymon/my-xymon-extensions-server/fritzbox.cfg --dry-run --verbose`
-   prints every status and trends message without sending them.
+4. **Try it** while the collector is still disabled - `--set` switches it
+   on for this one run only:
+
+   ```sh
+   sudo -u xymon xymoncmd --env=/etc/xymon/xymonserver.cfg \
+       /usr/lib/xymon/server/ext/fritzbox.sh \
+       --config /etc/xymon/my-xymon-extensions-server/fritzbox.cfg \
+       --set FRITZBOX_ENABLED=1 --dry-run --verbose
+   ```
+
+   prints every status and trends message without sending them. Without
+   `--set FRITZBOX_ENABLED=1` the shipped config ends the run with
+   "disabled"; without the hosts.cfg tag it ends with "No host tagged
+   fritzbox" (`--host fritz.box` polls one box regardless of the tag).
+   A dry run saves no state, so the first real run is a baseline again.
 5. **Enable**: `FRITZBOX_ENABLED=1` in
    `/etc/xymon/my-xymon-extensions-server/fritzbox.cfg`. The task
    (`/etc/xymon/tasks.d/fritzbox.cfg`) runs every 5 minutes. The graphs
@@ -132,8 +144,9 @@ prefix (green, only counted) and failed internet telephony (yellow).
 Everything else is **unmatched and yellow**, so Xymon records it in the
 column history - add a rule for it, and it is classified from then on.
 The status lists the newest FRITZBOX_LOG_SHOW (20) entries; only new
-ones carry a color icon. FRITZBOX_MASK=1 hides IP addresses, prefixes
-and long numbers. The box writes its log in the language of its user
+ones carry a color icon. A text longer than 300 bytes is cut there,
+never inside a UTF-8 character. FRITZBOX_MASK=1 hides IP addresses,
+prefixes and long numbers, before the cut. The box writes its log in the language of its user
 interface; the patterns stay ASCII (an umlaut is matched by `.*`).
 
 **fritzfw** - the port mappings of the WAN connection that is up
