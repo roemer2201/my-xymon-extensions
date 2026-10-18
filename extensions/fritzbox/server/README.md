@@ -157,10 +157,13 @@ check is off by default: phones and virtual machines often use random
 MAC addresses (second hex digit 2, 6, A or E).
 
 **fritztel** - `X_AVM-DE_GetVoIPAccounts` (the account list, without
-passwords) and `X_AVM-DE_GetVoIPStatus` per account; "registered" is
-green, anything else red. If the status request fails, the list's
-status code is used: 2 is what the reference box reports for
-registered. DECT handsets (`X_AVM-DE_Dect`) are listed for information;
+passwords) and `X_AVM-DE_GetVoIPStatus` per account; "registered" and
+"connected" (an active call) are green, anything else red. If the
+per-account action is unavailable, the list's text status is used;
+numeric code 2 is also accepted because that is what the reference box
+reports for registered. A failed account-list query yields unknown
+counts, never a fabricated zero. See the [official VoIP status table](https://fritz.support/resources/TR-064_VoIP.pdf).
+DECT handsets (`X_AVM-DE_Dect`) are listed for information;
 what their `Active` flag means is not documented.
 
 **plc** - `X_AVM-DE_Homeplug` GetNumberOfDeviceEntries and
@@ -176,6 +179,16 @@ F0:B0:14:00:00:01|1|0|failed|FRITZ!Powerline 1220E|Upstairs
 
 powerline.sh reads these files and adds the box's view to each
 adapter's powerline column; this module has no column of its own.
+An incomplete enumeration leaves the previous file aging. Indexed
+enumerations are capped at 32 entries to protect the run budget; a
+truncated port mapping list warns, keeps its previous baseline and
+reports an unknown mapping count instead of a partial total.
+
+The input arguments `NewIndex` for HomePlug/DECT and
+`NewVoIPAccountIndex` for SIP status are documented by FRITZ!:
+[HomePlug](https://fritz.support/resources/TR-064_HomePlug.pdf),
+[DECT](https://fritz.support/resources/TR-064_DECT.pdf),
+[VoIP](https://fritz.support/resources/TR-064_VoIP.pdf).
 
 ## Graphs
 

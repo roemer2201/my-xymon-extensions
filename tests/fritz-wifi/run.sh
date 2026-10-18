@@ -329,10 +329,15 @@ if as_root chown 0:"${mygid}" "${PASSFILE}"; then
     FW_USER=admin FW_PASS='right secret' run
     ok has ' yellow .* - wifi: no password$'
     as_root chmod 640 "${PASSFILE}"
-    as_root chgrp "${othergid}" "${PASSFILE}"
-    FW_USER=admin FW_PASS='right secret' run
-    ok has ' yellow .* - wifi: no password$'
-    ok err_has 'rejected'
+    # A root-only user namespace may not map any other gid. Only test
+    # rejection after actually assigning the foreign group.
+    if as_root chgrp "${othergid}" "${PASSFILE}"; then
+        FW_USER=admin FW_PASS='right secret' run
+        ok has ' yellow .* - wifi: no password$'
+        ok err_has 'rejected'
+    else
+        printf '%s\n' 'skip: fritz-wifi foreign-group password file (gid not available)'
+    fi
 else
     printf '%s\n' 'skip: fritz-wifi root-owned password file (needs root or sudo -n)'
 fi

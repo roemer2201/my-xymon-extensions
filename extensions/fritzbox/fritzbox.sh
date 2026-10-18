@@ -17,7 +17,7 @@
 # NCV - keep an explicit U: a failed poll becomes a graph gap, never a
 # zero. Only read-only TR-064 actions are ever sent.
 #
-# Version: 1.0.0  (2026-10-18)
+# Version: 1.0.1  (2026-10-18)
 #
 # Program flow:
 # 1. Resolve settings (defaults < config < environment < CLI), validate
@@ -35,7 +35,7 @@
 # Usage: fritzbox.sh --config FILE [--host NAME] [--dry-run] [--help]
 set -u
 CONFIG_NAME=fritzbox.cfg
-SCRIPT_VERSION=1.0.0
+SCRIPT_VERSION=1.0.1
 
 usage() {
     cat <<'EOF'
@@ -944,7 +944,9 @@ mod_dsl() {
     if is_uint "${d_uptime}" && is_uint "${d_pup}" && [ "${d_uptime}" -lt "${d_pup}" ]; then
         plain 'Note: the connection was re-established since the last poll'
     fi
-    printf '%s %s %s\n' "${now}" "${d_crc:-0}" "${d_uptime:-0}" | save_state dsl
+    # Unknown counters must invalidate the baseline: storing zero here
+    # turns the next successful poll into a false CRC-rate alarm.
+    printf '%s %s %s\n' "${now}" "${d_crc:-U}" "${d_uptime:-U}" | save_state dsl
 
     if [ "${d_status}" = Up ] && is_uint "${d_rate_down}" && is_uint "${d_rate_up}"; then
         summary="Up at ${d_rate_down}/${d_rate_up} kbit/s"
@@ -1385,12 +1387,13 @@ mod_fw() {
         [ "${host_abort}" != 0 ] || plain 'no WAN connection service - port mappings unknown'
     elif need "${f_wan}" GetPortMappingNumberOfEntries; then
         f_count=$(field NewPortMappingNumberOfEntries)
-        is_uint "${f_count}" || f_count=0
+        if ! is_uint "${f_count}"; then
+            note yellow 'the box returned no usable port mapping count'; partial=1; f_count=''
+        fi
         f_i=0
-        while [ "${f_i}" -lt "${f_count}" ] && [ "${f_i}" -lt "${max_entries}" ]; do
+        while [ "${f_i}" -lt "${f_count:-0}" ] && [ "${f_i}" -lt "${max_entries}" ]; do
             tr64 "${f_wan}" GetGenericPortMappingEntry "<NewPortMappingIndex>${f_i}</NewPortMappingIndex>"
             f_rc=${?}
-            [ "${f_rc}" = 3 ] && break
             [ "${f_rc}" = 0 ] || { fail_call "${f_rc}" "${f_wan}" GetGenericPortMappingEntry; break; }
             f_proto=$(field NewProtocol | tr -cd 'A-Za-z')
             f_ext=$(field NewExternalPort | tr -cd '0-9')
@@ -1401,6 +1404,10 @@ mod_fw() {
             printf '%s %s:%s:%s:%s %s\n' "${f_en:-1}" "${f_proto}" "${f_ext}" "${f_cli}" "${f_int}" "${f_desc}" >>"${cdir}/maps"
             f_i=$((f_i + 1))
         done
+        if [ "${f_i}" -lt "${f_count:-0}" ]; then
+            note yellow "port mapping list incomplete: read ${f_i} of ${f_count} entries (limit ${max_entries})"
+            partial=1
+        fi
     fi
     f_enabled=$(awk '$1 == "1"' "${cdir}/maps" | wc -l | tr -d ' ')
 
@@ -1472,9 +1479,14 @@ mod_fw() {
         save_state fw <"${f_state}"
     fi
     holds_note "$(cat "${cdir}/holds")"
-    metric portmaps "${f_count:+${f_enabled}}"
+    if [ "${partial}" = 0 ] && [ "${host_abort}" = 0 ]; then
+        metric portmaps "${f_count:+${f_enabled}}"
+    else
+        metric portmaps U
+    fi
 
-    summary="${f_enabled} port mapping(s)"
+    if [ "${partial}" = 1 ]; then summary='port mapping list incomplete'
+    else summary="${f_enabled} port mapping(s)"; fi
     case " ${f_settings} " in *" remote_access=1 "*) summary="${summary}, remote access on" ;; esac
     [ -s "${cdir}/notes" ] || plain 'No unexpected exposure'
     detail 'Port mappings (enabled, protocol:external port:client:internal port):\n'
@@ -1630,7 +1642,11 @@ mod_tel() {
         col_end; return
     fi
     : >"${cdir}/accounts"
-    if need "${t_svc}" X_AVM-DE_GetVoIPAccounts; then
+    if ! need "${t_svc}" X_AVM-DE_GetVoIPAccounts; then
+        metric sip_total U; metric sip_registered U
+        summary='SIP account list unavailable'
+        col_end; return
+    else
         # The list is escaped XML inside the response element.
         awk 'index($0, "NewX_AVM-DE_VoIPAccountList>") == 1 { print substr($0, 29); exit }' "${hw}/resp.lines" |
             sed -e 's/&lt;/</g' -e 's/&gt;/>/g' -e 's/&quot;/"/g' -e 's/&amp;/\&/g' | sed 's#<Account>#\n<Account>#g' | awk '
@@ -1640,7 +1656,7 @@ mod_tel() {
             }
             /^<Account>/ {
                 i = val("VoIPAccountIndex"); r = val("VoIPRegistrar"); nu = val("VoIPNumber"); st = val("X_AVM-DE_VoIPStatus")
-                gsub(/[^0-9]/, "", i); gsub(/[^A-Za-z0-9._-]/, "", r); gsub(/[^0-9+#*]/, "", nu); gsub(/[^0-9]/, "", st)
+                gsub(/[^0-9]/, "", i); gsub(/[^A-Za-z0-9._-]/, "", r); gsub(/[^0-9+#*]/, "", nu); gsub(/[^A-Za-z0-9_-]/, "", st)
                 if (i != "") print i, (r == "" ? "-" : r), (nu == "" ? "-" : nu), (st == "" ? "-" : st)
             }' >"${cdir}/accounts"
     fi
@@ -1652,13 +1668,16 @@ mod_tel() {
         if tr64 "${t_svc}" X_AVM-DE_GetVoIPStatus "<NewVoIPAccountIndex>${t_i}</NewVoIPAccountIndex>"; then
             t_st=$(field NewX_AVM-DE_VoIPStatus | tr -cd 'A-Za-z0-9_-')
         fi
-        # Without a text status: code 2 is what the reference box reports
-        # for "registered"; any other code is treated as not registered.
+        # The documented account list contains text statuses. FRITZ!OS
+        # 8.26 also returns numeric code 2 for registered on the reference
+        # box; keep that fallback when the per-account action is absent.
         if [ -z "${t_st}" ]; then
-            if [ "${t_code}" = 2 ]; then t_st=registered; else t_st="code ${t_code}"; fi
+            if [ "${t_code}" = 2 ]; then t_st=registered; else t_st=${t_code}; fi
         fi
         t_show="$(mask "${t_num}") via ${t_reg_host}"
-        if [ "${t_st}" = registered ]; then
+        # AVM documents "connected" as an active VoIP call, which is
+        # healthy too (TR-064_VoIP.pdf, X_AVM-DE_VoIPStatus table).
+        if [ "${t_st}" = registered ] || [ "${t_st}" = connected ]; then
             t_reg=$((t_reg + 1))
             detail '  &green SIP account %s: %s\n' "${t_i}" "${t_show}"
         else
@@ -1666,7 +1685,11 @@ mod_tel() {
             detail '  &%s SIP account %s: %s - %s\n' "${FRITZBOX_TEL_COLOR}" "${t_i}" "${t_show}" "${t_st}"
         fi
     done 4<"${cdir}/accounts"
-    metric sip_total "${t_total}"; metric sip_registered "${t_reg}"
+    if [ "${host_abort}" = 0 ]; then
+        metric sip_total "${t_total}"; metric sip_registered "${t_reg}"
+    else
+        metric sip_total U; metric sip_registered U
+    fi
     if [ "${partial}" = 1 ] && [ "${t_total}" = 0 ]; then
         : # the failed request is already noted
     elif [ "${t_total}" = 0 ]; then
@@ -1710,13 +1733,19 @@ mod_plc() {
     while [ "${p_i}" -lt "${p_n}" ] && [ "${p_i}" -lt "${max_entries}" ]; do
         tr64 "${p_svc}" GetGenericDeviceEntry "<NewIndex>${p_i}</NewIndex>"
         p_rc=${?}
-        [ "${p_rc}" = 0 ] || { [ "${p_rc}" = 3 ] && break; rm -f "${hw}/homeplug"; return 0; }
+        [ "${p_rc}" = 0 ] || { rm -f "${hw}/homeplug"; return 0; }
         printf '%s|%s|%s|%s|%s|%s\n' "$(field NewMACAddress | tr -cd '0-9A-Fa-f:' | tr 'a-f' 'A-F')" \
             "$(field NewActive | tr -cd '0-9')" "$(field NewUpdateAvailable | tr -cd '0-9')" \
             "$(field NewUpdateSuccessful | tr -cd 'A-Za-z_-')" "$(clean "$(field NewModel)")" \
             "$(clean "$(field NewName)")" >>"${hw}/homeplug"
         p_i=$((p_i + 1))
     done
+    # A capped or interrupted enumeration is not a fresh complete list.
+    # Leave the old hand-over file aging instead of hiding missing peers.
+    if [ "${p_i}" -lt "${p_n}" ]; then
+        log warning "${host}: homeplug list incomplete (${p_i}/${p_n}); keeping the previous list"
+        rm -f "${hw}/homeplug"
+    fi
 }
 
 # ----------------------------------------------------------------------

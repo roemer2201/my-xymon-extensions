@@ -9,6 +9,7 @@
 # 4. Calculate identity, interval metrics and persistent change/flap timers.
 # 5. Deliver status and native trends data, then atomically commit state.
 # Usage: powerline.sh --config /path/powerline.cfg --verbose --dry-run
+# Version: 1.0.1  (2026-10-18)
 set -u
 CONFIG_NAME=powerline.cfg
 BASE=$(CDPATH='' cd -- "$(dirname -- "${0}")" && pwd) || exit 1

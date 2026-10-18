@@ -90,6 +90,10 @@ it never counts towards **state flapping** - neither for itself nor for a
 peer whose only change is that adapter. It is never forgotten (no purple
 column); while it is away its column is green with `Adapter ... is not
 plugged in (occasional adapter).`
+The flap timer tracks ordinary changes separately: occasional peer
+changes cannot keep an earlier ordinary flap sequence alive after its
+stability interval. Snapshots retain both timers and still accept the
+older 11- and 12-field state records.
 
 ## FRITZ!Box view
 

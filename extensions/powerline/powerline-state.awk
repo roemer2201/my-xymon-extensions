@@ -138,17 +138,23 @@ $1 == "fritz" {
     if ($7 + 0 <= fzmax) fzfresh = 1
     next
 }
-# Field 12, the text of the last change, was added in 0.29; state files of
-# older versions have 11 fields.
+# Field 12 holds the last change text; fields 13/14 track ordinary
+# changes separately so occasional peers cannot prolong a flap sequence.
+# Continue accepting the old 11- and 12-field snapshots.
 $1 == "state" {
-    if ((NF != 11 && NF != 12) || !validmac($2) || !safehost($4) || $3 !~ /^[01]$/ ||
+    if ((NF != 11 && NF != 12 && NF != 14) || !validmac($2) || !safehost($4) || $3 !~ /^[01]$/ ||
         $5 !~ /^(LOC|REM)$/ || !validmac($6) || $7 !~ /^[0-9]+$/ ||
         $8 !~ /^[0-9]+$/ || $9 !~ /^[0-9]+$/ || $10 !~ /^[0-9]+$/ ||
-        $7 + 0 > now || $9 + 0 > now) { fatal = "Invalid state file or clock moved backwards"; next }
+        $7 + 0 > now || $9 + 0 > now ||
+        (NF == 14 && (!uint($13) || !uint($14) || $13 + 0 > now || $14 + 0 > now))) {
+        fatal = "Invalid state file or clock moved backwards"; next
+    }
     m = $2; known[m] = 1; previous[m] = $3; oldhost[m] = $4
     role[m] = $5; bda[m] = $6; lastseen[m] = $7 + 0
     start[m] = $8 + 0; changed[m] = $9 + 0; changes[m] = $10 + 0; oldsig[m] = $11
-    event[m] = (NF == 12 && $12 ~ /^[ -~]*$/) ? $12 : ""
+    event[m] = (NF >= 12 && $12 ~ /^[ -~]*$/) ? $12 : ""
+    hardstart[m] = (NF == 14) ? $13 + 0 : (changes[m] ? start[m] : 0)
+    hardchanged[m] = (NF == 14) ? $14 + 0 : (changes[m] ? changed[m] : 0)
     next
 }
 $1 == "counter" {
@@ -219,15 +225,25 @@ END {
         # Settle before an event only if the quiet deadline was passed; an
         # event exactly at the deadline must not produce a one-poll green gap.
         if (start[m] && now - changed[m] >= hold && (!transition || now - changed[m] > hold)) {
-            start[m] = 0; changes[m] = 0
+            start[m] = 0
+        }
+        # Ordinary changes settle independently of the yellow hold for
+        # occasional peers. A soft transition neither extends nor resets
+        # a still-active ordinary flap sequence.
+        hardtransition = transition && !soft
+        if (hardstart[m] && now - hardchanged[m] >= hold && (!hardtransition || now - hardchanged[m] > hold)) {
+            hardstart[m] = 0; hardchanged[m] = 0; changes[m] = 0
         }
         if (transition) {
             if (!start[m]) start[m] = now
             changed[m] = now
-            if (!soft) changes[m]++
+            if (!soft) {
+                if (!hardstart[m]) hardstart[m] = now
+                hardchanged[m] = now; changes[m]++
+            }
         }
         if (start[m]) {
-            if (now - start[m] >= flap && changes[m] > 1)
+            if (hardstart[m] && now - hardstart[m] >= flap && changes[m] > 1)
                 severity(m, 2, "state flapping")
             else severity(m, 1, "Topology changed; waiting for " hold/60 " minutes of stability.")
         }
@@ -257,7 +273,7 @@ END {
         if (start[m] && event[m] != "")
             note(m, "Last change " int((now - changed[m]) / 60) " minute(s) ago: " event[m])
         if (!start[m]) event[m] = ""
-        print "state", m, (m in present) ? 1 : 0, host[m], role[m], bda[m], lastseen[m]+0, start[m]+0, changed[m]+0, changes[m]+0, signature[m], event[m] > snapshot
+        print "state", m, (m in present) ? 1 : 0, host[m], role[m], bda[m], lastseen[m]+0, start[m]+0, changed[m]+0, changes[m]+0, signature[m], event[m], hardstart[m]+0, hardchanged[m]+0 > snapshot
     }
     # Every snapshot is a GAUGE; interval rates are separately named GAUGEs.
     # Samples above 2^53 cannot be differenced reliably with portable awk.

@@ -383,6 +383,59 @@ ok status fritzlog yellow '0 new entries'
 ok has '^&yellow rules file /nonexistent is not readable'
 reset_over
 
+# --- failed DSL statistics must not become a zero counter baseline ---------
+NOW=$((N0 + 300))
+cp "${FB_DATA}/fault401.xml" "${OVER}/wandslifconfig1__GetStatisticsTotal.xml"
+run --set FRITZBOX_MODULES=dsl
+ok status fritzdsl yellow 'Up at 240017/46719 kbit/s'
+ok rrd fritzdsl crc U DERIVE
+NOW=$((N0 + 600))
+reset_over
+run --set FRITZBOX_MODULES=dsl
+ok status fritzdsl green 'Up at 240017/46719 kbit/s'
+ok lacks 'CRC errors:'
+NOW=''
+
+# --- connected SIP accounts and documented text statuses in the list -------
+over x_voip__X_AVM-DE_GetVoIPStatus__1.xml 's|>registered<|>connected<|'
+run --set FRITZBOX_MODULES=tel
+ok status fritztel green '3/3 SIP account\(s\) registered'
+reset_over
+over x_voip__X_AVM-DE_GetVoIPAccounts.xml 's|X_AVM-DE_VoIPStatus&gt;2&lt;|X_AVM-DE_VoIPStatus\&gt;connected\&lt;|g'
+for i in 0 1 2; do cp "${FB_DATA}/fault401.xml" "${OVER}/x_voip__X_AVM-DE_GetVoIPStatus__${i}.xml"; done
+run --set FRITZBOX_MODULES=tel
+ok status fritztel green '3/3 SIP account\(s\) registered'
+reset_over
+
+# --- incomplete telephony data is unknown rather than zero accounts --------
+cp "${FB_DATA}/fault401.xml" "${OVER}/x_voip__X_AVM-DE_GetVoIPAccounts.xml"
+run --set FRITZBOX_MODULES=tel
+ok status fritztel yellow 'SIP account list unavailable'
+ok rrd fritztel sip_total U
+ok rrd fritztel sip_registered U
+reset_over
+
+# --- a truncated port list cannot replace the exposure baseline ------------
+cp "${STATE}/fritz.box.fw" "${TMP}/fw.before"
+over wanpppconn1__GetPortMappingNumberOfEntries.xml 's|>1<|>33<|'
+i=1
+while [ "${i}" -le 31 ]; do
+    cp "${FB_DATA}/wanpppconn1__GetGenericPortMappingEntry__0.xml" "${OVER}/wanpppconn1__GetGenericPortMappingEntry__${i}.xml"
+    i=$((i + 1))
+done
+run --set FRITZBOX_MODULES=fw
+ok status fritzfw yellow 'port mapping list incomplete'
+ok rrd fritzfw portmaps U
+ok cmp -s "${STATE}/fritz.box.fw" "${TMP}/fw.before"
+reset_over
+
+# --- incomplete HomePlug enumerations leave the old list aging -------------
+cp "${STATE}/fritz.box.homeplug" "${TMP}/homeplug.before"
+over x_homeplug__GetNumberOfDeviceEntries.xml 's|>2<|>3<|'
+NOW=$((N0 + 300)) run --set FRITZBOX_MODULES=plc
+ok cmp -s "${STATE}/fritz.box.homeplug" "${TMP}/homeplug.before"
+reset_over
+
 # --- dry run: printed, nothing sent, state kept ------------------------------------
 snapshot
 run --dry-run

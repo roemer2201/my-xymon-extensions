@@ -340,6 +340,11 @@ ok has '^status\+15 garage,lan.powerline green '
 ok poll 700300 local
 ok has '^Last change 0 minute\(s\) ago: Adapter disappeared\.$'
 ok has '^Last change 0 minute\(s\) ago: Peer lost: e8df701d65a6 \(powerline3\.lan\)\.$'
+# Both earlier snapshot formats retain the active hold across upgrades.
+awk -F'|' '$1 == "state" { NF = 12 } 1' OFS='|' "${POWERLINE_STATE_DIR}/state" >"${TMP}/state12"
+cp "${TMP}/state12" "${POWERLINE_STATE_DIR}/state"
+ok poll 700450 local
+ok has '^Last change 2 minute\(s\) ago: Adapter disappeared\.$'
 # Old state files (11 fields, before 0.29) are still accepted.
 awk -F'|' '$1 == "state" { NF = 11 } 1' OFS='|' "${POWERLINE_STATE_DIR}/state" >"${TMP}/state11"
 cp "${TMP}/state11" "${POWERLINE_STATE_DIR}/state"
@@ -349,6 +354,21 @@ ok has '^status\+15 powerline1,lan.powerline yellow '
 printf '%s\n' '02:00:00:00:00:0C garage.lan sometimes' >"${POWERLINE_MAPPING}"
 if poll 700900 local; then printf '%s\n' 'FAIL: bad mapping flag accepted'; FAIL=1; fi
 ok grep -q 'Cannot parse static mapping' "${TMP}/stderr"
+
+# Occasional peer changes must not keep an old ordinary flap timer alive.
+# Two ordinary transitions settle while garage continues to come and go.
+POWERLINE_STATE_DIR=${TMP}/mixed-state
+printf '%s\n' '02:00:00:00:00:0C garage.lan occasional' >"${POWERLINE_MAPPING}"
+export POWERLINE_STATE_DIR
+ok poll 800000 both
+ok poll 800300 local
+ok poll 800600 both
+t=802400
+while [ "${t}" -le 813200 ]; do
+    if [ $(((t - 802400) / 1800 % 2)) -eq 0 ]; then ok poll "${t}" garage; else ok poll "${t}" both; fi
+    ok lacks 'state flapping'
+    t=$((t + 1800))
+done
 
 # --- FRITZ!Box view from the fritzbox collector's hand-over file ----------
 POWERLINE_STATE_DIR=${TMP}/fritz-state POWERLINE_HOSTS=${HERE}/hosts POWERLINE_MAPPING=''
