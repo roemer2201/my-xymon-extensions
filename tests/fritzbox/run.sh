@@ -131,6 +131,34 @@ copy_state() {
 snapshot() { copy_state "${TMP}/snap"; }
 # shellcheck disable=SC2317,SC2329 # Invoked via ok's command argument.
 state_unchanged() { copy_state "${TMP}/now" && diff -r "${TMP}/snap" "${TMP}/now" >/dev/null; }
+# ncv_matches_trends - what Xymon's NCV parser (xymond/rrd/do_ncv.c:
+# directives at the start of a line, "name : value" or "name = value",
+# split-NCV name mangling) would read from each status equals the known
+# values of the column's trends message.
+# shellcheck disable=SC2317,SC2329 # Invoked via ok's command argument.
+ncv_matches_trends() {
+    rm -f "${TMP}/ncv" "${TMP}/tr"
+    awk -v nf="${TMP}/ncv" -v tf="${TMP}/tr" '
+        /^status\+/ { col = $2; sub(/^[^.]*\./, "", col); mode = "ncv"; skip = 0; next }
+        /^data / { mode = "trends"; next }
+        mode == "ncv" && /^[ \t]*<!-- ncv_skipstart -->/ { skip = 1; next }
+        mode == "ncv" && /^[ \t]*<!-- ncv_skipend -->/ { skip = 0; next }
+        mode == "ncv" && /^[ \t]*<!-- ncv_end -->/ { mode = ""; next }
+        mode == "ncv" && !skip && match($0, /[:=]/) {
+            n = substr($0, 1, RSTART - 1); v = substr($0, RSTART + 1)
+            sub(/^[ \t]+/, "", n); gsub(/[^A-Za-z0-9]+/, "_", n); sub(/_$/, "", n)
+            sub(/^[ \t]+/, "", v)
+            if (match(v, /^[-+]?[0-9.eE+-]+([ \t]|$)/)) {
+                v = substr(v, 1, RLENGTH); sub(/[ \t]$/, "", v); print col, n, v > nf
+            }
+            next
+        }
+        mode == "trends" && /^\[/ { r = $0; sub(/^\[[^,]*,/, "", r); sub(/\.rrd\]$/, "", r); next }
+        mode == "trends" && /^DS:/ && $2 != "U" { print col, r, $2 > tf }
+    ' "${FB_MESSAGES}" || return 1
+    [ -s "${TMP}/ncv" ] && sort "${TMP}/ncv" >"${TMP}/ncv.s" && sort "${TMP}/tr" >"${TMP}/tr.s" &&
+        cmp -s "${TMP}/ncv.s" "${TMP}/tr.s"
+}
 COLUMNS='fritzdsl fritzwan fritzsys fritzlog fritzfw fritzlan fritztel'
 
 # --- baseline poll of the reference box -----------------------------------
@@ -151,6 +179,7 @@ ok rrd fritzdsl atten_up 13.0
 ok rrd fritzdsl crc 3102 DERIVE
 ok rrd fritzdsl atuc_crc 30 DERIVE
 ok rrd fritzdsl uptime 69660
+ok rrd fritzdsl reconnect 0 DERIVE
 ok has '^    modulation       VDSL, profile 35b$'
 ok has '^    far end \(ATU-C\)  crc=30 fec=532305 hec=0$'
 # fritzwan: the IGD link rate (the box's own 100%), 64-bit counters.
@@ -158,6 +187,15 @@ ok rrd fritzwan maxbps_down 233094000
 ok rrd fritzwan bps_down U
 ok has '^    link capacity    down=233\.1 up=45\.5 Mbit/s \[UPnP\]$'
 ok has '\[UPnP 64-bit counters\]$'
+ok rrd fritzwan link_up 1
+ok rrd fritzwan connected 1
+ok has '^    connection       Connected \(PPP\), up 0d 19h 21m$'
+# The values also travel as a hidden NCV block after the visible text.
+ok has '^<!-- ncv_skipstart -->$'
+ok has '^rate_down : 240017$'
+ok lacks '^bps_down : '
+ok has '^<!-- ncv_end -->$'
+ok ncv_matches_trends
 ok rrd fritzsys uptime 5344796
 ok rrd fritzsys clock_offset 0
 ok has '^    box time         2026-10-18T00:13:21\+02:00 \(offset 0 s\)$'
@@ -187,7 +225,7 @@ ok not grep -q -e '--anyauth' -e '--basic' "${FB_LOG}/argv"
 # One login probe, then the modules; the GETs carry no credentials.
 ok asked '^GET /tr64desc\.xml$'
 ok asked '^GET /devicehostlist\.lua$'
-ok state_has dsl '^1792275201 3102 69660$'
+ok state_has dsl '^1792275201 3102 69660 0$'
 ok state_has wan '^1792275201 902062269148 186340859835 64$'
 ok state_has log '^last 261017050731 1$'
 ok state_has fritzdsl.names '^crc DERIVE$'
@@ -213,6 +251,7 @@ ok rrd fritzwan util_down 0.4
 ok status fritzwan green 'Up, 1\.0/0\.1 Mbit/s \(down/up\)'
 ok rrd fritzlan bps_in 100000
 ok rrd fritzlan bps_out 1000000
+ok ncv_matches_trends
 ok status fritzdsl yellow 'Up at 240017/46719 kbit/s'
 ok has '^&yellow CRC errors: 30\.0/min since the last poll \(limit 30/min\)$'
 ok status fritzlog yellow '2 new entries'
@@ -542,6 +581,35 @@ rc=${?}
 ok exit_is 0
 ok no_messages
 
+# --- a shorter WAN uptime is a reconnect; the connection state as 1/0 ----------
+reset_over
+printf '%s 3102 69660 4\n' "$((N0 - 300))" >"${STATE}/fritz.box.dsl"
+over wanpppconn1__GetStatusInfo.xml 's|<NewUptime>69660<|<NewUptime>120<|'
+run --set 'FRITZBOX_MODULES=dsl wan'
+ok has '^Note: the connection was re-established since the last poll$'
+ok rrd fritzdsl reconnect 5 DERIVE
+ok rrd fritzdsl uptime 120
+ok state_has dsl '^1792275201 3102 120 5$'
+# The state of fritzbox.sh 1.0.5 and older has no count yet.
+printf '%s 3102 69660\n' "$((N0 - 300))" >"${STATE}/fritz.box.dsl"
+run --set 'FRITZBOX_MODULES=dsl wan'
+ok rrd fritzdsl reconnect 1 DERIVE
+over wanpppconn1__GetStatusInfo.xml 's|>Connected<|>Disconnected<|; s|<NewUptime>69660<|<NewUptime>0<|'
+run --set 'FRITZBOX_MODULES=dsl wan'
+ok rrd fritzwan link_up 1
+ok rrd fritzwan connected 0
+ok has '^&yellow WAN connection status: Disconnected$'
+ok has '^    connection       Disconnected \(PPP\)$'
+# fritzdsl and fritzwan share one answer per service and poll.
+ok test "$(grep -c '^wanpppconn1 GetStatusInfo$' "${FB_LOG}/actions")" -eq 1
+ok test "$(grep -c '^wanipconnection1 GetStatusInfo$' "${FB_LOG}/actions")" -eq 1
+# Without a WAN connection service both stay unknown.
+run --set 'FRITZBOX_MODULES=dsl wan' --set FRITZBOX_DSL_WAN_SERVICE=off
+ok rrd fritzwan connected U
+ok rrd fritzdsl reconnect U DERIVE
+ok lacks '^    connection '
+reset_over
+
 # --- graph coverage -------------------------------------------------------------------
 # Every RRD a full poll writes is drawn by exactly one graph, every graph
 # draws at least one, and GRAPHS_<column> lists exactly the graphs of that
@@ -565,9 +633,11 @@ for c in ${COLUMNS}; do
     sed -n "s/^GRAPHS_${c}=\"\(.*\)\"\$/\1/p" "${SRVDIR}"/xymonserver.d/*.cfg | tr ',' '\n' | sort >"${TMP}/listed"
     awk -F'|' -v c="${c}" '{ split($2, p, ","); if (p[1] == c) print $1 }' "${TMP}/patterns" | sort -u >"${TMP}/defined"
     ok cmp -s "${TMP}/listed" "${TMP}/defined"
-    # fritzdsl/fritzwan kept their graph names, none of which is the
-    # column name: they are on the status page only, as up to 0.28.
-    case "${c}" in fritzdsl|fritzwan) ;; *) ok grep -q "^GRAPHS+=.*,${c}[,\"]" "${SRVDIR}"/xymonserver.d/*.cfg ;; esac
+    # Without a GRAPHS entry named like the column (the TEST2RRD name)
+    # the status page draws no graph at all (lib/htmllog.c); the trends
+    # page draws the graph of that name.
+    ok grep -Eq "^GRAPHS\+=.*,${c}(::[0-9]+)?[,\"]" "${SRVDIR}"/xymonserver.d/*.cfg
+    ok grep -q "^${c}|" "${TMP}/patterns"
     ok grep -q "^TEST2RRD+=.*[,\"]${c}[,\"]" "${SRVDIR}"/xymonserver.d/*.cfg
 done
 

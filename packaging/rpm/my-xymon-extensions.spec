@@ -261,7 +261,11 @@ EOF
 - no change to this package. The server-only fritzbox collector cuts
   event log texts after 300 bytes (was 120) without splitting a UTF-8
   character and masks before the cut, and its README explains the dry
-  run of the still disabled collector (--set FRITZBOX_ENABLED=1)
+  run of the still disabled collector (--set FRITZBOX_ENABLED=1). The
+  fritzdsl and fritzwan status pages show their graphs again (GRAPHS
+  lacked the column entry), with new graphs for errors, reconnects and
+  the WAN connection state; the status texts carry the values as a
+  hidden NCV block
 
 * Sat Oct 17 2026 roemer2201 <r.oliver@web.de> - 0.29.0-1
 - fritzdsl and fritzwan leave this package: they are modules of the new
