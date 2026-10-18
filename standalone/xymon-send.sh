@@ -13,6 +13,7 @@
 # SERVER may be a space-separated list; the message goes to each one.
 # Default port: $XYMONDPORT or 1984.
 # Transport: nc (BusyBox or full), ncat or socat - first one found.
+# Version: 1.0.1 (2026-10-18)
 set -u
 
 PORT_DEFAULT="${XYMONDPORT:-1984}"
@@ -23,16 +24,22 @@ if [ $# -lt 2 ]; then
     exit 1
 fi
 
-SERVERS=$1
-MSG=$2
+SERVERS=${1}
+MSG=${2}
+# A whitespace-only recipient list used to report success without sending.
+set -f
+# shellcheck disable=SC2086 # Split the recipient list, never expand pathnames.
+set -- ${SERVERS}
+[ "${#}" -gt 0 ] || { printf '%s\n' 'No Xymon server specified' >&2; exit 2; }
+case "${TIMEOUT}" in ''|*[!0-9]*|0) printf '%s\n' 'XYMON_SEND_TIMEOUT must be a positive integer' >&2; exit 2 ;; esac
 
 TMPF=$(mktemp "${TMPDIR:-/tmp}/xymonsend.XXXXXX") || exit 1
 trap 'rm -f "$TMPF"' EXIT INT TERM
 
 if [ "$MSG" = "-" ]; then
-    cat > "$TMPF"
+    cat > "${TMPF}" || exit 1
 else
-    printf '%s\n' "$MSG" > "$TMPF"
+    printf '%s\n' "${MSG}" > "${TMPF}" || exit 1
 fi
 
 TRANSPORT=""
@@ -50,8 +57,11 @@ fi
 # Does this nc support a connection timeout? (BusyBox nc without -w
 # still terminates when the server closes, -w is just a safety net.)
 NC_W=""
+NC_EOF=""
 if [ "$TRANSPORT" = "nc" ]; then
-    if nc -h 2>&1 | grep -q -- '-w'; then
+    NC_HELP=$(nc -h 2>&1 || :)
+    if printf '%s\n' "${NC_HELP}" | grep -q -- '-N'; then NC_EOF=-N; fi
+    if printf '%s\n' "${NC_HELP}" | grep -q -- '-w'; then
         NC_W=yes
     fi
 fi
@@ -61,9 +71,11 @@ send_one() {
     case "$TRANSPORT" in
         nc)
             if [ -n "$NC_W" ]; then
-                nc -w "$TIMEOUT" "$1" "$2" < "$TMPF" > /dev/null
+                # shellcheck disable=SC2086 # Optional, detected nc flag only.
+                nc ${NC_EOF} -w "${TIMEOUT}" "${1}" "${2}" < "${TMPF}" > /dev/null
             else
-                nc "$1" "$2" < "$TMPF" > /dev/null
+                # shellcheck disable=SC2086 # Optional, detected nc flag only.
+                nc ${NC_EOF} "${1}" "${2}" < "${TMPF}" > /dev/null
             fi
             ;;
         ncat)

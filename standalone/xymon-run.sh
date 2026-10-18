@@ -30,22 +30,26 @@
 #   /etc/xymon-standalone.cfg (legacy), $XYMONHOME/etc/standalone.cfg
 #
 # Typically driven by cron - see crontab.example.
+# Version: 1.0.1 (2026-10-18)
 set -u
 
 BASEDIR=$(cd "$(dirname "$0")" && pwd) || exit 1
 
 usage() {
-    echo "usage: $0 [-n] all|EXTENSION [EXTENSION ...]" >&2
+    printf 'Usage: %s [-n] all|EXTENSION [EXTENSION ...]\n' "${0}"
+    printf '%s\n' '  -n          Print reports without sending them.' '  -h, --help  Show this help.'
+    printf '%s\n' 'Configuration: STANDALONE_CFG (see standalone.cfg).' 'Example: xymon-run.sh -n memory disk'
 }
 
+case "${1:-}" in -h|--help) usage; exit 0 ;; esac
 DRYRUN=""
 if [ "${1:-}" = "-n" ]; then
     DRYRUN=yes
     shift
 fi
 if [ $# -lt 1 ]; then
-    usage
-    exit 1
+    usage >&2
+    exit 2
 fi
 
 XYMONHOME="${XYMONHOME:-$BASEDIR}"
@@ -113,11 +117,23 @@ is_off() {
 }
 
 run_ext() {
-    r_ext=$1
+    r_ext=${1}
+    # The name is also a log filename: reject traversal and option injection
+    # before either executing a script or opening its log.
+    case "${r_ext}" in
+        ''|-*|*[!A-Za-z0-9_-]*)
+            printf 'Invalid extension name: %s\n' "${r_ext}" >&2
+            return 2 ;;
+    esac
     case "$r_ext" in
         xymonext|xymonext-send)
             echo "$0: $r_ext is the measurement wrapper, not a test" \
                  "- remove it from TESTS" >&2
+            return 1
+            ;;
+        claude-expiry)
+            echo "$0: $r_ext is the privileged helper of claude, not a" \
+                 "test - remove it from TESTS" >&2
             return 1
             ;;
     esac

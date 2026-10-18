@@ -17,7 +17,7 @@
 # NCV - keep an explicit U: a failed poll becomes a graph gap, never a
 # zero. Only read-only TR-064 actions are ever sent.
 #
-# Version: 1.0.6  (2026-10-18)
+# Version: 1.0.7  (2026-10-18)
 #
 # Program flow:
 # 1. Resolve settings (defaults < config < environment < CLI), validate
@@ -35,7 +35,7 @@
 # Usage: fritzbox.sh --config FILE [--host NAME] [--dry-run] [--help]
 set -u
 CONFIG_NAME=fritzbox.cfg
-SCRIPT_VERSION=1.0.6
+SCRIPT_VERSION=1.0.7
 
 usage() {
     cat <<'EOF'
@@ -1449,31 +1449,38 @@ mod_fw() {
     f_enabled=$(awk '$1 == "1"' "${cdir}/maps" | wc -l | tr -d ' ')
 
     # Settings that open the box: UPnP port changes by applications,
-    # remote access to the user interface, MyFRITZ, DynDNS.
+    # remote access to the user interface, MyFRITZ, DynDNS. A failed
+    # query makes the poll partial (the baseline is kept), but does not
+    # make the port mapping list above incomplete.
+    f_maps_partial=${partial}
     f_settings=''
     f_s=urn:dslforum-org:service:X_AVM-DE_UPnP:1
-    if [ "${host_abort}" = 0 ] && has_service "${f_s}" && tr64 "${f_s}" GetInfo; then
+    if [ "${host_abort}" = 0 ] && has_service "${f_s}" && need "${f_s}" GetInfo; then
         f_settings="${f_settings} upnp=$(field NewEnable | tr -cd '0-9')"
     fi
     f_s=urn:schemas-upnp-org:service:WANCommonInterfaceConfig:1
-    if [ "${host_abort}" = 0 ] && has_igd "${f_s}" && igd "${f_s}" GetAddonInfos; then
-        f_v=$(field NewUpnpControlEnabled | tr -cd '0-9')
-        f_settings="${f_settings} upnp_portmapping=${f_v:-?}"
+    if [ "${host_abort}" = 0 ] && has_igd "${f_s}" ; then
+        if igd "${f_s}" GetAddonInfos; then
+            f_v=$(field NewUpnpControlEnabled | tr -cd '0-9')
+            f_settings="${f_settings} upnp_portmapping=${f_v:-?}"
+        else
+            fail_call "$?" "${f_s}" GetAddonInfos
+        fi
     fi
     f_s=urn:dslforum-org:service:X_AVM-DE_RemoteAccess:1
     if [ "${host_abort}" = 0 ] && has_service "${f_s}"; then
-        if tr64 "${f_s}" GetInfo; then
+        if need "${f_s}" GetInfo; then
             f_settings="${f_settings} remote_access=$(field NewEnabled | tr -cd '0-9')"
             f_settings="${f_settings} remote_port=$(field NewPort | tr -cd '0-9')"
             f_settings="${f_settings} letsencrypt=$(field NewLetsEncryptEnabled | tr -cd '0-9')"
         fi
-        if [ "${host_abort}" = 0 ] && tr64 "${f_s}" GetDDNSInfo; then
+        if [ "${host_abort}" = 0 ] && need "${f_s}" GetDDNSInfo; then
             f_settings="${f_settings} dyndns=$(field NewEnabled | tr -cd '0-9')"
             f_ddns4=$(clean "$(field NewStatusIPv4)"); f_ddns6=$(clean "$(field NewStatusIPv6)")
         fi
     fi
     f_s=urn:dslforum-org:service:X_AVM-DE_MyFritz:1
-    if [ "${host_abort}" = 0 ] && has_service "${f_s}" && tr64 "${f_s}" GetInfo; then
+    if [ "${host_abort}" = 0 ] && has_service "${f_s}" && need "${f_s}" GetInfo; then
         f_settings="${f_settings} myfritz=$(field NewEnabled | tr -cd '0-9')"
         f_settings="${f_settings} myfritz_registered=$(field NewDeviceRegistered | tr -cd '0-9')"
         f_mfstate=$(clean "$(field NewState)")
@@ -1516,13 +1523,14 @@ mod_fw() {
         save_state fw <"${f_state}"
     fi
     holds_note "$(cat "${cdir}/holds")"
-    if [ "${partial}" = 0 ] && [ "${host_abort}" = 0 ]; then
+    if [ "${f_maps_partial}" = 0 ] && [ "${host_abort}" = 0 ]; then
         metric portmaps "${f_count:+${f_enabled}}"
     else
         metric portmaps U
     fi
 
-    if [ "${partial}" = 1 ]; then summary='port mapping list incomplete'
+    if [ "${f_maps_partial}" = 1 ]; then summary='port mapping list incomplete'
+    elif [ "${partial}" = 1 ]; then summary="${f_enabled} port mapping(s), exposure settings incomplete"
     else summary="${f_enabled} port mapping(s)"; fi
     case " ${f_settings} " in *" remote_access=1 "*) summary="${summary}, remote access on" ;; esac
     [ -s "${cdir}/notes" ] || plain 'No unexpected exposure'

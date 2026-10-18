@@ -20,6 +20,8 @@
 # (see the shipped opkg.cfg; the config file wins over the
 # environment).
 
+# Version: 1.0.1 (2026-10-18)
+
 set -u
 
 # Every number in a Xymon message must use a decimal point. awk formats
@@ -88,7 +90,7 @@ send_report() {
     if [ -n "${XYMON:-}" ] && [ -n "${XYMSRV:-}" ]; then
         "$XYMON" "$XYMSRV" "status ${MACHINE}.${COLUMN} $1 $(date) - $2
 
-$(cat "$3")"
+$(cat "$3")" || return 1
     else
         # No Xymon environment: print the message (manual test run)
         echo "status ${MACHINE}.${COLUMN} $1 $(date) - $2"
@@ -107,7 +109,7 @@ trap 'rm -rf "$WORKDIR"' EXIT INT TERM
 clear_report() {
     printf '%s\n' "$1" > "$WORKDIR/status"
     send_report clear "update check not applicable" "$WORKDIR/status"
-    exit 0
+    exit "$?"
 }
 
 if [ -z "$OPKG_BIN" ]; then
@@ -158,10 +160,10 @@ lists_state() {
         echo stale
         return
     fi
-    if find "$OPKG_LISTSDIR" -type f -newer "$WORKDIR/ref" -print 2>/dev/null | grep -q .; then
-        echo fresh
-    else
+    if find "${OPKG_LISTSDIR}" -type f ! -newer "${WORKDIR}/ref" -print 2>/dev/null | grep -q .; then
         echo stale
+    else
+        echo fresh
     fi
 }
 
@@ -216,7 +218,7 @@ if [ "$STATE" = "missing" ]; then
         fi
     } > "$WORKDIR/final"
     send_report yellow "update status unknown" "$WORKDIR/final"
-    exit 0
+    exit "$?"
 fi
 
 if ! "$OPKG_BIN" list-upgradable > "$WORKDIR/raw" 2> "$WORKDIR/raw.err"; then
@@ -226,7 +228,7 @@ if ! "$OPKG_BIN" list-upgradable > "$WORKDIR/raw" 2> "$WORKDIR/raw.err"; then
         cat "$WORKDIR/raw" "$WORKDIR/raw.err" 2>/dev/null | tail -n 3 | sed 's/^/    /'
     } > "$WORKDIR/final"
     send_report yellow "update status unknown" "$WORKDIR/final"
-    exit 0
+    exit "$?"
 fi
 
 # Package lines look like "name - oldversion - newversion"; opkg mixes
@@ -308,4 +310,4 @@ fi
 } > "$WORKDIR/final"
 
 send_report "$COLOR" "$SUMMARY" "$WORKDIR/final"
-exit 0
+exit "$?"

@@ -57,6 +57,12 @@ The evaluated value is df's own `Use%`/`Capacity` column. Only
 `green`/`yellow`/`red` are sent (`clear` when df is unusable) — never
 `blue`/`purple`, those are managed by the server.
 
+If df exits with an error but still lists filesystems (e.g. a stale
+network mount), the listed ones are evaluated as usual and the column
+is at least **yellow**: coverage is incomplete. df's error messages are
+shown as `&clear` lines. `DISK_EXCLUDE` cannot silence this, because df
+itself fails before any filtering.
+
 ## Configuration
 
 Every setting is an environment variable with a built-in default and

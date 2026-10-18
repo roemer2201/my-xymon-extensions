@@ -162,7 +162,9 @@ settings `upnp` (X_AVM-DE_UPnP), `upnp_portmapping` (IGD: devices may
 open ports themselves), `remote_access`/`remote_port`/`letsencrypt`
 (X_AVM-DE_RemoteAccess), `dyndns` and its IPv4/IPv6 status, `myfritz`
 and `myfritz_registered`. IPv6 port sharing (pinholes) is not visible
-over TR-064.
+over TR-064. A failed settings query warns and keeps the previous
+baseline (a missing setting is not a change); the mapping count is still
+reported when the mapping list itself was read completely.
 
 **fritzlan** - LANEthernetInterfaceConfig GetInfo/GetStatistics (64-bit
 byte counters; "to LAN" is what the box sent into the LAN) and the host

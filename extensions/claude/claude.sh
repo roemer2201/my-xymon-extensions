@@ -23,6 +23,8 @@
 # Configuration: environment and/or
 # $XYMONHOME/etc/my-xymon-extensions/claude.cfg (the file wins).
 
+# Version: 1.0.1 (2026-10-18)
+
 set -u
 
 # Every number in a Xymon message must use a decimal point. awk formats
@@ -106,7 +108,7 @@ send_report() {
     if [ -n "${XYMON:-}" ] && [ -n "${XYMSRV:-}" ]; then
         "$XYMON" "$XYMSRV" "status ${MACHINE}.${COLUMN} $1 $(date) - $2
 
-$(cat "$3")"
+$(cat "$3")" || return 1
     else
         # No Xymon environment: print the message (manual test run)
         echo "status ${MACHINE}.${COLUMN} $1 $(date) - $2"
@@ -152,7 +154,7 @@ trap 'rm -rf "$WORKDIR"' EXIT INT TERM
 clear_report() {
     printf '%s\n' "$1" > "$WORKDIR/status"
     send_report clear "login check not applicable" "$WORKDIR/status"
-    exit 0
+    exit "$?"
 }
 
 # --- locate the privileged helper ---------------------------------------
@@ -332,4 +334,4 @@ fi
 
 [ -n "$SUMMARY" ] || SUMMARY="login status"
 send_report "$OVERALL" "$SUMMARY" "$WORKDIR/body"
-exit 0
+exit "$?"

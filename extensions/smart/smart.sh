@@ -22,6 +22,8 @@
 # Runs unmodified on Ubuntu, Rocky Linux (EL) and FreeBSD.
 # Configuration: $XYMONHOME/etc/my-xymon-extensions/smart.cfg (see the shipped smart.cfg).
 
+# Version: 1.0.1 (2026-10-18)
+
 set -u
 
 # Every number in a Xymon message must use a decimal point. awk formats
@@ -266,10 +268,10 @@ send_report() {
     if [ -n "${XYMON:-}" ] && [ -n "${XYMSRV:-}" ]; then
         "$XYMON" "$XYMSRV" "status ${MACHINE}.${COLUMN} $1 $(date) - SMART is $1
 
-$(cat "$2")"
+$(cat "$2")" || return 1
         if [ -n "${3:-}" ] && [ -s "${3:-}" ]; then
             "$XYMON" "$XYMSRV" "data ${MACHINE}.${COLUMN}
-$(cat "$3")"
+$(cat "$3")" || return 1
         fi
     else
         # No Xymon environment: print the messages (manual test run)
@@ -436,7 +438,7 @@ NOW=$(date +%s)
 clear_report() {
     printf '%s\n' "$1" > "$STATUS"
     send_report clear "$STATUS"
-    exit 0
+    exit "$?"
 }
 
 # --- locate smartctl and mmc --------------------------------------------
@@ -492,6 +494,7 @@ fi
 
 # --- privileges ---------------------------------------------------------
 SUDO=""
+MMC_FAIL=yellow     # color of an unreadable eMMC device
 if [ "$(id -u)" -ne 0 ]; then
     case "$USE_SUDO" in
         no)
@@ -501,7 +504,8 @@ if [ "$(id -u)" -ne 0 ]; then
             ;;
         *)
             if [ -z "$SMARTCTL" ]; then
-                :   # eMMC only: try without sudo; failures show as clear
+                # eMMC only: try without sudo; failures show as clear
+                MMC_FAIL=clear
             elif sudo -n "$SMARTCTL" --version >/dev/null 2>&1; then
                 SUDO="sudo -n"
             else
@@ -551,7 +555,7 @@ if [ ! -s "$WORKDIR/devices" ] && [ -z "$MMCLIST" ]; then
 fi
 
 # --- per-device checks --------------------------------------------------
-OVERALL=green
+OVERALL=clear
 NDEV=0
 
 while IFS='|' read -r dev opts alias <&3; do
@@ -563,6 +567,7 @@ while IFS='|' read -r dev opts alias <&3; do
 
     # shellcheck disable=SC2086  # $nsopt/$opts are intentionally word-split
     out=$(smartrun -i -H -A $nsopt $opts "$dev")
+    smart_rc=$?
 
     case "$out" in
         *"Device is in STANDBY"*|*"Device is in SLEEP"*)
@@ -571,9 +576,16 @@ while IFS='|' read -r dev opts alias <&3; do
             ;;
     esac
 
+    # Without any "=== START OF" section the device could not be opened
+    # or identified (exit bits 0/1). smartctl runs with root or sudo
+    # here (auto mode verifies that above), so this is a failure, not a
+    # missing prerequisite.
     if ! printf '%s\n' "$out" | grep -q "=== START OF"; then
+        OVERALL=$(worst "${OVERALL}" yellow)
+        # The summary must name the reason for the yellow column.
+        printf '&yellow %s: cannot read SMART data\n' "${dev}" >> "${NOTES}"
         {
-            printf '&clear %s: cannot read SMART data:\n' "$dev"
+            printf '&yellow %s: cannot read SMART data:\n' "$dev"
             printf '%s\n' "$out" | tail -n 2 | sed -e 's/^/    /'
             printf '\n'
         } >> "$STATUS"
@@ -698,8 +710,35 @@ while IFS='|' read -r dev opts alias <&3; do
         END { for (m in v) print m, v[m] }' \
         "$WORKDIR/metrics.raw" | sort > "$WORKDIR/metrics"
 
+    # Exit bit 2: a SMART command failed. smartctl sets it for optional
+    # commands too, e.g. "Read SMART Thresholds failed" still prints the
+    # attributes (ataprint.cpp), so it only counts when data this check
+    # needs is missing: the health verdict or every metric ("Read SMART
+    # Data failed" next to a PASSED verdict). A device without SMART
+    # support is not applicable, not incomplete.
+    s_incomplete=""
+    s_diag=""
+    if [ "$((smart_rc & 4))" -ne 0 ] \
+        && { [ -z "$health" ] || [ ! -s "$WORKDIR/metrics" ]; } \
+        && ! printf '%s\n' "$out" | grep -Eq '^SMART support is: +Unavailable'; then
+        s_incomplete=yes
+        s_diag=$(printf '%s\n' "$out" | grep 'failed' | head -n 3)
+    fi
+
     if [ ! -s "$WORKDIR/metrics" ] && [ -z "$health" ]; then
-        printf '&clear %s (%s): no usable SMART data\n\n' "$devlabel" "$model" >> "$STATUS"
+        if [ -n "${s_incomplete}" ]; then
+            OVERALL=$(worst "${OVERALL}" yellow)
+            printf '&yellow %s: SMART query failed (smartctl exit %s)\n' \
+                "${devlabel}" "${smart_rc}" >> "${NOTES}"
+            {
+                printf '&yellow %s (%s): no usable SMART data, smartctl exit %s:\n' \
+                    "${devlabel}" "${model}" "${smart_rc}"
+                [ -n "${s_diag}" ] && printf '%s\n' "${s_diag}" | sed -e 's/^/    /'
+                printf '\n'
+            } >> "${STATUS}"
+        else
+            printf '&clear %s (%s): no usable SMART data\n\n' "$devlabel" "$model" >> "$STATUS"
+        fi
         continue
     fi
 
@@ -723,6 +762,11 @@ while IFS='|' read -r dev opts alias <&3; do
     if [ -n "$critwarn" ] && [ "$critwarn" != "0x00" ] && [ "$critwarn" != "0" ]; then
         devcolor=$(worst "$devcolor" yellow)
         printf '&yellow %s: NVMe critical warning flags set (%s)\n' "$devlabel" "$critwarn" >> "$NOTES"
+    fi
+    if [ -n "${s_incomplete}" ]; then
+        devcolor=$(worst "${devcolor}" yellow)
+        printf '&yellow %s: SMART query incomplete (smartctl exit %s)\n' \
+            "${devlabel}" "${smart_rc}" >> "${NOTES}"
     fi
 
     # --- DWPD -------------------------------------------------------
@@ -846,6 +890,7 @@ while IFS='|' read -r dev opts alias <&3; do
         [ -n "$health" ] && printf ' - health: %s' "$health"
         printf '%s\n' "$dbnote"
         [ -n "$pairs" ] && printf '    %s\n' "${pairs# }"
+        [ -n "${s_diag}" ] && printf '%s\n' "${s_diag}" | sed -e 's/^/    /'
         printf '\n'
     } >> "$STATUS"
 
@@ -898,8 +943,12 @@ for dev in $MMCLIST; do
     out=$(mmcrun extcsd read "$dev")
 
     if ! printf '%s\n' "$out" | grep -q "Extended CSD rev"; then
+        OVERALL=$(worst "${OVERALL}" "${MMC_FAIL}")
+        if [ "${MMC_FAIL}" != clear ]; then
+            printf '&%s %s: cannot read eMMC EXT_CSD\n' "${MMC_FAIL}" "${dev}" >> "${NOTES}"
+        fi
         {
-            printf '&clear %s: cannot read eMMC EXT_CSD:\n' "$dev"
+            printf '&%s %s: cannot read eMMC EXT_CSD:\n' "${MMC_FAIL}" "$dev"
             printf '%s\n' "$out" | tail -n 2 | sed -e 's/^/    /'
             printf '\n'
         } >> "$STATUS"
@@ -996,8 +1045,12 @@ awk -v now="$NOW" -v ret="$((DWPD_WINDOW_HOURS * 7200))" '
 # Persist the samples (best effort - a read-only or missing $XYMONTMP
 # only disables dwpdrecent, it must not break the report).
 if [ -s "$NEWSTATE" ]; then
-    if cat "$NEWSTATE" > "${STATEFILE}.$$" 2>/dev/null; then
-        mv "${STATEFILE}.$$" "$STATEFILE" 2>/dev/null || rm -f "${STATEFILE}.$$"
+    # Reserve the temporary path exclusively; never follow a pre-created symlink.
+    STATE_TMP=$(umask 077; mktemp "${STATEFILE}.XXXXXX") || STATE_TMP=""
+    if [ -n "${STATE_TMP}" ]; then
+        if ! cat "${NEWSTATE}" > "${STATE_TMP}" || ! mv "${STATE_TMP}" "${STATEFILE}"; then
+            rm -f -- "${STATE_TMP}"
+        fi
     fi
 fi
 
@@ -1005,7 +1058,11 @@ fi
     if [ -s "$NOTES" ]; then
         cat "$NOTES"
     else
-        printf 'All monitored disks are healthy\n'
+        if [ "${OVERALL}" = clear ]; then
+            printf 'No usable disk health measurements this poll\n'
+        else
+            printf 'All monitored disks are healthy\n'
+        fi
     fi
     printf '\n'
     cat "$STATUS"
@@ -1015,4 +1072,4 @@ fi
 } > "$WORKDIR/final"
 
 send_report "$OVERALL" "$WORKDIR/final" "$DATA"
-exit 0
+exit "$?"
