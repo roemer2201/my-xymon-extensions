@@ -31,6 +31,8 @@
 # (see the shipped wifi.cfg; the config file wins over the
 # environment).
 
+# Version: 1.0.1 (2026-10-18)
+
 set -u
 
 # Every number in a Xymon message must use a decimal point. awk formats
@@ -156,10 +158,10 @@ send_report() {
     if [ -n "${XYMON:-}" ] && [ -n "${XYMSRV:-}" ]; then
         "$XYMON" "$XYMSRV" "status ${MACHINE}.${COLUMN} $1 $(date) - wifi: ${SUMMARY:-$1}
 
-$(cat "$2")"
+$(cat "$2")" || return 1
         if [ -n "${3:-}" ] && [ -s "${3:-}" ]; then
             "$XYMON" "$XYMSRV" "data ${MACHINE}.${COLUMN}
-$(cat "$3")"
+$(cat "$3")" || return 1
         fi
     else
         # No Xymon environment: print the messages (manual test run)
@@ -194,7 +196,7 @@ clear_report() {
     SUMMARY="not applicable"
     printf '%s\n' "$1" > "$WORKDIR/clear"
     send_report clear "$WORKDIR/clear"
-    exit 0
+    exit "$?"
 }
 
 # ncv <name> <numeric-value> -- append an RRD line to the data message
@@ -497,8 +499,12 @@ ncv clients_total "$TOTAL"
 # Remember this run's counters (best effort - a read-only $XYMONTMP
 # only disables the rate calculation, it must not kill the report).
 if [ -s "$NEWSTATE" ]; then
-    if cat "$NEWSTATE" > "${STATEFILE}.$$" 2>/dev/null; then
-        mv "${STATEFILE}.$$" "$STATEFILE" 2>/dev/null || rm -f "${STATEFILE}.$$"
+    # Reserve the temporary path exclusively; never follow a pre-created symlink.
+    STATE_TMP=$(umask 077; mktemp "${STATEFILE}.XXXXXX") || STATE_TMP=""
+    if [ -n "${STATE_TMP}" ]; then
+        if ! cat "${NEWSTATE}" > "${STATE_TMP}" || ! mv "${STATE_TMP}" "${STATEFILE}"; then
+            rm -f -- "${STATE_TMP}"
+        fi
     fi
 fi
 
@@ -517,4 +523,4 @@ SUMMARY="${TOTAL:-?} client(s) on $NIF AP interface(s)"
 } > "$WORKDIR/final"
 
 send_report green "$WORKDIR/final" "$DATA"
-exit 0
+exit "$?"

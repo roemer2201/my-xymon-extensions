@@ -20,6 +20,8 @@
 # (see the shipped disk.cfg; the config file wins over the
 # environment).
 
+# Version: 1.0.1 (2026-10-18)
+
 set -u
 
 # Every number in a Xymon message must use a decimal point. awk formats
@@ -103,7 +105,7 @@ send_report() {
     if [ -n "${XYMON:-}" ] && [ -n "${XYMSRV:-}" ]; then
         "$XYMON" "$XYMSRV" "status ${MACHINE}.${COLUMN} $1 $(date) - disk is $1
 
-$(cat "$2")"
+$(cat "$2")" || return 1
     else
         # No Xymon environment: print the message (manual test run)
         echo "status ${MACHINE}.${COLUMN} $1 $(date) - disk is $1"
@@ -126,14 +128,14 @@ trap 'rm -rf "$WORKDIR"' EXIT INT TERM
 clear_report() {
     printf '&clear %s\n' "$1" > "$WORKDIR/status"
     send_report clear "$WORKDIR/status"
-    exit 0
+    exit "$?"
 }
 
 if ! command -v "$DISK_DF" >/dev/null 2>&1; then
     clear_report "df not found on this host (looked for \"${DISK_DF}\")."
 fi
 
-"$DISK_DF" -P -k > "$WORKDIR/df.out" 2>/dev/null
+"${DISK_DF}" -P -k > "${WORKDIR}/df.out" 2> "${WORKDIR}/df.err"
 DFRC=$?
 
 COLOR=green
@@ -216,6 +218,12 @@ if [ "$COUNT" -eq 0 ]; then
     clear_report "\"${DISK_DF} -P -k\" produced no usable filesystem lines (exit code ${DFRC})."
 fi
 
+if [ "${DFRC}" -ne 0 ]; then
+    [ "${COLOR}" = red ] || COLOR=yellow
+    printf '&yellow df failed (exit %s): filesystem coverage may be incomplete.\n' "${DFRC}" >> "${WORKDIR}/details"
+    sed 's/^/\&clear /' "${WORKDIR}/df.err" >> "${WORKDIR}/details"
+fi
+
 # ----------------------------------------------------------------------
 # Server-side parser (xymond_rrd, do_disk.c) - read before touching
 # the wording of anything below!
@@ -275,4 +283,4 @@ fi
 } > "$WORKDIR/final"
 
 send_report "$COLOR" "$WORKDIR/final"
-exit 0
+exit "$?"

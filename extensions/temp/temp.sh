@@ -20,6 +20,8 @@
 # Configuration: environment variables and/or $XYMONHOME/etc/my-xymon-extensions/temp.cfg
 # (see the shipped temp.cfg; the config file wins over the environment).
 
+# Version: 1.0.1 (2026-10-18)
+
 set -u
 
 # Every number in a Xymon message must use a decimal point. awk formats
@@ -121,7 +123,7 @@ send_report() {
     if [ -n "${XYMON:-}" ] && [ -n "${XYMSRV:-}" ]; then
         "$XYMON" "$XYMSRV" "status ${MACHINE}.${COLUMN} $1 $(date) - temperature is $1
 
-$(cat "$2")"
+$(cat "$2")" || return 1
     else
         # No Xymon environment: print the message (manual test run)
         echo "status ${MACHINE}.${COLUMN} $1 $(date) - temperature is $1"
@@ -229,7 +231,7 @@ if [ "$NSENSORS" -eq 0 ]; then
         printf '<!-- ncv_skipend -->\n'
     } >> "$STATUS"
     send_report clear "$STATUS"
-    exit 0
+    exit "$?"
 fi
 
 {
@@ -244,4 +246,4 @@ fi
 } > "$WORKDIR/final"
 
 send_report "$OVERALL" "$WORKDIR/final"
-exit 0
+exit "$?"

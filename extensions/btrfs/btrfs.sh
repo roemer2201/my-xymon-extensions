@@ -50,7 +50,7 @@
 # Linux only; other platforms and hosts without a mounted btrfs report
 # "clear".
 #
-# Version: 1.0.1 (2026-10-12)
+# Version: 1.0.2 (2026-10-18)
 #
 # Program flow:
 #   1. Parse help, load configuration and map mounted filesystems to their devices.
@@ -242,10 +242,10 @@ send_report() {
     if [ -n "${XYMON:-}" ] && [ -n "${XYMSRV:-}" ]; then
         "$XYMON" "$XYMSRV" "status ${MACHINE}.${COLUMN} $1 $(date) - btrfs: ${SUMMARY:-$1}
 
-$(cat "$2")"
+$(cat "$2")" || return 1
         if [ -n "${3:-}" ] && [ -s "${3:-}" ]; then
             "$XYMON" "$XYMSRV" "data ${MACHINE}.${COLUMN}
-$(cat "$3")"
+$(cat "$3")" || return 1
         fi
     else
         # No Xymon environment: print the messages (manual test run)
@@ -279,7 +279,7 @@ clear_report() {
         printf '<!-- ncv_skipend -->\n'
     } > "$WORKDIR/clear"
     send_report clear "$WORKDIR/clear"
-    exit 0
+    exit "$?"
 }
 
 is_yes "$BTRFS_ENABLE" ||
@@ -950,8 +950,12 @@ fi
 # Remember this run's counters (best effort - a read-only $XYMONTMP
 # only disables the rates and the "grew" detection).
 REALSTATE="${XYMONTMP}/btrfs.${MACHINE}.state"
-if cat "$WORKDIR/newstate" > "${REALSTATE}.$$" 2>/dev/null; then
-    mv "${REALSTATE}.$$" "$REALSTATE" 2>/dev/null || rm -f "${REALSTATE}.$$"
+# Reserve an unpredictable temporary path and keep the final state private.
+STATE_TMP=$(umask 077; mktemp "${REALSTATE}.XXXXXX") || STATE_TMP=""
+if [ -n "${STATE_TMP}" ]; then
+    if ! cat "${WORKDIR}/newstate" > "${STATE_TMP}" || ! mv "${STATE_TMP}" "${REALSTATE}"; then
+        rm -f -- "${STATE_TMP}"
+    fi
 fi
 
 WORST=green
@@ -986,4 +990,4 @@ fi
 } > "$WORKDIR/final"
 
 send_report "$WORST" "$WORKDIR/final" "$WORKDIR/data"
-exit 0
+exit "$?"

@@ -168,10 +168,19 @@ extension from this repository (or your own) on such a host:
 
 1. Copy `extensions/<name>/<name>.sh` to
    `/usr/lib/xymon-standalone/ext/<name>.sh`.
-2. Optional config to `/etc/xymon-standalone/<name>.cfg`.
+2. Optional config to `/etc/xymon-standalone/my-xymon-extensions/<name>.cfg`.
 3. Add it to `TESTS` in `/etc/xymon-standalone/standalone.cfg` so
    `xymon-run.sh all` picks it up (or schedule `xymon-run.sh <name>`
    separately).
 
-The `make opkg` package already ships every extension in the repo, so
-rebuilding and reinstalling the package achieves the same.
+The `make opkg` package ships the client extensions and measurement
+wrapper. The server-only powerline, fritz-wifi and fritzbox collectors
+belong to the server package. Rebuild and reinstall the appropriate
+package after changing an extension.
+
+The runner accepts plain extension names (letters, digits, `_` and `-`),
+so executable and log paths stay inside their configured directories.
+Helpers such as `claude-expiry` must be invoked by their extension.
+Failed status or data delivery now makes the client extension and runner
+exit nonzero. With OpenBSD nc the sender detects and uses `-N` to finish
+the request at stdin EOF instead of waiting for an idle timeout.

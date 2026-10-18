@@ -56,6 +56,8 @@
 # one of ours that ends up exported must never change what systemctl
 # does.
 
+# Version: 1.0.1 (2026-10-18)
+
 set -u
 
 # No pathname expansion anywhere: the unit lists and glob pattern lists
@@ -173,10 +175,10 @@ send_report() {
     if [ -n "${XYMON:-}" ] && [ -n "${XYMSRV:-}" ]; then
         "$XYMON" "$XYMSRV" "status ${MACHINE}.${COLUMN} $1 $(date) - systemd: ${SUMMARY:-$1}
 
-$(cat "$2")"
+$(cat "$2")" || return 1
         if [ -n "${3:-}" ] && [ -s "${3:-}" ]; then
             "$XYMON" "$XYMSRV" "data ${MACHINE}.${COLUMN}
-$(cat "$3")"
+$(cat "$3")" || return 1
         fi
     else
         # No Xymon environment: print the messages (manual test run)
@@ -215,7 +217,7 @@ short_report() {
         printf '<!-- ncv_skipend -->\n'
     } > "$WORKDIR/short"
     send_report "$1" "$WORKDIR/short"
-    exit 0
+    exit "$?"
 }
 
 # err_text -> what systemctl printed on stderr, indented for the status
@@ -544,8 +546,12 @@ fi
 # Remember this run's counters (best effort - a read-only $XYMONTMP
 # only disables the restart detection, it must not kill the report).
 if [ "$RESTARTS_OK" = yes ]; then
-    if cat "$NEWSTATE" > "${STATEFILE}.$$" 2>/dev/null; then
-        mv "${STATEFILE}.$$" "$STATEFILE" 2>/dev/null || rm -f "${STATEFILE}.$$"
+    # Reserve the temporary path exclusively; never follow a pre-created symlink.
+    STATE_TMP=$(umask 077; mktemp "${STATEFILE}.XXXXXX") || STATE_TMP=""
+    if [ -n "${STATE_TMP}" ]; then
+        if ! cat "${NEWSTATE}" > "${STATE_TMP}" || ! mv "${STATE_TMP}" "${STATEFILE}"; then
+            rm -f -- "${STATE_TMP}"
+        fi
     fi
 fi
 
@@ -587,4 +593,4 @@ if [ "$RESTARTS_OK" = yes ] && [ "$HAVESTATE" = yes ]; then
 fi
 
 send_report "$WORST" "$STATUS" "$DATA"
-exit 0
+exit "$?"
