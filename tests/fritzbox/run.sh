@@ -201,6 +201,8 @@ ok ncv_matches_trends
 ok rrd fritzsys uptime 5344796
 ok rrd fritzsys clock_offset 0
 ok has '^    box time         2026-10-18T00:13:21\+02:00 \(offset 0 s\)$'
+ok has '^    default password no$'
+ok lacks 'factory default password'
 ok rrd fritzlog voip_fail U
 ok rrd fritzlog unmatched U
 # Old entries carry no color icon on the baseline.
@@ -342,6 +344,33 @@ ok has '^&yellow box clock is off by -100 s \(limit 60 s\)$'
 ok has '^Note: FRITZ!OS update available: 271\.08\.30$'
 ok has '^&yellow the last FRITZ!OS update failed'
 ok lacks 'restarted'
+reset_over
+
+# --- fritzsys: the factory default password ---------------------------------
+over lanconfigsecurity__GetInfo.xml 's|>0<|>1<|'
+run --set FRITZBOX_MODULES=sys
+ok status fritzsys yellow 'FRITZ!Box 7510 \(UI\), FRITZ!OS 8\.26, up 61d 20h 39m'
+ok has '^&yellow the box still uses its factory default password$'
+ok has '^    default password yes$'
+run --set FRITZBOX_MODULES=sys --set FRITZBOX_SYS_DEFAULTPW_COLOR=green
+ok status fritzsys green 'FRITZ!Box 7510 \(UI\), FRITZ!OS 8\.26, up 61d 20h 39m'
+ok has '^Note: the box still uses its factory default password$'
+run --set FRITZBOX_MODULES=sys --set FRITZBOX_SYS_DEFAULTPW_COLOR=blue
+ok exit_is 1
+# Without the field, or with a failing request: unknown, no color.
+over lanconfigsecurity__GetInfo.xml '/IsDefaultPasswordActive/d'
+run --set FRITZBOX_MODULES=sys
+ok status fritzsys green 'FRITZ!Box 7510 \(UI\), FRITZ!OS 8\.26, up 61d 20h 39m'
+ok has '^    default password unknown$'
+cp "${FB_DATA}/fault401.xml" "${OVER}/lanconfigsecurity__GetInfo.xml"
+run --set FRITZBOX_MODULES=sys
+ok status fritzsys green 'FRITZ!Box 7510 \(UI\), FRITZ!OS 8\.26, up 61d 20h 39m'
+ok has '^    default password unknown$'
+reset_over
+over tr64desc.xml '/LANConfigSecurity/d'
+run --set FRITZBOX_MODULES=sys
+ok has '^    default password unknown$'
+ok not asked '^lanconfigsecurity '
 reset_over
 
 # --- fritztel: an unregistered account is red; masking ------------------------

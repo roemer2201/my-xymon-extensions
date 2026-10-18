@@ -17,7 +17,7 @@
 # NCV - keep an explicit U: a failed poll becomes a graph gap, never a
 # zero. Only read-only TR-064 actions are ever sent.
 #
-# Version: 1.0.7  (2026-10-18)
+# Version: 1.1.0  (2026-10-18)
 #
 # Program flow:
 # 1. Resolve settings (defaults < config < environment < CLI), validate
@@ -35,7 +35,7 @@
 # Usage: fritzbox.sh --config FILE [--host NAME] [--dry-run] [--help]
 set -u
 CONFIG_NAME=fritzbox.cfg
-SCRIPT_VERSION=1.0.7
+SCRIPT_VERSION=1.1.0
 
 usage() {
     cat <<'EOF'
@@ -83,7 +83,8 @@ on each box's host, plus the adapter list read by powerline.sh.
       FRITZBOX_WAN_UTIL_WARN (0), FRITZBOX_WAN_UTIL_CRIT (0) percent
     fritzsys: FRITZBOX_SYS_CLOCK_WARN (60), FRITZBOX_SYS_CLOCK_CRIT
       (300) seconds; FRITZBOX_SYS_UPDATE_COLOR (yellow),
-      FRITZBOX_SYS_UPDATE_FAILED_COLOR (green)
+      FRITZBOX_SYS_UPDATE_FAILED_COLOR (green),
+      FRITZBOX_SYS_DEFAULTPW_COLOR (yellow)
     fritzlog: FRITZBOX_LOG_RULES (CONFIGDIR/fritzbox-log.rules),
       FRITZBOX_LOG_SHOW (20), FRITZBOX_LOG_UNMATCHED_COLOR (yellow)
     fritzfw: FRITZBOX_FW_EXPECTED (""), FRITZBOX_FW_COLOR (yellow)
@@ -128,7 +129,7 @@ EOF
 setting() {
     # shellcheck disable=SC2163 # Export a validated NAME=VALUE, not positional $1.
     case "${1%%=*}" in
-        FRITZBOX_ENABLED|FRITZBOX_TAG|FRITZBOX_HOSTS|FRITZBOX_USER|FRITZBOX_PASSFILE|FRITZBOX_PORT|FRITZBOX_CONNECT_TIMEOUT|FRITZBOX_MAX_TIME|FRITZBOX_RUN_BUDGET|FRITZBOX_LIFETIME|FRITZBOX_HOLD_MINUTES|FRITZBOX_STATE_DIR|FRITZBOX_MASK|FRITZBOX_MODULES|FRITZBOX_HOSTSCFG|FRITZBOX_XYMONCFG|FRITZBOX_CURL|FRITZBOX_DSL_MARGIN_WARN|FRITZBOX_DSL_MARGIN_CRIT|FRITZBOX_DSL_CRC_WARN|FRITZBOX_DSL_CRC_CRIT|FRITZBOX_DSL_WAN_SERVICE|FRITZBOX_WAN_MODE|FRITZBOX_WAN_UTIL_WARN|FRITZBOX_WAN_UTIL_CRIT|FRITZBOX_SYS_CLOCK_WARN|FRITZBOX_SYS_CLOCK_CRIT|FRITZBOX_SYS_UPDATE_COLOR|FRITZBOX_SYS_UPDATE_FAILED_COLOR|FRITZBOX_LOG_RULES|FRITZBOX_LOG_SHOW|FRITZBOX_LOG_UNMATCHED_COLOR|FRITZBOX_FW_EXPECTED|FRITZBOX_FW_COLOR|FRITZBOX_LAN_REQUIRED|FRITZBOX_LAN_REQUIRED_COLOR|FRITZBOX_LAN_NEW_MAC|FRITZBOX_TEL_COLOR|FRITZBOX_SILENT|FRITZBOX_VERBOSE|FRITZBOX_DEBUG|FRITZBOX_DRY_RUN|FRITZBOX_NOW) export "${1}" ;;
+        FRITZBOX_ENABLED|FRITZBOX_TAG|FRITZBOX_HOSTS|FRITZBOX_USER|FRITZBOX_PASSFILE|FRITZBOX_PORT|FRITZBOX_CONNECT_TIMEOUT|FRITZBOX_MAX_TIME|FRITZBOX_RUN_BUDGET|FRITZBOX_LIFETIME|FRITZBOX_HOLD_MINUTES|FRITZBOX_STATE_DIR|FRITZBOX_MASK|FRITZBOX_MODULES|FRITZBOX_HOSTSCFG|FRITZBOX_XYMONCFG|FRITZBOX_CURL|FRITZBOX_DSL_MARGIN_WARN|FRITZBOX_DSL_MARGIN_CRIT|FRITZBOX_DSL_CRC_WARN|FRITZBOX_DSL_CRC_CRIT|FRITZBOX_DSL_WAN_SERVICE|FRITZBOX_WAN_MODE|FRITZBOX_WAN_UTIL_WARN|FRITZBOX_WAN_UTIL_CRIT|FRITZBOX_SYS_CLOCK_WARN|FRITZBOX_SYS_CLOCK_CRIT|FRITZBOX_SYS_UPDATE_COLOR|FRITZBOX_SYS_UPDATE_FAILED_COLOR|FRITZBOX_SYS_DEFAULTPW_COLOR|FRITZBOX_LOG_RULES|FRITZBOX_LOG_SHOW|FRITZBOX_LOG_UNMATCHED_COLOR|FRITZBOX_FW_EXPECTED|FRITZBOX_FW_COLOR|FRITZBOX_LAN_REQUIRED|FRITZBOX_LAN_REQUIRED_COLOR|FRITZBOX_LAN_NEW_MAC|FRITZBOX_TEL_COLOR|FRITZBOX_SILENT|FRITZBOX_VERBOSE|FRITZBOX_DEBUG|FRITZBOX_DRY_RUN|FRITZBOX_NOW) export "${1}" ;;
         *) printf 'Unknown setting: %s\n' "${1%%=*}" >&2; exit 2 ;;
     esac
 }
@@ -202,6 +203,7 @@ FRITZBOX_DSL_CRC_WARN=30 FRITZBOX_DSL_CRC_CRIT=300 FRITZBOX_DSL_WAN_SERVICE=auto
 FRITZBOX_WAN_MODE=auto FRITZBOX_WAN_UTIL_WARN=0 FRITZBOX_WAN_UTIL_CRIT=0
 FRITZBOX_SYS_CLOCK_WARN=60 FRITZBOX_SYS_CLOCK_CRIT=300
 FRITZBOX_SYS_UPDATE_COLOR=yellow FRITZBOX_SYS_UPDATE_FAILED_COLOR=green
+FRITZBOX_SYS_DEFAULTPW_COLOR=yellow
 FRITZBOX_LOG_RULES=${confdir}/fritzbox-log.rules FRITZBOX_LOG_SHOW=20
 FRITZBOX_LOG_UNMATCHED_COLOR=yellow
 FRITZBOX_FW_EXPECTED='' FRITZBOX_FW_COLOR=yellow
@@ -283,7 +285,7 @@ done
 for n in "${FRITZBOX_DSL_MARGIN_WARN}" "${FRITZBOX_DSL_MARGIN_CRIT}" "${FRITZBOX_DSL_CRC_WARN}" "${FRITZBOX_DSL_CRC_CRIT}" "${FRITZBOX_WAN_UTIL_WARN}" "${FRITZBOX_WAN_UTIL_CRIT}"; do
     case "${n}" in ''|*[!0-9.]*|*.*.*|.*|*.) fail "Expected a number, got '${n}'" ;; esac
 done
-for n in "${FRITZBOX_SYS_UPDATE_COLOR}" "${FRITZBOX_SYS_UPDATE_FAILED_COLOR}" "${FRITZBOX_LOG_UNMATCHED_COLOR}" "${FRITZBOX_FW_COLOR}" "${FRITZBOX_LAN_REQUIRED_COLOR}" "${FRITZBOX_TEL_COLOR}"; do
+for n in "${FRITZBOX_SYS_UPDATE_COLOR}" "${FRITZBOX_SYS_UPDATE_FAILED_COLOR}" "${FRITZBOX_SYS_DEFAULTPW_COLOR}" "${FRITZBOX_LOG_UNMATCHED_COLOR}" "${FRITZBOX_FW_COLOR}" "${FRITZBOX_LAN_REQUIRED_COLOR}" "${FRITZBOX_TEL_COLOR}"; do
     case "${n}" in green|yellow|red) ;; *) fail "Colors must be green, yellow or red, got '${n}'" ;; esac
 done
 case "${FRITZBOX_DSL_WAN_SERVICE}" in auto|ppp|ip|off) ;; *) fail 'FRITZBOX_DSL_WAN_SERVICE must be auto, ppp, ip or off' ;; esac
@@ -1256,6 +1258,17 @@ mod_sys() {
         finding "${FRITZBOX_SYS_UPDATE_FAILED_COLOR}" "the last FRITZ!OS update failed${y_when:+ (${y_when})}"
     fi
 
+    # The factory default password (the one on the label) still in use.
+    # Not every box or FRITZ!OS has the field: then it stays unknown.
+    y_defpw=''
+    y_lsvc=urn:dslforum-org:service:LANConfigSecurity:1
+    if [ "${host_abort}" = 0 ] && has_service "${y_lsvc}" && tr64 "${y_lsvc}" GetInfo; then
+        y_defpw=$(field NewX_AVM-DE_IsDefaultPasswordActive | tr -cd '0-9')
+    fi
+    if [ "${y_defpw}" = 1 ]; then
+        finding "${FRITZBOX_SYS_DEFAULTPW_COLOR}" 'the box still uses its factory default password'
+    fi
+
     # Clock offset: box time against this server's clock at the reply.
     y_offset='' y_ntp1='' y_ntp2='' y_time=''
     y_tsvc=urn:dslforum-org:service:Time:1
@@ -1286,6 +1299,11 @@ mod_sys() {
     [ -z "${y_avail}${y_mode}" ] || detail '    updates          available=%s state=%s auto=%s last=%s%s\n' \
         "${y_avail:-?}" "${y_state:-?}" "${y_mode:-?}" "${y_result:-?}" "${y_when:+ ${y_when}}"
     [ -z "${y_up}" ] || detail '    uptime           %s\n' "$(fmt_duration "${y_up}")"
+    case "${y_defpw}" in
+        0) detail '    default password no\n' ;;
+        1) detail '    default password yes\n' ;;
+        *) detail '    default password unknown\n' ;;
+    esac
     [ -z "${y_time}" ] || detail '    box time         %s (offset %s s)\n' "${y_time}" "${y_offset:-?}"
     [ -z "${y_ntp1}${y_ntp2}" ] || detail '    NTP servers      %s %s\n' "${y_ntp1}" "${y_ntp2}"
     col_end

@@ -89,7 +89,7 @@ into a note without changing the column color.
 |--------|--------|-----|
 | fritzdsl | noise margin below 6 dB, CRC rate from 30/min, WAN connection not Connected | line not Up, margin below 3 dB, CRC rate from 300/min |
 | fritzwan | utilization above FRITZBOX_WAN_UTIL_WARN (off) | link not Up, utilization above FRITZBOX_WAN_UTIL_CRIT (off) |
-| fritzsys | update available, reboot within FRITZBOX_HOLD_MINUTES, clock offset above 60 s; last update failed only with FRITZBOX_SYS_UPDATE_FAILED_COLOR=yellow | clock offset above 300 s |
+| fritzsys | update available, reboot within FRITZBOX_HOLD_MINUTES, clock offset above 60 s, factory default password still in use (FRITZBOX_SYS_DEFAULTPW_COLOR); last update failed only with FRITZBOX_SYS_UPDATE_FAILED_COLOR=yellow | clock offset above 300 s |
 | fritzlog | a new entry of a yellow rule, or one no rule matches - for FRITZBOX_HOLD_MINUTES | a new entry of a red rule - for FRITZBOX_HOLD_MINUTES |
 | fritzfw | a mapping outside FRITZBOX_FW_EXPECTED or an expected one missing; without that list, any change of mappings or settings for FRITZBOX_HOLD_MINUTES | (FRITZBOX_FW_COLOR=red) |
 | fritzlan | a FRITZBOX_LAN_REQUIRED device not active; with FRITZBOX_LAN_NEW_MAC=1 a new MAC for FRITZBOX_HOLD_MINUTES | LAN interface not Up |
@@ -141,8 +141,10 @@ there.
 **fritzsys** - DeviceInfo GetInfo (model, `SoftwareVersion` 271.08.26 =
 hardware 271, FRITZ!OS 8.26, uptime), UserInterface GetInfo and
 `X_AVM-DE_GetInfo` (update available, update state, automatic updates,
-previous version, result of the last update) and Time GetInfo (box time
-and NTP servers). The clock offset is the box time minus the server
+previous version, result of the last update), LANConfigSecurity GetInfo
+(`X_AVM-DE_IsDefaultPasswordActive`: the factory default password from
+the label is still in use; a box without the field shows "unknown" and
+no color) and Time GetInfo (box time and NTP servers). The clock offset is the box time minus the server
 time at the reply. "Last update failed" is a note by default: the box
 may keep that value until the next successful update.
 
