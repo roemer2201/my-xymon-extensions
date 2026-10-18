@@ -138,13 +138,26 @@ shows no throughput. The `NewPacketSendRate`/`NewPacketReceiveRate`
 fields of `GetAddonInfos` are not used: the reference box reports 0
 there.
 
+When the known WAN connection uptime is no greater than the interval
+since the previous sample, both rates are unknown for that poll and a
+new baseline is saved. TR-064 counters reset on a new connection; a
+reset must not be mistaken for a 32-bit wrap or a positive delta just
+because the new count has already exceeded the old one. When connection
+uptime is unavailable, only the counter/source checks can detect resets.
+See the [FRITZ! WANCommonInterfaceConfig specification](https://fritz.support/resources/TR-064_WAN_Common_Interface_Config.pdf).
+
 **fritzsys** - DeviceInfo GetInfo (model, `SoftwareVersion` 271.08.26 =
 hardware 271, FRITZ!OS 8.26, uptime), UserInterface GetInfo and
 `X_AVM-DE_GetInfo` (update available, update state, automatic updates,
 previous version, result of the last update), LANConfigSecurity GetInfo
-(`X_AVM-DE_IsDefaultPasswordActive`: the factory default password from
-the label is still in use; a box without the field shows "unknown" and
-no color) and Time GetInfo (box time and NTP servers). The clock offset is the box time minus the server
+(`X_AVM-DE_IsDefaultPasswordActive`: at least one user still has the
+factory default password from the label; a box without the field shows
+"unknown" and no color) and Time GetInfo (box time and NTP servers).
+The password flag accepts the UPnP boolean values `0`/`1`,
+`false`/`true` and `no`/`yes`; malformed values stay "unknown".
+See [LANConfigSecurity](https://fritz.support/resources/TR-064_LAN_Config_Security.pdf)
+and [UPnP Device Architecture, boolean data type](https://upnp.org/specs/arch/UPnP-arch-DeviceArchitecture-v1.1.pdf).
+The clock offset is the box time minus the server
 time at the reply. "Last update failed" is a note by default: the box
 may keep that value until the next successful update.
 

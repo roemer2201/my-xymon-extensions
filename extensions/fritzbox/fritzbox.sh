@@ -6,8 +6,8 @@
 # login check, one device description, then the enabled modules. Each
 # module reports one column on the box's own host:
 #   dsl -> fritzdsl  DSL line state, rates, margins, error counters
-#   wan -> fritzwan  WAN link state, throughput, utilization
-#   sys -> fritzsys  model, firmware, updates, uptime, clock offset
+#   wan -> fritzwan  WAN link state, throughput, packet rate, utilization
+#   sys -> fritzsys  model, firmware, updates, default password, uptime, clock
 #   log -> fritzlog  new event log entries, classified by a rules file
 #   fw  -> fritzfw   port mappings, UPnP, remote access, MyFRITZ, DynDNS
 #   lan -> fritzlan  LAN throughput, host counts, required devices
@@ -17,7 +17,7 @@
 # NCV - keep an explicit U: a failed poll becomes a graph gap, never a
 # zero. Only read-only TR-064 actions are ever sent.
 #
-# Version: 1.1.0  (2026-10-18)
+# Version: 1.1.1  (2026-10-19)
 #
 # Program flow:
 # 1. Resolve settings (defaults < config < environment < CLI), validate
@@ -35,7 +35,7 @@
 # Usage: fritzbox.sh --config FILE [--host NAME] [--dry-run] [--help]
 set -u
 CONFIG_NAME=fritzbox.cfg
-SCRIPT_VERSION=1.1.0
+SCRIPT_VERSION=1.1.1
 
 usage() {
     cat <<'EOF'
@@ -996,7 +996,7 @@ mod_dsl() {
 }
 
 # ----------------------------------------------------------------------
-# Module wan -> fritzwan: link state, throughput, utilization.
+# Module wan -> fritzwan: link state, throughput, packet rate, utilization.
 # ----------------------------------------------------------------------
 
 # counter_delta CURRENT PREVIOUS WIDTH - CURRENT - PREVIOUS. A negative
@@ -1021,10 +1021,12 @@ counter_width() {
     fi
 }
 
-# counter_rates STATE RX TX WIDTH SOURCE FACTOR - "down up" rates per
+# counter_rates STATE RX TX WIDTH SOURCE FACTOR UPTIME - "down up" rates per
 # second times FACTOR since the poll saved in STATE ("time rx tx width
 # source"). Fails without a usable previous poll: none, less than 60 s
-# ago, another width or source, or a counter reset.
+# ago, another width or source, or a counter reset. Known connection
+# uptime at or below the sample interval means a new connection: its
+# counters may already exceed the old values or look like a 32-bit wrap.
 counter_rates() {
     [ -n "${2}" ] || return 1
     c_pt='' c_prx='' c_ptx='' c_pw='' c_ps=''
@@ -1033,9 +1035,11 @@ counter_rates() {
     is_uint "${c_pt}" && is_uint "${c_prx}" && is_uint "${c_ptx}" || return 1
     [ "${c_pw}" = "${4}" ] && [ "${c_ps}" = "${5}" ] || return 1
     [ "${now}" -gt "${c_pt}" ] && [ $((now - c_pt)) -ge 60 ] || return 1
+    c_elapsed=$((now - c_pt))
+    if is_uint "${7}" && [ "${7}" -le "${c_elapsed}" ]; then return 1; fi
     c_drx=$(counter_delta "${2}" "${c_prx}" "${4}") || return 1
     c_dtx=$(counter_delta "${3}" "${c_ptx}" "${4}") || return 1
-    awk -v r="${c_drx}" -v t="${c_dtx}" -v s="$((now - c_pt))" -v f="${6}" \
+    awk -v r="${c_drx}" -v t="${c_dtx}" -v s="${c_elapsed}" -v f="${6}" \
         'BEGIN { printf "%.0f %.0f", r * f / s, t * f / s }'
 }
 
@@ -1135,11 +1139,11 @@ mod_wan() {
 
     # Throughput and packet rate as averages since the previous poll.
     w_bps_down='' w_bps_up=''
-    if w_r=$(counter_rates wan "${w_rx}" "${w_tx}" "${w_width}" "${w_csrc}" 8); then
+    if w_r=$(counter_rates wan "${w_rx}" "${w_tx}" "${w_width}" "${w_csrc}" 8 "${wc_uptime}"); then
         w_bps_down=${w_r% *} w_bps_up=${w_r#* }
     fi
     w_pps_down='' w_pps_up=''
-    if w_r=$(counter_rates wanpkt "${w_prx_now}" "${w_ptx_now}" "${w_pwidth}" "${w_psrc}" 1); then
+    if w_r=$(counter_rates wanpkt "${w_prx_now}" "${w_ptx_now}" "${w_pwidth}" "${w_psrc}" 1 "${wc_uptime}"); then
         w_pps_down=${w_r% *} w_pps_up=${w_r#* }
     fi
     [ -z "${w_rx}" ] || printf '%s %s %s %s %s\n' "${now}" "${w_rx}" "${w_tx}" "${w_width}" "${w_csrc}" | save_state wan
@@ -1258,12 +1262,19 @@ mod_sys() {
         finding "${FRITZBOX_SYS_UPDATE_FAILED_COLOR}" "the last FRITZ!OS update failed${y_when:+ (${y_when})}"
     fi
 
-    # The factory default password (the one on the label) still in use.
-    # Not every box or FRITZ!OS has the field: then it stays unknown.
+    # At least one user still has the factory default password (the one
+    # on the label). Not every box or FRITZ!OS has the field: then it
+    # stays unknown. Accept UPnP boolean spellings, but never turn an
+    # invalid value such as -1 or 0x0 into a security finding or an OK.
     y_defpw=''
     y_lsvc=urn:dslforum-org:service:LANConfigSecurity:1
     if [ "${host_abort}" = 0 ] && has_service "${y_lsvc}" && tr64 "${y_lsvc}" GetInfo; then
-        y_defpw=$(field NewX_AVM-DE_IsDefaultPasswordActive | tr -cd '0-9')
+        y_defpw=$(field NewX_AVM-DE_IsDefaultPasswordActive | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
+        case "${y_defpw}" in
+            1|true|yes) y_defpw=1 ;;
+            0|false|no) y_defpw=0 ;;
+            *) y_defpw='' ;;
+        esac
     fi
     if [ "${y_defpw}" = 1 ]; then
         finding "${FRITZBOX_SYS_DEFAULTPW_COLOR}" 'the box still uses its factory default password'
