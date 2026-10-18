@@ -56,6 +56,11 @@ Included extensions:
   metadata usage, scrub age and result, throughput, IOPS and commit
   times with RRD graphs. Linux-only; stock EL kernels have no btrfs,
   so the column is clear there.
+* procs - process checks for clientless hosts: sends the process list
+  to the Xymon server as a client message, so the PROC rules of
+  analysis.cfg build the standard "procs" column; optionally checks
+  PROC-style rules on the host itself (task disabled by default: the
+  Xymon client already covers this on full clients).
 * xymonext - what the extensions above cost this host: wall clock
   time, CPU time and the number of bytes each test sends to the
   Xymon server, measured on every run and reported in one
@@ -115,6 +120,9 @@ sh packaging/common/stage.sh "%{buildroot}" \
 %{xymonhome}/ext/btrfs.sh
 %config(noreplace) %{xymonhome}/etc/my-xymon-extensions/btrfs.cfg
 %config(noreplace) %{xymonhome}/etc/clientlaunch.d/btrfs.cfg
+%{xymonhome}/ext/procs.sh
+%config(noreplace) %{xymonhome}/etc/my-xymon-extensions/procs.cfg
+%config(noreplace) %{xymonhome}/etc/clientlaunch.d/procs.cfg
 %{xymonhome}/ext/xymonext.sh
 %{xymonhome}/ext/xymonext-send.sh
 %config(noreplace) %{xymonhome}/etc/my-xymon-extensions/xymonext.cfg
@@ -140,7 +148,7 @@ if [ "$1" -ge 2 ]; then
     verify=$(rpm -V --nodeps %{name} 2>/dev/null)
 fi
 for cfg in smart temp la memory disk opkg wifi \
-    if_link lxc claude systemd bcache btrfs xymonext; do
+    if_link lxc claude systemd bcache btrfs procs xymonext; do
     if [ ! -e "$new/$cfg.cfg" ]; then
         echo "$cfg" >> "$state/replaceable"
     elif [ "$1" -ge 2 ] && ! echo "$verify" | grep -q " $new/$cfg.cfg\$"; then
@@ -160,7 +168,7 @@ state=%{_localstatedir}/lib/rpm-state/%{name}
 old=%{xymonhome}/etc
 new=%{xymonhome}/etc/my-xymon-extensions
 for cfg in smart temp la memory disk opkg wifi \
-    if_link lxc claude systemd bcache btrfs xymonext; do
+    if_link lxc claude systemd bcache btrfs procs xymonext; do
     if [ -f "$old/$cfg.cfg.rpmsave" ]; then
         src="$old/$cfg.cfg.rpmsave"
     elif [ -f "$old/$cfg.cfg" ]; then
@@ -214,6 +222,8 @@ The FRITZ!Box extensions "fritzdsl" and "fritzwan" are no longer part
 The "wifi" extension ships disabled too: enable it (remove the
  DISABLED line from the clientlaunch.d snippet) only on a Linux
  access point with iw installed.
+The "procs" extension ships disabled: a full Xymon client already
+ sends the process list itself. It is meant for hosts without one.
 The "if_link" extension (link state changes per network interface)
  is active out of the box and adds an "if_link" column. It stays
  green until you configure thresholds in %{xymonhome}/etc/my-xymon-extensions/if_link.cfg.
@@ -257,6 +267,18 @@ RRD graphs need a one-time setup on the Xymon SERVER (not here):
 EOF
 
 %changelog
+* Sun Oct 18 2026 roemer2201 <r.oliver@web.de> - 0.30.0-1
+- new extension "procs" (column "procs", ships disabled): brings the
+  standard process checks to hosts without a Xymon client. By default
+  it sends the process list to the Xymon server as a minimal client
+  message ([date] and [ps]), so the PROC rules of analysis.cfg build the
+  "procs" column as for a full client, TRACK graphs included;
+  PROCS_MODE="local" checks PROC-style rules from procs.cfg on the host
+  and reports the column itself. procps-ng and FreeBSD ps run the full
+  client's own command; BusyBox ps (stock OpenWrt) is rewritten into
+  fixed columns with a CMD header, which the server needs to find the
+  commands
+
 * Sun Oct 18 2026 roemer2201 <r.oliver@web.de> - 0.29.2-1
 - Full code review: propagate Xymon delivery failures, reserve private
   state temporary files, and avoid cwd-dependent glob filtering

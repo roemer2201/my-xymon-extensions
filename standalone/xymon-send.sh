@@ -8,19 +8,19 @@
 # Xymon client (OpenWrt/TurrisOS routers, appliances, ...).
 #
 # usage: xymon-send.sh SERVER[:PORT] MESSAGE
-#        xymon-send.sh SERVER[:PORT] -          (message on stdin)
+#        xymon-send.sh SERVER[:PORT] -|@        (message on stdin)
 #
 # SERVER may be a space-separated list; the message goes to each one.
 # Default port: $XYMONDPORT or 1984.
 # Transport: nc (BusyBox or full), ncat or socat - first one found.
-# Version: 1.0.1 (2026-10-18)
+# Version: 1.0.2 (2026-10-18)
 set -u
 
 PORT_DEFAULT="${XYMONDPORT:-1984}"
 TIMEOUT="${XYMON_SEND_TIMEOUT:-10}"
 
 if [ $# -lt 2 ]; then
-    echo "usage: $0 SERVER[:PORT] MESSAGE|-" >&2
+    echo "usage: $0 SERVER[:PORT] MESSAGE|-|@" >&2
     exit 1
 fi
 
@@ -36,11 +36,10 @@ case "${TIMEOUT}" in ''|*[!0-9]*|0) printf '%s\n' 'XYMON_SEND_TIMEOUT must be a 
 TMPF=$(mktemp "${TMPDIR:-/tmp}/xymonsend.XXXXXX") || exit 1
 trap 'rm -f "$TMPF"' EXIT INT TERM
 
-if [ "$MSG" = "-" ]; then
-    cat > "${TMPF}" || exit 1
-else
-    printf '%s\n' "${MSG}" > "${TMPF}" || exit 1
-fi
+case "${MSG}" in
+    -|@) cat > "${TMPF}" || exit 1 ;;
+    *)   printf '%s\n' "${MSG}" > "${TMPF}" || exit 1 ;;
+esac
 
 TRANSPORT=""
 for t in nc ncat socat; do

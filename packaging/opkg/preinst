@@ -31,7 +31,7 @@ pristine() {
 
 rm -rf "$STASH"
 for cfg in smart temp la memory disk opkg wifi \
-    if_link lxc claude systemd bcache btrfs xymonext; do
+    if_link lxc claude systemd bcache btrfs procs xymonext; do
     if [ -f "$ETC/$cfg.cfg" ] && [ ! -e "$ETC/my-xymon-extensions/$cfg.cfg" ] &&
         ! pristine "$cfg"; then
         mkdir -p "$STASH" && cp -p "$ETC/$cfg.cfg" "$STASH/$cfg.cfg"

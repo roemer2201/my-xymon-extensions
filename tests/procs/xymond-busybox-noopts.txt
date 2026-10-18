@@ -1,0 +1,10 @@
+status testhost.procs red - Processes NOT ok
+&green dnsmasq (found 1, req. 1 or more)
+&green %^/usr/sbin/hostapd (found 1, req. between 1 and 1)
+&green SSH (found 1, req. between 1 and 1)
+&green crond (found 1, req. between 1 and 1)
+&red nosuchd (found 0, req. 1 or more)
+&yellow %xymon-run\.sh (found 1, req. at most 0)
+&green %^\[kthreadd\] (found 1, req. 1 or more)
+&red longuser (found 0, req. 1 or more)
+&yellow [ (found 3, req. at most 2)

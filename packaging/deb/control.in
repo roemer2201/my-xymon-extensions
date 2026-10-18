@@ -61,6 +61,12 @@ Description: Portable Xymon client extensions
     a sudo rule - result of the last scrub, plus throughput, IOPS,
     device utilisation and commit times with RRD graphs. Active out
     of the box; no root rights needed; clear on hosts without btrfs.
+  * procs - process checks for clientless hosts: sends the process
+    list (procps-ng, or reformatted BusyBox ps) to the Xymon server
+    as a client message, so the PROC rules of analysis.cfg build the
+    standard "procs" column; optionally checks PROC-style rules on
+    the host itself (task disabled by default: the Xymon client
+    already covers this on full clients).
   * xymonext - what the extensions above cost this host: wall clock
     time, CPU time and bytes sent to the server, measured on every
     run and reported in one "xymonext" column with RRD graphs per

@@ -33,6 +33,15 @@ and fritzwan were client extensions; their RRD files are kept. Its
 status texts carry the trends values a second time as a hidden NCV
 block (pinned in tests/fritzbox/run.sh). Its plc module hands the box's adapter list to powerline through a
 file in $XYMONVAR/fritzbox, because a column has only one sender.
+procs is the one client extension that sends no status message in its
+default mode: it sends a `client HOST.OSTYPE` message with only the
+[date] and [ps] sections, so the server's xymond_client checks the
+analysis.cfg PROC rules and builds the `procs` column itself (and,
+xymond_client defaults, clear `msgs`/`files` columns - NOCOLUMNS in
+hosts.cfg). The server cuts the command out of every ps line at the
+offset of "CMD" (FreeBSD: "COMMAND") in the first line, so BusyBox ps
+is rewritten into fixed columns; PROCS_MODE="local" mirrors
+unix_procs_report() and reports a normal status.
 
 ## Hard portability rules
 

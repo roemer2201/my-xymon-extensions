@@ -23,4 +23,6 @@
 /etc/xymon/clientlaunch.d/bcache.cfg
 /etc/xymon/my-xymon-extensions/btrfs.cfg
 /etc/xymon/clientlaunch.d/btrfs.cfg
+/etc/xymon/my-xymon-extensions/procs.cfg
+/etc/xymon/clientlaunch.d/procs.cfg
 /etc/xymon/my-xymon-extensions/xymonext.cfg

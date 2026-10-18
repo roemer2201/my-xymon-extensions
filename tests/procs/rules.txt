@@ -1,0 +1,13 @@
+# PROC rules for the procs unit tests. The same rules, as PROC lines
+# of an analysis.cfg, produced the xymond-*.txt files with
+# xymond_client --local of Xymon 4.3.30 from the client messages
+# procs.sh builds out of the ps-*.txt fixtures.
+dnsmasq
+"%^/usr/sbin/hostapd" 1 1 yellow
+dropbear 1 1 red TEXT=SSH
+crond min=1 max=1 color=yellow
+nosuchd 1 0 red
+"%xymon-run\.sh" 0 0 yellow
+"%^\[kthreadd\]"
+longuser 1
+[ 0 2 yellow TRACK=brackets

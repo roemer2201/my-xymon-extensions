@@ -77,9 +77,10 @@ scp standalone/standalone.cfg root@router:/etc/xymon-standalone/
    `XYMSRV` (the Xymon server) and check `MACHINEDOTS` (must match the
    host's entry in the server's `hosts.cfg`). The `TESTS` line selects
    which extensions `xymon-run.sh all` runs; it defaults to the local
-   health tests (`disk la memory smart temp`). Commented out or empty, all
-   installed extensions run. The `memory` extension reports under the
-   column name `mem` by default (see
+   health tests (`disk la memory procs smart temp` and more, see the
+   file). Commented out or empty, all installed extensions run. The
+   `memory` extension reports under the column name `mem` by default
+   (see
    [extensions/memory/README.md](../extensions/memory/README.md)), so
    it never collides with the `memory` column a full Xymon client
    reports on the server.
@@ -116,11 +117,11 @@ Run logs go to `$XYMONTMP` (default `/tmp`, a RAM disk on OpenWrt) as
 - BusyBox `nc` is part of the default OpenWrt/TurrisOS busybox build;
   if yours lacks it, install `netcat` or `socat`.
 - Only the extension columns are reported — this runner does not
-  replace a full Xymon client. The `temp`, `la`, `memory` and `disk`
-  extensions in this repository cover the most important local health
-  metrics for such hosts (temperatures, load average, memory
-  utilization, filesystem usage); network traffic etc. remain
-  unreported.
+  replace a full Xymon client. The `temp`, `la`, `memory`, `disk` and
+  `procs` extensions in this repository cover the most important local
+  health metrics for such hosts (temperatures, load average, memory
+  utilization, filesystem usage, required processes); network traffic
+  etc. remain unreported.
 - The `wifi` extension is in the default `TESTS` list: on access
   points it reports client counts, channel utilization, airtime and
   more (see `extensions/wifi/README.md`). On routers without AP
@@ -141,6 +142,16 @@ Run logs go to `$XYMONTMP` (default `/tmp`, a RAM disk on OpenWrt) as
   the lxc tools it reports a `clear` column — remove it from `TESTS`
   there if you don't want that. Keep the cron interval stable, since
   cpu and network are averages since the previous poll.
+- The `procs` extension is in the default `TESTS` list: it sends the
+  router's process list to the Xymon server as a client message, so
+  the `PROC` rules in the server's `analysis.cfg` produce the standard
+  `procs` column, exactly as for a full client. Add
+  `NOCOLUMNS:msgs,files` to the router's `hosts.cfg` line, or the
+  server also shows `clear` columns `msgs` and `files` for it.
+  BusyBox `ps` is rewritten into the format the server needs;
+  TurrisOS has procps-ng and sends the full client's format. With
+  `PROCS_MODE="local"` the rules are checked on the router instead -
+  see `extensions/procs/README.md`.
 - The FRITZ!Box pollers `fritzdsl`/`fritzwan` are no longer part of the
   opkg package (up to 0.28 they were installed but not in `TESTS`):
   since 0.29 they are modules of the server-only
