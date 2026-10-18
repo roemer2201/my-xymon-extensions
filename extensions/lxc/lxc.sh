@@ -317,11 +317,21 @@ LIST_AUTO=$(tr '\n' ' ' < "$WORKDIR/autostart")
 # kernel names it (e.g. /lxc.payload.ca). Derived from the container's
 # init process, so it works with every layout LXC uses (lxc.payload.*
 # on cgroup v2, lxc/<name> on v1, lxc@<name>.service under systemd):
-# the first path component that carries the container name is it.
+# the first path component that names the container is it.
 cgroup_root_of() {
     cr_out=""
     if is_uint "${1:-}" && [ -r "$LXC_PROC/$1/cgroup" ]; then
         cr_out=$(awk -v n="$2" '
+            # A complete LXC component of the container; short names can
+            # occur in unrelated parents such as machine.slice or user.slice.
+            # LXC appends -1, -2, ... while a lxc.payload.NAME cgroup of
+            # an earlier run still exists (cgfsng.c, CGROUP_CREATE_RETRY).
+            function is_ct(s,   pl) {
+                if (s == n || s == "lxc@" n ".service") return 1
+                pl = "lxc.payload." n
+                if (s == pl) return 1
+                return index(s, pl "-") == 1 && substr(s, length(pl) + 2) ~ /^[0-9]+$/
+            }
             substr($0, 1, 3) == "0::" { p = substr($0, 4); next }
             p == "" {
                 # cgroup v1 line: "<id>:<subsystems>:<path>"
@@ -338,11 +348,7 @@ cgroup_root_of() {
                 out = ""
                 for (i = 2; i <= k; i++) {
                     out = out "/" c[i]
-                    # Match complete LXC components; short names can occur in
-                    # unrelated parents such as machine.slice or user.slice.
-                    if (c[i] == n || c[i] == "lxc.payload." n || c[i] == "lxc@" n ".service") {
-                        print out; exit 0
-                    }
+                    if (is_ct(c[i])) { print out; exit 0 }
                 }
                 exit 1
             }' "$LXC_PROC/$1/cgroup" 2>/dev/null)

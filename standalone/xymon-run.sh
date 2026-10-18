@@ -126,9 +126,14 @@ run_ext() {
             return 2 ;;
     esac
     case "$r_ext" in
-        xymonext|xymonext-send|claude-expiry)
+        xymonext|xymonext-send)
             echo "$0: $r_ext is the measurement wrapper, not a test" \
                  "- remove it from TESTS" >&2
+            return 1
+            ;;
+        claude-expiry)
+            echo "$0: $r_ext is the privileged helper of claude, not a" \
+                 "test - remove it from TESTS" >&2
             return 1
             ;;
     esac

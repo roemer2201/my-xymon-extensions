@@ -494,6 +494,7 @@ fi
 
 # --- privileges ---------------------------------------------------------
 SUDO=""
+MMC_FAIL=yellow     # color of an unreadable eMMC device
 if [ "$(id -u)" -ne 0 ]; then
     case "$USE_SUDO" in
         no)
@@ -503,7 +504,8 @@ if [ "$(id -u)" -ne 0 ]; then
             ;;
         *)
             if [ -z "$SMARTCTL" ]; then
-                :   # eMMC only: try without sudo; failures show as clear
+                # eMMC only: try without sudo; failures show as clear
+                MMC_FAIL=clear
             elif sudo -n "$SMARTCTL" --version >/dev/null 2>&1; then
                 SUDO="sudo -n"
             else
@@ -565,7 +567,6 @@ while IFS='|' read -r dev opts alias <&3; do
 
     # shellcheck disable=SC2086  # $nsopt/$opts are intentionally word-split
     out=$(smartrun -i -H -A $nsopt $opts "$dev")
-    smart_rc=$?
 
     case "$out" in
         *"Device is in STANDBY"*|*"Device is in SLEEP"*)
@@ -574,16 +575,18 @@ while IFS='|' read -r dev opts alias <&3; do
             ;;
     esac
 
-    # smartctl bits 0..2 flag invocation/device/command errors; higher
-    # bits are disk-health findings and are evaluated below as usual.
-    if [ "$((smart_rc & 7))" -ne 0 ]; then
-        OVERALL=$(worst "${OVERALL}" yellow)
-        printf '&yellow %s: smartctl query failed (exit %s)\n' "${dev}" "${smart_rc}" >> "${NOTES}"
-    fi
-
+    # The exit status is deliberately not evaluated: smartctl also sets
+    # bit 2 when an optional command fails (e.g. "Read SMART Thresholds
+    # failed", ataprint.cpp), while the output is still usable. Without
+    # any "=== START OF" section the device could not be opened or
+    # identified (bits 0/1). smartctl runs with root or sudo here (auto
+    # mode verifies that above), so this is a failure, not a missing
+    # prerequisite.
     if ! printf '%s\n' "$out" | grep -q "=== START OF"; then
+        OVERALL=$(worst "${OVERALL}" yellow)
+        # The summary must name the reason for the yellow column.
+        printf '&yellow %s: cannot read SMART data\n' "${dev}" >> "${NOTES}"
         {
-            OVERALL=$(worst "${OVERALL}" yellow)
             printf '&yellow %s: cannot read SMART data:\n' "$dev"
             printf '%s\n' "$out" | tail -n 2 | sed -e 's/^/    /'
             printf '\n'
@@ -909,9 +912,12 @@ for dev in $MMCLIST; do
     out=$(mmcrun extcsd read "$dev")
 
     if ! printf '%s\n' "$out" | grep -q "Extended CSD rev"; then
+        OVERALL=$(worst "${OVERALL}" "${MMC_FAIL}")
+        if [ "${MMC_FAIL}" != clear ]; then
+            printf '&%s %s: cannot read eMMC EXT_CSD\n' "${MMC_FAIL}" "${dev}" >> "${NOTES}"
+        fi
         {
-            OVERALL=$(worst "${OVERALL}" yellow)
-            printf '&yellow %s: cannot read eMMC EXT_CSD:\n' "$dev"
+            printf '&%s %s: cannot read eMMC EXT_CSD:\n' "${MMC_FAIL}" "$dev"
             printf '%s\n' "$out" | tail -n 2 | sed -e 's/^/    /'
             printf '\n'
         } >> "$STATUS"

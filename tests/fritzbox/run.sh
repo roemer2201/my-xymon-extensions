@@ -651,8 +651,10 @@ run
 cp "${STATE}/fritz.box.fw" "${TMP}/fw.before" || exit 1
 cp "${FB_DATA}/fault502.xml" "${OVER}/x_remote__GetInfo.xml" || exit 1
 run
-ok status fritzfw yellow 'port mapping list incomplete'
-ok rrd fritzfw portmaps U
+ok status fritzfw yellow '1 port mapping\(s\), exposure settings incomplete'
+ok has '^&yellow X_AVM-DE_RemoteAccess:1 GetInfo failed'
+# The port mapping list itself was read completely.
+ok rrd fritzfw portmaps 1
 ok cmp -s "${TMP}/fw.before" "${STATE}/fritz.box.fw"
 reset_over
 unset FRITZBOX_MODULES

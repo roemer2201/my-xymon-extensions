@@ -245,6 +245,33 @@ expect "$out" '&green /dev/tmmc0 - eMMC, MMC 5\.1 - health: Normal' \
 expect "$out" '^tmmc0_wear : 10$' \
     "eMMC-only mode still delivers the wear metric"
 
+# An unreadable eMMC device warns - except in eMMC-only auto mode
+# without root, which runs mmc unprivileged on purpose (clear).
+cat > "${TMP}/smart-mmc.cfg" <<'EOF'
+SMARTCTL="/nonexistent/smartctl"
+USE_SUDO="no"
+MMC_UTILS="${FAKEMMC}"
+MMC_DEVICES="/dev/tmmc9"
+EOF
+# shellcheck disable=SC2086
+out=$(SMART_CFG="${TMP}/smart-mmc.cfg" ${TESTSH} "${REPO}/extensions/smart/smart.sh")
+expect "${out}" '^status testhost\.smart yellow ' "unreadable eMMC device warns"
+expect "${out}" '&yellow /dev/tmmc9: cannot read eMMC EXT_CSD' \
+    "unreadable eMMC device is named"
+expect_not "${out}" 'All monitored disks are healthy' \
+    "a yellow column does not claim healthy disks"
+if [ "$(id -u)" -ne 0 ]; then
+    sed 's/^USE_SUDO=.*/USE_SUDO="auto"/' "${TMP}/smart-mmc.cfg" > "${TMP}/smart-mmc.new"
+    mv "${TMP}/smart-mmc.new" "${TMP}/smart-mmc.cfg"
+    # shellcheck disable=SC2086
+    out=$(SMART_CFG="${TMP}/smart-mmc.cfg" ${TESTSH} "${REPO}/extensions/smart/smart.sh")
+    expect "${out}" '^status testhost\.smart clear ' \
+        "unprivileged eMMC-only auto mode stays clear"
+    expect "${out}" '&clear /dev/tmmc9: cannot read eMMC EXT_CSD' \
+        "unprivileged eMMC read failure is a clear note"
+fi
+rm -f "${TMP}/smart-mmc.cfg"
+
 # --- dwpdrecent: rolling window over a persisted sample ---------------
 # A usable reference sample is between one and two windows old (default
 # 24h/48h). 30h back with 22788 GiB written means 500 GiB over 1.25
@@ -441,6 +468,24 @@ EOF
 out=$(SMART_CFG="${TMP}/smart-naming.cfg" ${TESTSH} "${REPO}/extensions/smart/smart.sh")
 expect "${out}" '^S3Z8TEST_temp : 31$' "unusable first path does not reserve the graph name"
 expect_not "${out}" 'RRD data omitted' "first usable response owns the graph name"
+expect "${out}" '&clear /dev/tssd-unusable.*: no usable SMART data' \
+    "a device answering without SMART data stays clear"
+expect "${out}" '^status testhost\.smart green ' \
+    "a device without SMART data does not degrade the column"
+
+# smartctl sets exit bit 2 for failed optional commands as well; usable
+# output must still be evaluated, not flagged as a failed query.
+cat > "${TMP}/smart-naming.cfg" <<'EOF'
+SMARTCTL="${FAKESMARTCTL}"
+USE_SUDO="no"
+MMC_DEVICES="none"
+device /dev/tssd-rc4
+EOF
+# shellcheck disable=SC2086
+out=$(SMART_CFG="${TMP}/smart-naming.cfg" ${TESTSH} "${REPO}/extensions/smart/smart.sh")
+expect "${out}" '^status testhost\.smart green ' "exit bit 2 with usable output stays green"
+expect "${out}" '^S3Z8TEST_temp : 31$' "exit bit 2 with usable output is evaluated"
+rm -f "${TMP}"/smart.*.state
 
 cat > "${TMP}/smart-naming.cfg" <<'EOF'
 SMARTCTL="${FAKESMARTCTL}"

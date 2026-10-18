@@ -29,6 +29,8 @@ case "$last" in
     # A second path must not hide a failing health verdict.
     /dev/tssd-failed) sed 's/test result: PASSED/test result: FAILED/' \
         "${datadir}/ata-samsung-ssd.txt" ;;
+    # Usable output, but an optional command failed: exit bit 2.
+    /dev/tssd-rc4) cat "${datadir}/ata-samsung-ssd.txt"; exit 4 ;;
     /dev/tssd-unusable) sed '/^=== START OF READ SMART DATA SECTION ===/,$d' \
         "${datadir}/ata-samsung-ssd.txt" ;;
     # Numeric serials are distinct strings, including leading zeroes.
