@@ -141,14 +141,11 @@ Run logs go to `$XYMONTMP` (default `/tmp`, a RAM disk on OpenWrt) as
   the lxc tools it reports a `clear` column — remove it from `TESTS`
   there if you don't want that. Keep the cron interval stable, since
   cpu and network are averages since the previous poll.
-- The FRITZ!Box pollers `fritzdsl`/`fritzwan` are installed but not in
-  the default `TESTS` list: they are remote pollers that query a
-  FRITZ!Box over the network, a job that normally belongs on the
-  Xymon server (via the deb/rpm package and its clientlaunch.d
-  snippets).
-  Run them from the router only when the server cannot reach the box
-  itself — configure `/etc/xymon-standalone/my-xymon-extensions/fritzdsl.cfg` (resp.
-  `fritzwan.cfg`) and add them to `TESTS`.
+- The FRITZ!Box pollers `fritzdsl`/`fritzwan` are no longer part of the
+  opkg package (up to 0.28 they were installed but not in `TESTS`):
+  since 0.29 they are modules of the server-only
+  [fritzbox collector](../extensions/fritzbox/server/README.md), which
+  polls the box from the Xymon server.
 - The transport is the plain Xymon protocol (unencrypted TCP :1984),
   exactly like a normal Xymon client — fine on a LAN/VPN, not meant to
   cross the open internet.

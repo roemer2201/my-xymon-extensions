@@ -9,10 +9,6 @@
 /etc/xymon/clientlaunch.d/memory.cfg
 /etc/xymon/clientlaunch.d/disk.cfg
 /etc/xymon/clientlaunch.d/opkg.cfg
-/etc/xymon/my-xymon-extensions/fritzdsl.cfg
-/etc/xymon/clientlaunch.d/fritzdsl.cfg
-/etc/xymon/my-xymon-extensions/fritzwan.cfg
-/etc/xymon/clientlaunch.d/fritzwan.cfg
 /etc/xymon/my-xymon-extensions/wifi.cfg
 /etc/xymon/clientlaunch.d/wifi.cfg
 /etc/xymon/my-xymon-extensions/if_link.cfg

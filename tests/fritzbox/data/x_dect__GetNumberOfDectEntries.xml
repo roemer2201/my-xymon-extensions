@@ -1,0 +1,8 @@
+<?xml version="1.0"?>
+<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
+<s:Body>
+<u:GetNumberOfDectEntriesResponse xmlns:u="urn:dslforum-org:service:X_AVM-DE_Dect:1">
+<NewNumberOfEntries>1</NewNumberOfEntries>
+</u:GetNumberOfDectEntriesResponse>
+</s:Body>
+</s:Envelope>

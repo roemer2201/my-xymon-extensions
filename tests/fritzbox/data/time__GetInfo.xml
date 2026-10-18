@@ -1,0 +1,15 @@
+<?xml version="1.0"?>
+<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
+<s:Body>
+<u:GetInfoResponse xmlns:u="urn:dslforum-org:service:Time:1">
+<NewNTPServer1>ntp.example.net</NewNTPServer1>
+<NewNTPServer2>2.europe.pool.ntp.org</NewNTPServer2>
+<NewCurrentLocalTime>2026-10-18T00:13:21+02:00</NewCurrentLocalTime>
+<NewLocalTimeZone></NewLocalTimeZone>
+<NewLocalTimeZoneName>CET-1CEST,M3.5.0,M10.5.0/3</NewLocalTimeZoneName>
+<NewDaylightSavingsUsed>0</NewDaylightSavingsUsed>
+<NewDaylightSavingsStart>0001-01-01T00:00:00</NewDaylightSavingsStart>
+<NewDaylightSavingsEnd>0001-01-01T00:00:00</NewDaylightSavingsEnd>
+</u:GetInfoResponse>
+</s:Body>
+</s:Envelope>

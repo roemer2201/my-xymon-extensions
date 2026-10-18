@@ -1,0 +1,19 @@
+<?xml version="1.0"?>
+<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
+<s:Body>
+<u:GetInfoResponse xmlns:u="urn:dslforum-org:service:DeviceInfo:1">
+<NewManufacturerName>AVM</NewManufacturerName>
+<NewManufacturerOUI>00040E</NewManufacturerOUI>
+<NewModelName>FRITZ!Box 7510 (UI)</NewModelName>
+<NewDescription>FRITZ!Box 7510 (UI) Release 271.08.26</NewDescription>
+<NewProductClass>FRITZ!Box</NewProductClass>
+<NewSerialNumber>020000000001</NewSerialNumber>
+<NewSoftwareVersion>271.08.26</NewSoftwareVersion>
+<NewHardwareVersion>FRITZ!Box 7510 (UI)</NewHardwareVersion>
+<NewSpecVersion>1.0</NewSpecVersion>
+<NewProvisioningCode></NewProvisioningCode>
+<NewUpTime>5344796</NewUpTime>
+<NewDeviceLog>(see GetDeviceLog)</NewDeviceLog>
+</u:GetInfoResponse>
+</s:Body>
+</s:Envelope>

@@ -1,0 +1,28 @@
+<?xml version="1.0"?>
+<root xmlns="urn:schemas-upnp-org:device-1-0">
+<device>
+<serviceList>
+<service><serviceType>urn:schemas-any-com:service:Any:1</serviceType><serviceId>urn:any-com:serviceId:any1</serviceId><controlURL>/igdupnp/control/any</controlURL><eventSubURL>/igdupnp/control/any</eventSubURL><SCPDURL>/any.xml</SCPDURL></service>
+<service>
+<serviceType>urn:schemas-upnp-org:service:WANCommonInterfaceConfig:1</serviceType>
+<controlURL>/igdupnp/control/WANCommonIFC1</controlURL>
+<SCPDURL>/x.xml</SCPDURL>
+</service>
+<service>
+<serviceType>urn:schemas-upnp-org:service:WANDSLLinkConfig:1</serviceType>
+<controlURL>/igdupnp/control/WANDSLLinkC1</controlURL>
+<SCPDURL>/x.xml</SCPDURL>
+</service>
+<service>
+<serviceType>urn:schemas-upnp-org:service:WANIPConnection:1</serviceType>
+<controlURL>/igdupnp/control/WANIPConn1</controlURL>
+<SCPDURL>/x.xml</SCPDURL>
+</service>
+<service>
+<serviceType>urn:schemas-upnp-org:service:WANIPv6FirewallControl:1</serviceType>
+<controlURL>/igd2upnp/control/WANIPv6Firewall1</controlURL>
+<SCPDURL>/x.xml</SCPDURL>
+</service>
+</serviceList>
+</device>
+</root>

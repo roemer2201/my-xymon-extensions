@@ -4,6 +4,7 @@
 /etc/xymon/xymonserver.d/opkg.cfg
 /etc/xymon/xymonserver.d/fritzdsl.cfg
 /etc/xymon/xymonserver.d/fritzwan.cfg
+/etc/xymon/xymonserver.d/fritzbox.cfg
 /etc/xymon/xymonserver.d/wifi.cfg
 /etc/xymon/xymonserver.d/if_link.cfg
 /etc/xymon/xymonserver.d/lxc.cfg
@@ -17,6 +18,7 @@
 /etc/xymon/graphs.d/opkg.cfg
 /etc/xymon/graphs.d/fritzdsl.cfg
 /etc/xymon/graphs.d/fritzwan.cfg
+/etc/xymon/graphs.d/fritzbox.cfg
 /etc/xymon/graphs.d/wifi.cfg
 /etc/xymon/graphs.d/if_link.cfg
 /etc/xymon/graphs.d/lxc.cfg
@@ -33,4 +35,7 @@
 /etc/xymon/my-xymon-extensions-server/powerline.map
 /etc/xymon/tasks.d/fritz-wifi.cfg
 /etc/xymon/my-xymon-extensions-server/fritz-wifi.cfg
+/etc/xymon/tasks.d/fritzbox.cfg
+/etc/xymon/my-xymon-extensions-server/fritzbox.cfg
+/etc/xymon/my-xymon-extensions-server/fritzbox-log.rules
 /etc/sudoers.d/my-xymon-extensions-server

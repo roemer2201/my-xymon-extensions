@@ -42,14 +42,6 @@ Included extensions:
 * opkg - pending package updates on opkg-based systems
   (OpenWrt/TurrisOS; task disabled by default: hosts with a full
   Xymon client have no opkg).
-* fritzdsl - AVM FRITZ!Box DSL line monitoring via TR-064 (curl):
-  line state, sync rate, noise margin, attenuation and error counters
-  with thresholds and RRD graphing support; polls the box from the
-  Xymon server, no software on the box.
-* fritzwan - AVM FRITZ!Box WAN throughput monitoring (curl): physical
-  link state, average throughput, link capacity and utilization from
-  the box's 64-bit UPnP counters (TR-064 fallback), with optional
-  utilization thresholds and RRD graphs.
 * wifi - Wi-Fi access point metadata via iw/nl80211 (task disabled by
   default: full clients are rarely APs): client counts, channel
   utilization, airtime, throughput, TX retries and noise floor with
@@ -101,12 +93,6 @@ sh packaging/common/stage.sh "%{buildroot}" \
 %config(noreplace) %{xymonhome}/etc/clientlaunch.d/memory.cfg
 %config(noreplace) %{xymonhome}/etc/clientlaunch.d/disk.cfg
 %config(noreplace) %{xymonhome}/etc/clientlaunch.d/opkg.cfg
-%{xymonhome}/ext/fritzdsl.sh
-%config(noreplace) %{xymonhome}/etc/my-xymon-extensions/fritzdsl.cfg
-%config(noreplace) %{xymonhome}/etc/clientlaunch.d/fritzdsl.cfg
-%{xymonhome}/ext/fritzwan.sh
-%config(noreplace) %{xymonhome}/etc/my-xymon-extensions/fritzwan.cfg
-%config(noreplace) %{xymonhome}/etc/clientlaunch.d/fritzwan.cfg
 %{xymonhome}/ext/wifi.sh
 %config(noreplace) %{xymonhome}/etc/my-xymon-extensions/wifi.cfg
 %config(noreplace) %{xymonhome}/etc/clientlaunch.d/wifi.cfg
@@ -153,7 +139,7 @@ verify=""
 if [ "$1" -ge 2 ]; then
     verify=$(rpm -V --nodeps %{name} 2>/dev/null)
 fi
-for cfg in smart temp la memory disk opkg fritzdsl fritzwan wifi \
+for cfg in smart temp la memory disk opkg wifi \
     if_link lxc claude systemd bcache btrfs xymonext; do
     if [ ! -e "$new/$cfg.cfg" ]; then
         echo "$cfg" >> "$state/replaceable"
@@ -173,7 +159,7 @@ exit 0
 state=%{_localstatedir}/lib/rpm-state/%{name}
 old=%{xymonhome}/etc
 new=%{xymonhome}/etc/my-xymon-extensions
-for cfg in smart temp la memory disk opkg fritzdsl fritzwan wifi \
+for cfg in smart temp la memory disk opkg wifi \
     if_link lxc claude systemd bcache btrfs xymonext; do
     if [ -f "$old/$cfg.cfg.rpmsave" ]; then
         src="$old/$cfg.cfg.rpmsave"
@@ -221,11 +207,10 @@ To activate the "smart" extension:
     runs twice. Point the line at clientlaunch.d and delete any
     leftovers in etc/tasks.d (rpm keeps edited ones as .rpmsave).
  3. Restart the Xymon client service.
-The FRITZ!Box extensions "fritzdsl" and "fritzwan" ship disabled:
- configure %{xymonhome}/etc/my-xymon-extensions/fritzdsl.cfg resp. fritzwan.cfg, then
- remove the DISABLED line from the matching clientlaunch.d snippet
- and restart the client on the polling host (normally the Xymon
- server).
+The FRITZ!Box extensions "fritzdsl" and "fritzwan" are no longer part
+ of this package: since 0.29.0 they are modules of the server-only
+ fritzbox collector (my-xymon-extensions-server, Debian/Ubuntu). rpm
+ keeps configs you had edited as .rpmsave.
 The "wifi" extension ships disabled too: enable it (remove the
  DISABLED line from the clientlaunch.d snippet) only on a Linux
  access point with iw installed.
@@ -272,6 +257,15 @@ RRD graphs need a one-time setup on the Xymon SERVER (not here):
 EOF
 
 %changelog
+* Sat Oct 17 2026 roemer2201 <r.oliver@web.de> - 0.29.0-1
+- fritzdsl and fritzwan leave this package: they are modules of the new
+  server-only fritzbox collector (my-xymon-extensions-server,
+  Debian/Ubuntu), which polls FRITZ!Box routers from the Xymon server
+  and reports fritzdsl, fritzwan, fritzsys, fritzlog, fritzfw, fritzlan
+  and fritztel. rpm keeps edited fritzdsl/fritzwan configs as .rpmsave;
+  their settings map to fritzbox.cfg (see the fritzbox README). The RRD
+  files and graphs on the Xymon server stay
+
 * Fri Oct 16 2026 roemer2201 <r.oliver@web.de> - 0.28.1-1
 - no change to this package. The opkg package (OpenWrt/TurrisOS) no
   longer keeps an unchanged pre-0.20.0 default config on an upgrade

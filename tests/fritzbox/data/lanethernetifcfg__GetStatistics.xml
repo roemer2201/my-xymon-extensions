@@ -1,0 +1,11 @@
+<?xml version="1.0"?>
+<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
+<s:Body>
+<u:GetStatisticsResponse xmlns:u="urn:dslforum-org:service:LANEthernetInterfaceConfig:1">
+<NewBytesSent>926989326008</NewBytesSent>
+<NewBytesReceived>243840809260</NewBytesReceived>
+<NewPacketsSent>979707634</NewPacketsSent>
+<NewPacketsReceived>660412007</NewPacketsReceived>
+</u:GetStatisticsResponse>
+</s:Body>
+</s:Envelope>

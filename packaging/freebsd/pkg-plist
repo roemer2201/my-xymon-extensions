@@ -4,8 +4,6 @@ www/xymon/client/ext/la.sh
 www/xymon/client/ext/memory.sh
 www/xymon/client/ext/disk.sh
 www/xymon/client/ext/opkg.sh
-www/xymon/client/ext/fritzdsl.sh
-www/xymon/client/ext/fritzwan.sh
 www/xymon/client/ext/wifi.sh
 www/xymon/client/ext/if_link.sh
 www/xymon/client/ext/lxc.sh
@@ -27,10 +25,6 @@ www/xymon/client/ext/xymonext-send.sh
 @sample www/xymon/client/etc/clientlaunch.d/memory.cfg.sample
 @sample www/xymon/client/etc/clientlaunch.d/disk.cfg.sample
 @sample www/xymon/client/etc/clientlaunch.d/opkg.cfg.sample
-@sample www/xymon/client/etc/my-xymon-extensions/fritzdsl.cfg.sample
-@sample www/xymon/client/etc/clientlaunch.d/fritzdsl.cfg.sample
-@sample www/xymon/client/etc/my-xymon-extensions/fritzwan.cfg.sample
-@sample www/xymon/client/etc/clientlaunch.d/fritzwan.cfg.sample
 @sample www/xymon/client/etc/my-xymon-extensions/wifi.cfg.sample
 @sample www/xymon/client/etc/clientlaunch.d/wifi.cfg.sample
 @sample www/xymon/client/etc/my-xymon-extensions/if_link.cfg.sample
@@ -70,14 +64,6 @@ share/doc/my-xymon-extensions/smart/sudoers.example
 share/doc/my-xymon-extensions/smart/server/README.md
 share/doc/my-xymon-extensions/smart/server/graphs.d/smart.cfg
 share/doc/my-xymon-extensions/smart/server/xymonserver.d/smart.cfg
-share/doc/my-xymon-extensions/fritzdsl/README.md
-share/doc/my-xymon-extensions/fritzdsl/server/README.md
-share/doc/my-xymon-extensions/fritzdsl/server/graphs.d/fritzdsl.cfg
-share/doc/my-xymon-extensions/fritzdsl/server/xymonserver.d/fritzdsl.cfg
-share/doc/my-xymon-extensions/fritzwan/README.md
-share/doc/my-xymon-extensions/fritzwan/server/README.md
-share/doc/my-xymon-extensions/fritzwan/server/graphs.d/fritzwan.cfg
-share/doc/my-xymon-extensions/fritzwan/server/xymonserver.d/fritzwan.cfg
 share/doc/my-xymon-extensions/wifi/README.md
 share/doc/my-xymon-extensions/wifi/server/README.md
 share/doc/my-xymon-extensions/wifi/server/graphs.d/wifi.cfg

@@ -1,0 +1,12 @@
+<?xml version="1.0"?>
+<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
+<s:Body>
+<u:GetInfoResponse xmlns:u="urn:dslforum-org:service:LANEthernetInterfaceConfig:1">
+<NewEnable>1</NewEnable>
+<NewStatus>Up</NewStatus>
+<NewMACAddress>02:00:00:00:00:01</NewMACAddress>
+<NewMaxBitRate>Auto</NewMaxBitRate>
+<NewDuplexMode>Auto</NewDuplexMode>
+</u:GetInfoResponse>
+</s:Body>
+</s:Envelope>

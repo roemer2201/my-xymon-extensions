@@ -1,0 +1,22 @@
+<?xml version="1.0"?>
+<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
+<s:Body>
+<u:GetInfoResponse xmlns:u="urn:dslforum-org:service:WANDSLInterfaceConfig:1">
+<NewEnable>1</NewEnable>
+<NewStatus>Up</NewStatus>
+<NewDataPath>Fast</NewDataPath>
+<NewUpstreamCurrRate>46719</NewUpstreamCurrRate>
+<NewDownstreamCurrRate>240017</NewDownstreamCurrRate>
+<NewUpstreamMaxRate>47361</NewUpstreamMaxRate>
+<NewDownstreamMaxRate>268304</NewDownstreamMaxRate>
+<NewUpstreamNoiseMargin>80</NewUpstreamNoiseMargin>
+<NewDownstreamNoiseMargin>90</NewDownstreamNoiseMargin>
+<NewUpstreamAttenuation>130</NewUpstreamAttenuation>
+<NewDownstreamAttenuation>170</NewDownstreamAttenuation>
+<NewATURVendor>41564d00</NewATURVendor>
+<NewATURCountry>0400</NewATURCountry>
+<NewUpstreamPower>502</NewUpstreamPower>
+<NewDownstreamPower>514</NewDownstreamPower>
+</u:GetInfoResponse>
+</s:Body>
+</s:Envelope>

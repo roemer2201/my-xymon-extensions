@@ -11,7 +11,9 @@ repository.
 The server-only [powerline collector](extensions/powerline/server/README.md)
 targets Linux/Xymon servers on the same Ethernet segment as the adapters.
 The server-only [fritz-wifi collector](extensions/fritz-wifi/server/README.md)
-reads the Wi-Fi metadata of AVM FRITZ! devices over TR-064. Both ship in
+reads the Wi-Fi metadata of AVM FRITZ! devices over TR-064, the
+server-only [fritzbox collector](extensions/fritzbox/server/README.md)
+monitors FRITZ!Box routers over TR-064. All three ship in
 my-xymon-extensions-server, disabled until configured.
 
 ## Repository layout
@@ -46,14 +48,13 @@ my-xymon-extensions/
 | Name | Column | Description |
 |------|--------|-------------|
 | [powerline](extensions/powerline/) | `powerline` | Server-side open-plc-utils collection: per-adapter PHY and PB/MPDU/receive-slot graphs, persistent topology warnings and 180-minute state-flapping escalation; quality thresholds opt-in |
+| [fritzbox](extensions/fritzbox/) | `fritzdsl` `fritzwan` `fritzsys` `fritzlog` `fritzfw` `fritzlan` `fritztel` | Server-side TR-064 collection from AVM FRITZ!Box routers, one login per box and run: DSL line (margins, error counters near and far end), WAN throughput and utilization (64-bit counters), firmware/updates/reboots/clock offset, new event log entries classified by a rules file (unmatched ones yellow), port mappings and remote access, LAN throughput and host counts, SIP registration - plus the box's view of the powerline adapters; replaces the fritzdsl/fritzwan client extensions of 0.28 |
 | [fritz-wifi](extensions/fritz-wifi/) | `wifi` | Server-side TR-064 collection from AVM FRITZ! devices (e.g. FRITZ!Powerline 1260E): clients per SSID interface, channel and frequency per band, client signal/speed/channel width - into the `wifi` column and RRD files of the OpenWrt extension; unknown values stay RRD gaps; one password file for all devices |
 | [smart](extensions/smart/) | `smart` | SMART disk health for SATA/ATA, NVMe and (basic) SAS disks plus eMMC wear/pre-EOL health (Linux, via mmc-utils): vendor-normalized metrics, thresholds/alerts and per-disk RRD graphs |
 | [temp](extensions/temp/) | `temp` | All hardware temperature sensors from the Linux hwmon sysfs (fallback: thermal zones) — e.g. CPU/SoC and switch sensors on a Turris Omnia — with per-sensor thresholds and RRD graphs |
 | [la](extensions/la/) | `la` | Load average (1/5/15 min) with thresholds per CPU core; for clientless hosts — the task ships disabled where a full Xymon client runs |
 | [memory](extensions/memory/) | `mem` | Memory utilization in percent from /proc/meminfo; for clientless hosts — the task ships disabled where a full Xymon client runs |
 | [disk](extensions/disk/) | `disk` | Filesystem usage from `df -P -k` in the standard `disk` column with global and per-mount thresholds; `/dev` and `/rom` hidden by default, stock server-side graphs work as-is; for clientless hosts — the task ships disabled where a full Xymon client runs |
-| [fritzdsl](extensions/fritzdsl/) | `fritzdsl` | AVM FRITZ!Box DSL line monitoring via TR-064 (curl): line state, sync rate, noise margin, attenuation, error counters — thresholds/alerts and RRD graphs; polls the box from the Xymon server, no software on the box |
-| [fritzwan](extensions/fritzwan/) | `fritzwan` | AVM FRITZ!Box WAN throughput monitoring (curl): physical link state, average throughput, link capacity and utilization from the box's 64-bit UPnP counters (TR-064 fallback) — optional utilization thresholds and RRD graphs |
 | [if_link](extensions/if_link/) | `if_link` | Link state changes per network interface, counted from the kernel's `carrier_changes` counter — so even a flap that starts and ends between two polls is seen (a short down+up is two changes); physical ports and DSA switch ports are auto-detected, thresholds are opt-in, RRD graphs per port; Linux only |
 | [wifi](extensions/wifi/) | `wifi` | Wi-Fi access point metadata via iw/nl80211 plus ubus/hostapd and iwinfo on OpenWrt: client counts per SSID interface, channel utilization and noise per radio, throughput, client airtime and TX retry rates — informational only (green/clear), RRD graphs; for OpenWrt/TurrisOS APs via the standalone runner |
 | [lxc](extensions/lxc/) | `lxc` | LXC containers of a host: which exist, which are supposed to run — taken from `lxc.start.auto`, OpenWrt's `/etc/config/lxc-auto` and `lxc-autostart -L`, so nothing has to be configured twice — and what each one costs in memory, CPU and network traffic; red when a container that should run does not, with one RRD file per container and metric so a new container never disturbs an existing graph |
@@ -78,6 +79,7 @@ ships them as ready-made drop-in files under
 | `server/rrddefinitions.d/<name>.cfg` | `rrddefinitions.d/` | RRA archive layout (only `if_link` and `systemd` so far) |
 | `server/tasks.d/powerline.cfg` | `tasks.d/` | Server-only Powerline task, every 5 minutes; separate configuration in `my-xymon-extensions-server/` |
 | `server/tasks.d/fritz-wifi.cfg` | `tasks.d/` | Server-only fritz-wifi task, every 5 minutes; same separate configuration directory |
+| `server/tasks.d/fritzbox.cfg` | `tasks.d/` | Server-only fritzbox task, every 5 minutes; same separate configuration directory |
 
 These directories are shared with other packages. Debian's
 `hobbit-plugins` ships a `temp.cfg` in `graphs.d`, `xymonserver.d`

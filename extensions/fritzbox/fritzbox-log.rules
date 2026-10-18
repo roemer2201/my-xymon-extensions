@@ -1,0 +1,30 @@
+# fritzlog rules: which FRITZ!Box event log entries are expected.
+#
+#   category   color   pattern
+#
+# category: a-z, 0-9 and _, at most 16 characters; it names the RRD file
+#           fritzlog,<category>.rrd (new entries per poll).
+# color:    green (only counted), yellow or red (the column keeps that
+#           color for FRITZBOX_HOLD_MINUTES after the entry appears).
+# pattern:  POSIX extended regular expression (awk), the rest of the
+#           line, matched against the message text without the time.
+#
+# The first matching rule wins. An entry no rule matches is "unmatched"
+# and turns the column yellow (FRITZBOX_LOG_UNMATCHED_COLOR): Xymon then
+# records it, and a rule for it can be added here.
+#
+# The box writes its log in the language of its user interface; these
+# rules are for German. Patterns stay ASCII: an umlaut is two bytes in
+# the box's UTF-8 text, so ".*" stands in for it (Pr.*fix = Praefix).
+# All rules below match messages seen on a FRITZ!Box 7510, FRITZ!OS 8.26.
+
+# Daily reconnect that pre-empts the provider's forced disconnect.
+reconnect   green   Zwangstrennung durch den Anbieter
+# Internet connection established or lost (IPv4 and IPv6). The current
+# state is reported by fritzdsl/fritzwan; the log entries are only counted.
+wan_up      green   ^Internetverbindung (IPv6 )?wurde erfolgreich hergestellt
+wan_down    green   ^Internetverbindung (IPv6 )?wurde getrennt
+# IPv6 prefix obtained or renewed.
+ipv6_prefix green   ^IPv6-Pr.*fix wurde erfolgreich (bezogen|aktualisiert)
+# A SIP registration or call setup failed.
+voip_fail   yellow  ^Internettelefonie mit .* war nicht erfolgreich

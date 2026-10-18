@@ -1,0 +1,17 @@
+<?xml version="1.0"?>
+<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
+<s:Body>
+<u:GetDDNSInfoResponse xmlns:u="urn:dslforum-org:service:X_AVM-DE_RemoteAccess:1">
+<NewEnabled>0</NewEnabled>
+<NewProviderName></NewProviderName>
+<NewUpdateURL></NewUpdateURL>
+<NewDomain>box.example.net</NewDomain>
+<NewStatusIPv4>offline</NewStatusIPv4>
+<NewStatusIPv6>offline</NewStatusIPv6>
+<NewUsername>ddnsuser</NewUsername>
+<NewMode>ddns_v4</NewMode>
+<NewServerIPv4></NewServerIPv4>
+<NewServerIPv6></NewServerIPv6>
+</u:GetDDNSInfoResponse>
+</s:Body>
+</s:Envelope>
