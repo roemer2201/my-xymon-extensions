@@ -8,7 +8,9 @@
 # Xymon client (OpenWrt/TurrisOS routers, appliances, ...).
 #
 # usage: xymon-send.sh SERVER[:PORT] MESSAGE
-#        xymon-send.sh SERVER[:PORT] -          (message on stdin)
+#        xymon-send.sh SERVER[:PORT] -|@        (message on stdin)
+#
+# Version: 1.0.1  (2026-10-18)
 #
 # SERVER may be a space-separated list; the message goes to each one.
 # Default port: $XYMONDPORT or 1984.
@@ -29,11 +31,10 @@ MSG=$2
 TMPF=$(mktemp "${TMPDIR:-/tmp}/xymonsend.XXXXXX") || exit 1
 trap 'rm -f "$TMPF"' EXIT INT TERM
 
-if [ "$MSG" = "-" ]; then
-    cat > "$TMPF"
-else
-    printf '%s\n' "$MSG" > "$TMPF"
-fi
+case "${MSG}" in
+    -|@) cat > "${TMPF}" || exit 1 ;;
+    *)   printf '%s\n' "${MSG}" > "${TMPF}" || exit 1 ;;
+esac
 
 TRANSPORT=""
 for t in nc ncat socat; do

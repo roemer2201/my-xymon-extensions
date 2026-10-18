@@ -35,6 +35,13 @@
 # Configuration: environment variables and/or
 # $XYMONHOME/etc/my-xymon-extensions/procs.cfg (see the shipped
 # procs.cfg; the config file wins over the environment).
+#
+# Program flow:
+#   1. Resolve settings and collect a platform-appropriate process list.
+#   2. Send a client report, or evaluate local rules and build a status.
+#   3. Stream the report to Xymon and propagate delivery failures.
+#
+# Version: 1.0.1  (2026-10-18)
 
 set -u
 
@@ -77,6 +84,37 @@ if [ -n "$CFGFILE" ] && [ -r "$CFGFILE" ]; then
     . "$CFGFILE"
 fi
 
+# Print the supported configuration without collecting or sending data.
+usage() {
+    cat <<'EOF'
+Usage: procs.sh [-h|--help]
+
+Collect process data for Xymon (server mode) or check PROC-style rules locally.
+Settings are environment variables; values in the config file override them:
+  PROCS_CFG       Config path (default: $XYMONHOME/etc/my-xymon-extensions/procs.cfg)
+  PROCS_MODE      server (default) or local
+  PROCS_COLUMN    Local/error status column (default: procs)
+  PROCS_OSTYPE    Client OS type (default: derived from ps format)
+  PROCS_CLASS     Client class (default: empty)
+  PROCS_RULES     Local PROC rules, one per line (default: empty)
+  PROCS_PSLIST    Append process list in local mode (default: yes)
+  PROCS_PSFORMAT  auto (default), procps, busybox-desktop, busybox, freebsd
+  PROCS_PS        Process-list command (default: ps)
+  PROCS_HELP      Set to yes to show this help; -h/--help always shows it
+
+Example: PROCS_MODE=local PROCS_RULES='dnsmasq 1 1' procs.sh
+EOF
+}
+case "${1:-}" in
+    -h|--help) usage; exit 0 ;;
+    '') ;;
+    *) printf '%s: unknown argument: %s\n' "${0}" "${1}" >&2; exit 2 ;;
+esac
+if [ "${PROCS_HELP:-no}" = yes ]; then
+    usage
+    exit 0
+fi
+
 # The full client's ps commands (client/xymonclient-linux.sh and
 # client/xymonclient-freebsd.sh of Xymon 4.3.30).
 PS_LINUX_COLS="pid,ppid,user,start,state,pri,pcpu,time:12,pmem,rsz:10,vsz:10,cmd"
@@ -94,16 +132,29 @@ is_off() {
     return 1
 }
 
-# send_status <color> <summary> <body-file>
-send_status() {
+# send_message <file> -- stream large reports, avoiding exec argument limits.
+# Both xymon(1) and the standalone sender accept "@" for stdin; the
+# xymonext byte-counting shim passes this convention through unchanged.
+send_message() {
     if [ -n "${XYMON:-}" ] && [ -n "${XYMSRV:-}" ]; then
-        "$XYMON" "$XYMSRV" "status ${MACHINE}.${PROCS_COLUMN} $1 $(date) - $2
-$(cat "$3")"
+        # Client reports receive client-local.cfg in reply; discard it.
+        if ! "${XYMON}" "${XYMSRV}" @ < "${1}" > /dev/null; then
+            printf '%s: sending the process report failed\n' "${0}" >&2
+            return 1
+        fi
     else
-        # No Xymon environment: print the message (manual test run)
-        echo "status ${MACHINE}.${PROCS_COLUMN} $1 $(date) - $2"
-        cat "$3"
+        cat "${1}"
     fi
+}
+
+# send_status <color> <summary> <body-file> -- construct and deliver a status.
+send_status() {
+    {
+        printf 'status %s.%s %s %s - %s\n' \
+            "${MACHINE}" "${PROCS_COLUMN}" "${1}" "$(date)" "${2}"
+        cat "${3}"
+    } > "${WORKDIR}/message" || return 1
+    send_message "${WORKDIR}/message"
 }
 
 # ----------------------------------------------------------------------
@@ -117,7 +168,7 @@ trap 'rm -rf "$WORKDIR"' EXIT INT TERM
 clear_report() {
     printf '&clear %s\n' "$1" > "$WORKDIR/status"
     send_status clear "Processes not checked" "$WORKDIR/status"
-    exit 0
+    exit $?
 }
 
 case "$PROCS_MODE" in
@@ -276,22 +327,13 @@ if [ "$PROCS_MODE" = "server" ]; then
     # Header line as written by the full client's xymonclient.sh:
     # "client HOST.OSTYPE [CLASS]". Hostname with commas, the server
     # splits the OS type off at the last dot.
-    MSG="client ${MACHINE}.${OSTYPE}${PROCS_CLASS:+ $PROCS_CLASS}
-[date]
-$(date)
-[ps]
-$(cat "$WORKDIR/ps")"
-    if [ -n "${XYMON:-}" ] && [ -n "${XYMSRV:-}" ]; then
-        # The server answers a client message with the host's section
-        # of client-local.cfg; nothing here uses it.
-        if ! "$XYMON" "$XYMSRV" "$MSG" > /dev/null; then
-            echo "$0: sending the client message failed" >&2
-            exit 1
-        fi
-    else
-        printf '%s\n' "$MSG"
-    fi
-    exit 0
+    {
+        printf 'client %s.%s%s\n[date]\n%s\n[ps]\n' \
+            "${MACHINE}" "${OSTYPE}" "${PROCS_CLASS:+ ${PROCS_CLASS}}" "$(date)"
+        cat "${WORKDIR}/ps"
+    } > "${WORKDIR}/message" || exit 1
+    send_message "${WORKDIR}/message"
+    exit $?
 fi
 
 # --- local mode: evaluate the PROC rules here ------------------------------
@@ -310,14 +352,26 @@ fi
 #  - a rule is in its color if fewer than MIN (MIN > 0) or more than
 #    MAX (MAX set) processes match; the column takes the worst color.
 #
-# With phase=check the program only parses the rules and prints the
-# regular expressions, one per line; with phase=eval it reads the ps
-# listing as well and prints the check lines (the color goes to
-# colorfile).
+# phase=check parses rules and prints regexes; phase=commands extracts
+# forest-stripped command lines. grep -Ei counts regex matches with the
+# server's case-insensitive default (awk has no portable IGNORECASE).
+# phase=eval combines these counts with substring counts and prints the
+# check lines (the color goes to colorfile).
 # shellcheck disable=SC2016  # an awk program, not shell expansions
 PROCS_AWK='
     function rank(c) {
         return (c == "red") ? 5 : (c == "yellow") ? 4 : (c == "clear") ? 1 : 0
+    }
+    # Strip unquoted comments like sanitize_input() of lib/misc.c.
+    # Both quote characters protect #; backslashes are preserved.
+    function uncomment(line,    i, c, inq) {
+        inq = 0
+        for (i = 1; i <= length(line); i++) {
+            c = substr(line, i, 1)
+            if (c == "\"" || c == sprintf("%c", 39)) inq = !inq
+            if (c == "#" && !inq) return substr(line, 1, i - 1)
+        }
+        return line
     }
     # tokens(line) -- split like wstok() of lib/misc.c: blanks separate
     # tokens, a double-quoted part may contain blanks, one leading and
@@ -340,8 +394,9 @@ PROCS_AWK='
         return n
     }
     FILENAME == rulesfile {
-        if ($0 ~ /^[ \t]*(#|$)/) next
-        n = tokens($0)
+        line = uncomment($0)
+        if (line ~ /^[ \t]*$/) next
+        n = tokens(line)
         r = ++nrules
         name[r] = tok[1]; pmin[r] = 1; pmax[r] = -1; col[r] = "red"
         text[r] = ""; cnt[r] = 0
@@ -366,8 +421,14 @@ PROCS_AWK='
         }
         if (col[r] !~ /^(green|yellow|red|clear)$/) col[r] = "red"
         if (pmin[r] && pmax[r] == 0) pmax[r] = -1
-        if (phase == "check" && substr(name[r], 1, 1) == "%")
-            print substr(name[r], 2)
+        if (substr(name[r], 1, 1) == "%") {
+            regexrule[++nregex] = r
+            if (phase == "check") print substr(name[r], 2)
+        }
+        next
+    }
+    FILENAME == countsfile {
+        cnt[regexrule[++countrow]] = $0 + 0
         next
     }
     FNR == 1 {
@@ -378,16 +439,14 @@ PROCS_AWK='
         pname = substr($0, cmdofs + 1)
         stripped = pname
         sub(/^[ |\\_]+/, "", stripped)
+        if (phase == "commands") { print stripped; next }
         for (r = 1; r <= nrules; r++) {
-            if (substr(name[r], 1, 1) == "%") {
-                if (stripped ~ substr(name[r], 2)) cnt[r]++
-            } else if (index(pname, name[r]) > 0) {
+            if (substr(name[r], 1, 1) != "%" && index(pname, name[r]) > 0)
                 cnt[r]++
-            }
         }
     }
     END {
-        if (phase == "check") exit
+        if (phase != "eval") exit
         color = "green"
         if (nohdr) {
             color = "yellow"
@@ -417,24 +476,36 @@ PROCS_AWK='
 
 printf '%s\n' "$PROCS_RULES" > "$WORKDIR/rules"
 
-# An invalid regular expression stops mawk and BWK awk with an error,
-# while BusyBox awk silently matches nothing. Check every one with
-# grep -E first (exit code 2 = invalid, the same with GNU, BSD and
-# BusyBox grep), so the result does not depend on the awk at hand.
-if ! awk -v phase=check -v rulesfile="$WORKDIR/rules" "$PROCS_AWK" \
-        "$WORKDIR/rules" > "$WORKDIR/regexes" 2> "$WORKDIR/awk.err"; then
-    clear_report "The PROC rules in PROCS_RULES could not be read: $(tr '\n' ' ' < "$WORKDIR/awk.err")"
+# Extract commands once, then count ERE matches with grep rather than
+# relying on incompatible awk regex validation and IGNORECASE extensions.
+if ! awk -v phase=commands -v cmdhdr="${CMDHDR}" "${PROCS_AWK}" \
+        "${WORKDIR}/ps" > "${WORKDIR}/commands"; then
+    clear_report "The process commands could not be read."
 fi
+if ! awk -v phase=check -v rulesfile="${WORKDIR}/rules" "${PROCS_AWK}" \
+        "${WORKDIR}/rules" > "${WORKDIR}/regexes" 2> "${WORKDIR}/awk.err"; then
+    clear_report "The PROC rules in PROCS_RULES could not be read: $(tr '\n' ' ' < "${WORKDIR}/awk.err")"
+fi
+: > "${WORKDIR}/counts"
 while IFS= read -r re; do
-    printf 'x\n' | grep -E -e "$re" >/dev/null 2>&1
-    if [ $? -eq 2 ]; then
-        clear_report "The PROC rules in PROCS_RULES could not be evaluated: invalid regular expression \"%${re}\" (POSIX ERE)."
+    # Xymon supports this prefix to opt out of its case-insensitive
+    # default. Other PCRE constructs remain outside the POSIX ERE syntax.
+    grepflags=-Eic
+    case "${re}" in
+        '(?-i)'*) re=${re#'(?-i)'}; grepflags=-Ec ;;
+    esac
+    grep "${grepflags}" -e "${re}" "${WORKDIR}/commands" \
+        >> "${WORKDIR}/counts" 2> "${WORKDIR}/grep.err"
+    rc=$?
+    # grep returns 1 for a valid expression with no matches.
+    if [ "${rc}" -gt 1 ]; then
+        clear_report "The PROC rules in PROCS_RULES could not be evaluated: invalid regular expression \"%${re}\" (POSIX ERE): $(tr '\n' ' ' < "${WORKDIR}/grep.err")"
     fi
-done < "$WORKDIR/regexes"
+done < "${WORKDIR}/regexes"
 
 if ! awk -v phase=eval -v rulesfile="$WORKDIR/rules" -v cmdhdr="$CMDHDR" \
-        -v colorfile="$WORKDIR/color" "$PROCS_AWK" \
-        "$WORKDIR/rules" "$WORKDIR/ps" > "$WORKDIR/checks" 2> "$WORKDIR/awk.err"; then
+        -v colorfile="$WORKDIR/color" -v countsfile="$WORKDIR/counts" "$PROCS_AWK" \
+        "$WORKDIR/rules" "$WORKDIR/counts" "$WORKDIR/ps" > "$WORKDIR/checks" 2> "$WORKDIR/awk.err"; then
     clear_report "The PROC rules in PROCS_RULES could not be evaluated: $(tr '\n' ' ' < "$WORKDIR/awk.err")"
 fi
 COLOR=$(cat "$WORKDIR/color" 2>/dev/null)
@@ -458,4 +529,4 @@ case "$COLOR" in
     *)          SUMMARY="Processes ok" ;;
 esac
 send_status "$COLOR" "$SUMMARY" "$WORKDIR/final"
-exit 0
+exit $?

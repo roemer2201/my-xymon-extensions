@@ -998,7 +998,10 @@ expect "$out" '^status testhost\.procs clear ' "PROCS_PSFORMAT=procps does not f
 cat > "$TMP/fakexymon" <<'XEOF'
 #!/bin/sh
 printf '%s\n' "$1" > "$FAKEXYMON_DIR/server"
-printf '%s\n' "$2" > "$FAKEXYMON_DIR/message"
+case "${2}" in
+    @) cat > "${FAKEXYMON_DIR}/message" ;;
+    *) printf '%s\n' "${2}" > "${FAKEXYMON_DIR}/message" ;;
+esac
 echo "[clientconfig from the server]"
 exit "${FAKEXYMON_RC:-0}"
 XEOF
@@ -1022,6 +1025,42 @@ if procs_run procps XYMON="$TMP/fakexymon" XYMSRV=xymon.example \
 else
     echo "ok:   a failed send is reported by the exit code"
 fi
+
+# Large reports must not be passed as an exec argument: Linux limits
+# each argument to 128 KiB even where ARG_MAX is much higher.
+for mode in server local; do
+    out=$(procs_run procps-large PROCS_MODE="${mode}" XYMON="$TMP/fakexymon" \
+        XYMSRV=xymon.example FAKEXYMON_DIR="$TMP/fx")
+    rc=$?
+    bytes=$(wc -c < "$TMP/fx/message")
+    if [ "${rc}" -eq 0 ] && [ "${bytes}" -gt 131072 ] && [ -z "${out}" ]; then
+        echo "ok:   large ${mode} report is delivered completely through stdin"
+    else
+        echo "FAIL: large ${mode} report was not delivered (rc ${rc}, ${bytes} bytes)"
+        FAIL=1
+    fi
+    # Check the tail as well as size, to catch truncated streaming.
+    expect "$(tail -n 1 "$TMP/fx/message")" 'ps -Aww f -o' \
+        "large ${mode} report retains its final process"
+done
+
+# Transport failures must reach the runner in local mode and on clear
+# prerequisite reports, just as they already do for a client message.
+for scenario in local clear; do
+    kind=procps
+    mode=local
+    if [ "${scenario}" = clear ]; then kind=broken; mode=server; fi
+    if procs_run "${kind}" PROCS_MODE="${mode}" XYMON="$TMP/fakexymon" \
+        XYMSRV=xymon.example FAKEXYMON_DIR="$TMP/fx" FAKEXYMON_RC=1 \
+        >"$TMP/procs-send.out" 2>"$TMP/procs-send.err"; then
+        echo "FAIL: failed ${scenario} send went unnoticed"
+        FAIL=1
+    else
+        echo "ok:   failed ${scenario} send returns an error"
+    fi
+    expect "$(cat "$TMP/procs-send.err")" 'sending the process report failed' \
+        "failed ${scenario} send explains the error"
+done
 
 # --- local mode: the rules checked like xymond_client ----------------------
 # xymond-<kind>.txt were produced by the real xymond_client (Xymon
@@ -1082,6 +1121,36 @@ expect_not "$out" 'may cut command lines' "busybox with ps ww: no note"
 out=$(procs_run procps PROCS_MODE=local PROCS_RULES='"%(" 1')
 expect "$out" '^status testhost\.procs clear ' "an invalid regex reports clear, not a wrong color"
 expect "$out" 'could not be evaluated' "invalid-rule note present"
+
+# ERE matching uses Xymon's case-insensitive default. Plain substring
+# rules remain case-sensitive; (?-i) explicitly opts out for regexes.
+out=$(procs_run procps PROCS_MODE=local PROCS_RULES='"%^/USR/SBIN/HOSTAPD" 1 1
+"%(?-i)^/USR/SBIN/HOSTAPD" 0 0
+"%(?-i)^/usr/sbin/hostapd" 1 1
+HOSTAPD 0 0
+"%[[:upper:]]*HOSTAPD" 1 1')
+expect "$out" '^status testhost\.procs green ' \
+    "local regex case handling matches Xymon, including explicit case sensitivity"
+expect "$out" '^&green %\^/USR/SBIN/HOSTAPD \(found 1,' \
+    "uppercase regex finds the lower-case daemon"
+
+# Inline comments must not become positional min/max parameters.
+# Quoted hash signs are part of the pattern or label.
+out=$(procs_run procps PROCS_MODE=local PROCS_RULES='dnsmasq # required daemon
+"%hostapd" 1 1 "TEXT=WiFi # daemon" # explanation
+"%#not-a-command" 0 0
+"%[" 0 0 # invalid regex must still be rejected')
+expect "$out" '^status testhost\.procs clear ' "invalid regex after commented rules still fails validation"
+out=$(procs_run procps PROCS_MODE=local PROCS_RULES='dnsmasq # required daemon
+"%hostapd" 1 1 "TEXT=WiFi # daemon" # explanation
+"%#not-a-command" 0 0')
+expect "$out" '^status testhost\.procs green ' "inline comments preserve default process limits"
+expect "$out" '^&green WiFi # daemon \(found 1,' "quoted TEXT retains spaces and hash signs"
+expect "$out" '^&green %#not-a-command \(found 0,' "quoted regex retains its hash sign"
+
+out=$($TESTSH "$PROCSH" --help)
+expect "$out" '^Usage: procs\.sh' "procs help is available without collecting data"
+expect_not "$out" '^client |^status ' "help sends no report"
 
 # Config file
 printf 'PROCS_MODE="local"\nPROCS_RULES="dnsmasq 2"\n' > "$TMP/procs.cfg"
@@ -3361,6 +3430,12 @@ expect "$(cat "$NC_CAPTURE")" '^ARGS: 192\.0\.2\.1 2984$' \
 printf 'line1\nline2\n' | PATH="$SBIN:$PATH" $TESTSH \
     "$REPO/standalone/xymon-send.sh" 192.0.2.1 -
 expect "$(cat "$NC_CAPTURE")" '^line2$' "message on stdin works ('-')"
+# The native xymon(1) stdin convention must work through standalone too.
+# shellcheck disable=SC2086
+printf 'client testhost.linux\n[ps]\nline-at\n' | PATH="$SBIN:$PATH" $TESTSH \
+    "$REPO/standalone/xymon-send.sh" 127.0.0.1 @
+expect "$(cat "$NC_CAPTURE")" '^line-at$' "message on stdin works ('@')"
+
 
 : > "$NC_CAPTURE"
 # shellcheck disable=SC2086

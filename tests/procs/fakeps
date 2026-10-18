@@ -6,6 +6,7 @@
 # does - and prints the matching fixture from this directory:
 #
 #   procps           procps-ng (full Xymon client command)
+#   procps-large     procps-ng with more than 128 KiB of process data
 #   procps-noforest  procps-ng that rejects the BSD-style "f"
 #   busybox-desktop  BusyBox with CONFIG_DESKTOP ("-o" only)
 #   busybox          BusyBox without CONFIG_DESKTOP, FEATURE_PS_WIDE on
@@ -28,10 +29,15 @@ cut79() {
 }
 
 case "${FAKEPS_KIND:-procps}" in
-    procps)
+    procps|procps-large)
         [ "$*" = "-Aww f -o $LINUX_COLS" ] || [ "$*" = "-Aww -o $LINUX_COLS" ] ||
             invalid "$*"
-        cat "$DIR/ps-procps.txt"
+        if [ "${FAKEPS_KIND:-}" = procps-large ]; then
+            awk 'NR == 1 { print; next }
+                 { for (i = 0; i < 200; i++) print }' "${DIR}/ps-procps.txt"
+        else
+            cat "${DIR}/ps-procps.txt"
+        fi
         ;;
     procps-noforest)
         [ "$*" = "-Aww -o $LINUX_COLS" ] || invalid "$*"

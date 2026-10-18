@@ -93,8 +93,13 @@ as on the server (Xymon 4.3.30, `xymond/client_config.c`), and so do
 the counting, the colors and the status text
 (`xymond/xymond_client.c`, `unix_procs_report()`). Differences:
 
-- `%REGEX` is a POSIX extended regular expression (awk), not PCRE —
-  no `\d`, `\s`, lazy quantifiers or lookarounds.
+- `%REGEX` is a POSIX extended regular expression (`grep -E`), not PCRE —
+  no `\d`, `\s`, lazy quantifiers or lookarounds. Matching is
+  case-insensitive like Xymon; prefix the expression with `(?-i)`
+  (e.g. `%(?-i)^/usr/sbin/hostapd`) to make it case-sensitive.
+- Inline `#` comments are ignored; quote a pattern or label containing
+  `#`. For labels with spaces quote the entire token, e.g.
+  `"TEXT=WiFi daemon"`, as expected by Xymon 4.3.30's tokenizer.
 - `TRACK` is accepted but ignored: the count graphs are built by the
   server from the client message only.
 - `HOST=`, `CLASS=`, `GROUP=`, `TIME=` and the other qualifiers are
@@ -136,7 +141,12 @@ OpenWrt, `opkg install procps-ng-ps` gives the full client's format.
 Every setting is an environment variable with a built-in default and
 can also be set in `$XYMONHOME/etc/my-xymon-extensions/procs.cfg`
 (sourced POSIX shell; a value set there wins over the environment).
-See the shipped [procs.cfg](procs.cfg).
+See the shipped [procs.cfg](procs.cfg), or run `procs.sh --help`.
+Reports are streamed through standard input (`@`, supported by both
+`xymon(1)` and the standalone sender), so a large process list does not
+hit the operating system's per-argument size limit. Delivery failures
+return a nonzero exit status in both modes, including prerequisite
+reports.
 
 | Setting          | Default  | Meaning |
 |------------------|----------|---------|
