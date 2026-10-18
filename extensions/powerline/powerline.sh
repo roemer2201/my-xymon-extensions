@@ -239,7 +239,7 @@ fi
 # malformed file is skipped (the awk side validates every field).
 if [ -n "${POWERLINE_FRITZBOX_DIR}" ] && [ -d "${POWERLINE_FRITZBOX_DIR}" ]; then
     for hp in "${POWERLINE_FRITZBOX_DIR}"/*.homeplug; do
-        [ -f "${hp}" ] && [ -r "${hp}" ] || continue
+        if [ ! -f "${hp}" ] || [ ! -r "${hp}" ]; then continue; fi
         awk -v now="${POWERLINE_NOW}" '
             NR == 1 {
                 if ($1 != "#" || $2 != "fritzbox" || $3 != "homeplug" || $5 !~ /^[0-9]+$/) exit
