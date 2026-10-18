@@ -171,7 +171,8 @@ query yields unknown counts, never a fabricated zero. DECT handsets
 (`X_AVM-DE_Dect`) are listed for information: connected while their
 `Active` flag is 1, "currently not connected" while it is 0
 ([TR-064_DECT.pdf](https://fritz.support/resources/TR-064_DECT.pdf),
-chapter 5).
+chapter 5). Missing or invalid `Active` values are shown as "connection
+state unknown"; this informational field never changes the column color.
 
 **plc** - `X_AVM-DE_Homeplug` GetNumberOfDeviceEntries and
 GetGenericDeviceEntry: MAC (the adapter's PLC MAC), active, name, model,

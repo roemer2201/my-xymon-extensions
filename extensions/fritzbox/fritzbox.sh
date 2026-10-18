@@ -17,7 +17,7 @@
 # NCV - keep an explicit U: a failed poll becomes a graph gap, never a
 # zero. Only read-only TR-064 actions are ever sent.
 #
-# Version: 1.0.3  (2026-10-18)
+# Version: 1.0.4  (2026-10-18)
 #
 # Program flow:
 # 1. Resolve settings (defaults < config < environment < CLI), validate
@@ -35,7 +35,7 @@
 # Usage: fritzbox.sh --config FILE [--host NAME] [--dry-run] [--help]
 set -u
 CONFIG_NAME=fritzbox.cfg
-SCRIPT_VERSION=1.0.3
+SCRIPT_VERSION=1.0.4
 
 usage() {
     cat <<'EOF'
@@ -1715,8 +1715,14 @@ mod_tel() {
         while [ "${t_i}" -lt "${t_n}" ] && [ "${t_i}" -lt "${max_entries}" ]; do
             tr64 "${d_svc}" GetGenericDectEntry "<NewIndex>${t_i}</NewIndex>" || break
             t_model=$(clean "$(field NewModel)")
-            t_conn='not connected'
-            [ "$(field NewActive | tr -cd '0-9')" != 1 ] || t_conn=connected
+            # Only explicit 0/1 establish a state. Missing values must
+            # stay unknown; stripping characters could turn invalid1
+            # into a fabricated connected state.
+            case "$(field NewActive)" in
+                1) t_conn=connected ;;
+                0) t_conn='not connected' ;;
+                *) t_conn='connection state unknown' ;;
+            esac
             detail '    DECT %s: "%s"%s %s, update available=%s\n' "$(field NewID | tr -cd '0-9')" \
                 "$(clean "$(field NewName)")" "${t_model:+ ${t_model}}" "${t_conn}" \
                 "$(field NewUpdateAvailable | tr -cd '0-9')"

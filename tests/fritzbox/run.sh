@@ -318,6 +318,21 @@ run --set FRITZBOX_MODULES=tel
 ok status fritztel clear 'no SIP accounts'
 reset_over
 
+# DECT connection text must distinguish missing/invalid data from zero.
+over x_dect__GetGenericDectEntry__0.xml 's|<NewActive>0</NewActive>|<NewActive>1</NewActive>|'
+run --set FRITZBOX_MODULES=tel
+ok has '^    DECT 1: "Handset 1" connected, update available=0$'
+for dect_active in '' 2 invalid1; do
+    over x_dect__GetGenericDectEntry__0.xml "s|<NewActive>0</NewActive>|<NewActive>${dect_active}</NewActive>|"
+    run --set FRITZBOX_MODULES=tel
+    ok status fritztel green '3/3 SIP account\(s\) registered'
+    ok has '^    DECT 1: "Handset 1" connection state unknown, update available=0$'
+done
+over x_dect__GetGenericDectEntry__0.xml '/<NewActive>/d'
+run --set FRITZBOX_MODULES=tel
+ok has '^    DECT 1: "Handset 1" connection state unknown, update available=0$'
+reset_over
+
 # --- fritzlan: required devices, new MACs -------------------------------------
 run --set FRITZBOX_MODULES=lan --set 'FRITZBOX_LAN_REQUIRED=02:00:00:00:10:03=nas 02-00-00-00-10-01' \
     --set FRITZBOX_LAN_NEW_MAC=1
