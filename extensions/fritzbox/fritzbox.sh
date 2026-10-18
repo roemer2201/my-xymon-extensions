@@ -17,7 +17,7 @@
 # NCV - keep an explicit U: a failed poll becomes a graph gap, never a
 # zero. Only read-only TR-064 actions are ever sent.
 #
-# Version: 1.0.1  (2026-10-18)
+# Version: 1.0.2  (2026-10-18)
 #
 # Program flow:
 # 1. Resolve settings (defaults < config < environment < CLI), validate
@@ -35,7 +35,7 @@
 # Usage: fritzbox.sh --config FILE [--host NAME] [--dry-run] [--help]
 set -u
 CONFIG_NAME=fritzbox.cfg
-SCRIPT_VERSION=1.0.1
+SCRIPT_VERSION=1.0.2
 
 usage() {
     cat <<'EOF'
@@ -1404,7 +1404,9 @@ mod_fw() {
             printf '%s %s:%s:%s:%s %s\n' "${f_en:-1}" "${f_proto}" "${f_ext}" "${f_cli}" "${f_int}" "${f_desc}" >>"${cdir}/maps"
             f_i=$((f_i + 1))
         done
-        if [ "${f_i}" -lt "${f_count:-0}" ]; then
+        # Only the cap gets this note: a failed request already has its
+        # own (or col_end reports the unreachable box).
+        if [ "${partial}" = 0 ] && [ "${host_abort}" = 0 ] && [ "${f_i}" -lt "${f_count:-0}" ]; then
             note yellow "port mapping list incomplete: read ${f_i} of ${f_count} entries (limit ${max_entries})"
             partial=1
         fi

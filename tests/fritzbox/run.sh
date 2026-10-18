@@ -429,6 +429,15 @@ ok rrd fritzfw portmaps U
 ok cmp -s "${STATE}/fritz.box.fw" "${TMP}/fw.before"
 reset_over
 
+# --- an entry vanishing during the poll (713) is one note, not two --------
+over wanpppconn1__GetPortMappingNumberOfEntries.xml 's|>1<|>2<|'
+run --set FRITZBOX_MODULES=fw
+ok status fritzfw yellow 'port mapping list incomplete'
+ok has '^&yellow WANPPPConnection:1 GetGenericPortMappingEntry failed \(HTTP 500, UPnP error 713\)$'
+ok lacks 'read 1 of 2 entries'
+ok rrd fritzfw portmaps U
+reset_over
+
 # --- incomplete HomePlug enumerations leave the old list aging -------------
 cp "${STATE}/fritz.box.homeplug" "${TMP}/homeplug.before"
 over x_homeplug__GetNumberOfDeviceEntries.xml 's|>2<|>3<|'
