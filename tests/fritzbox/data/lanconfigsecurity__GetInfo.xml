@@ -2,6 +2,10 @@
 <s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" s:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">
 <s:Body>
 <u:GetInfoResponse xmlns:u="urn:dslforum-org:service:LANConfigSecurity:1">
+<NewMaxCharsPassword>32</NewMaxCharsPassword>
+<NewMinCharsPassword>0</NewMinCharsPassword>
+<NewAllowedCharsPassword>0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz !&quot;#$%&amp;&apos;()*+,-./:;&lt;=&gt;?@[\]^_`{|}~</NewAllowedCharsPassword>
+<NewAllowedCharsUsername>0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz -._</NewAllowedCharsUsername>
 <NewX_AVM-DE_IsDefaultPasswordActive>0</NewX_AVM-DE_IsDefaultPasswordActive>
 </u:GetInfoResponse>
 </s:Body>

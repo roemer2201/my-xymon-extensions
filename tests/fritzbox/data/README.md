@@ -12,11 +12,9 @@ arguments) of a FRITZ!Box 7510, FRITZ!OS 8.26 (271.08.26), on
 - counters, rates, margins, versions, element names and their order:
   as recorded
 
-The `GetTotalPackets*` answers (IGD and TR-064) were recorded by a
-separate read-only probe of the same box on the same day.
-`lanconfigsecurity__GetInfo.xml` is built from the box's SCPD
-(`lanconfigsecuritySCPD.xml`) and holds only the one field the
-collector reads, `NewX_AVM-DE_IsDefaultPasswordActive`.
+The `GetTotalPackets*` (IGD and TR-064) and LANConfigSecurity
+`GetInfo` answers were recorded by a separate read-only probe of the
+same box on the same day.
 
 The SOAP envelopes are rebuilt around the recorded values; the element
 names are those of the box's answers. The event log keeps the box's
