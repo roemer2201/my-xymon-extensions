@@ -29,6 +29,7 @@
 # (see the shipped xymonext.cfg; the config file wins over the
 # environment).
 
+# Version: 1.0.1 (2026-10-18)
 set -u
 
 # Every number in a Xymon message must use a decimal point. awk formats
@@ -342,8 +343,19 @@ if ! mkdir -p "$STATEDIR"; then
     echo "$0: cannot create the state directory: $STATEDIR" >&2
     exit "$RC"
 fi
-printf '%s %s %s %s %s %s\n' "$NOW" "$RC" "$WALL" "$CPU" "$MSGS" "$BYTES" \
-    > "$STATEDIR/$EXT"
+# Keep temporary files hidden from the report glob, and replace a state
+# symlink itself instead of truncating whatever it points to.
+STATE_TMP=$(umask 077; mktemp "${STATEDIR}/.${EXT}.XXXXXX") || STATE_TMP=""
+if [ -z "${STATE_TMP}" ]; then
+    printf 'Cannot reserve state file for %s\n' "${EXT}" >&2
+    exit "${RC}"
+fi
+if ! printf '%s %s %s %s %s %s\n' "${NOW}" "${RC}" "${WALL}" "${CPU}" "${MSGS}" "${BYTES}" > "${STATE_TMP}" ||
+   ! mv "${STATE_TMP}" "${STATEDIR}/${EXT}"; then
+    rm -f -- "${STATE_TMP}"
+    printf 'Cannot save measurement for %s\n' "${EXT}" >&2
+    exit "${RC}"
+fi
 
 case "$WALLSRC" in
     proc) SRCTXT="/proc/uptime (10 ms resolution)" ;;

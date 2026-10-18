@@ -641,5 +641,21 @@ for c in ${COLUMNS}; do
     ok grep -q "^TEST2RRD+=.*[,\"]${c}[,\"]" "${SRVDIR}"/xymonserver.d/*.cfg
 done
 
+
+# A single failed exposure-settings request is an incomplete poll, not a
+# settings change. Keep the previous baseline and send an explicit unknown.
+reset_over
+FRITZBOX_MODULES=fw
+export FRITZBOX_MODULES
+run
+cp "${STATE}/fritz.box.fw" "${TMP}/fw.before" || exit 1
+cp "${FB_DATA}/fault502.xml" "${OVER}/x_remote__GetInfo.xml" || exit 1
+run
+ok status fritzfw yellow 'port mapping list incomplete'
+ok rrd fritzfw portmaps U
+ok cmp -s "${TMP}/fw.before" "${STATE}/fritz.box.fw"
+reset_over
+unset FRITZBOX_MODULES
+
 if [ "${FAIL}" -eq 0 ]; then echo "fritzbox: all tests passed"; fi
 exit "${FAIL}"

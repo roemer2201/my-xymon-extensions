@@ -257,6 +257,15 @@ RRD graphs need a one-time setup on the Xymon SERVER (not here):
 EOF
 
 %changelog
+* Sun Oct 18 2026 Codex <codex@openai.com> - 0.29.2-1
+- Full code review: propagate Xymon delivery failures, reserve private
+  state temporary files, and avoid cwd-dependent glob filtering
+- Correct LXC cgroup matching and inventory errors, SMART unknown/error
+  states, partial df output and mixed-age opkg package feeds
+- Harden standalone extension names and recipient validation, use nc -N
+  when supported, and retain FRITZ!Box exposure state on query errors
+- Add cross-extension regressions and a review report
+
 * Sun Oct 18 2026 roemer2201 <r.oliver@web.de> - 0.29.1-1
 - no change to this package. The server-only fritzbox collector cuts
   event log texts after 300 bytes (was 120) without splitting a UTF-8

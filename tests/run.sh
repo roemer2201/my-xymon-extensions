@@ -4349,6 +4349,9 @@ else
     FAIL=1
 fi
 
+# Cross-extension failure and collision regressions.
+if ! sh "$TESTDIR/review/run.sh"; then FAIL=1; fi
+
 # The server-only collectors have their own isolated replay tests.
 if ! sh "$TESTDIR/powerline/run.sh"; then FAIL=1; fi
 if ! sh "$TESTDIR/fritz-wifi/run.sh"; then FAIL=1; fi

@@ -22,6 +22,8 @@
 # Runs unmodified on Ubuntu, Rocky Linux (EL) and FreeBSD.
 # Configuration: $XYMONHOME/etc/my-xymon-extensions/smart.cfg (see the shipped smart.cfg).
 
+# Version: 1.0.1 (2026-10-18)
+
 set -u
 
 # Every number in a Xymon message must use a decimal point. awk formats
@@ -266,10 +268,10 @@ send_report() {
     if [ -n "${XYMON:-}" ] && [ -n "${XYMSRV:-}" ]; then
         "$XYMON" "$XYMSRV" "status ${MACHINE}.${COLUMN} $1 $(date) - SMART is $1
 
-$(cat "$2")"
+$(cat "$2")" || return 1
         if [ -n "${3:-}" ] && [ -s "${3:-}" ]; then
             "$XYMON" "$XYMSRV" "data ${MACHINE}.${COLUMN}
-$(cat "$3")"
+$(cat "$3")" || return 1
         fi
     else
         # No Xymon environment: print the messages (manual test run)
@@ -436,7 +438,7 @@ NOW=$(date +%s)
 clear_report() {
     printf '%s\n' "$1" > "$STATUS"
     send_report clear "$STATUS"
-    exit 0
+    exit "$?"
 }
 
 # --- locate smartctl and mmc --------------------------------------------
@@ -551,7 +553,7 @@ if [ ! -s "$WORKDIR/devices" ] && [ -z "$MMCLIST" ]; then
 fi
 
 # --- per-device checks --------------------------------------------------
-OVERALL=green
+OVERALL=clear
 NDEV=0
 
 while IFS='|' read -r dev opts alias <&3; do
@@ -563,6 +565,7 @@ while IFS='|' read -r dev opts alias <&3; do
 
     # shellcheck disable=SC2086  # $nsopt/$opts are intentionally word-split
     out=$(smartrun -i -H -A $nsopt $opts "$dev")
+    smart_rc=$?
 
     case "$out" in
         *"Device is in STANDBY"*|*"Device is in SLEEP"*)
@@ -571,9 +574,17 @@ while IFS='|' read -r dev opts alias <&3; do
             ;;
     esac
 
+    # smartctl bits 0..2 flag invocation/device/command errors; higher
+    # bits are disk-health findings and are evaluated below as usual.
+    if [ "$((smart_rc & 7))" -ne 0 ]; then
+        OVERALL=$(worst "${OVERALL}" yellow)
+        printf '&yellow %s: smartctl query failed (exit %s)\n' "${dev}" "${smart_rc}" >> "${NOTES}"
+    fi
+
     if ! printf '%s\n' "$out" | grep -q "=== START OF"; then
         {
-            printf '&clear %s: cannot read SMART data:\n' "$dev"
+            OVERALL=$(worst "${OVERALL}" yellow)
+            printf '&yellow %s: cannot read SMART data:\n' "$dev"
             printf '%s\n' "$out" | tail -n 2 | sed -e 's/^/    /'
             printf '\n'
         } >> "$STATUS"
@@ -899,7 +910,8 @@ for dev in $MMCLIST; do
 
     if ! printf '%s\n' "$out" | grep -q "Extended CSD rev"; then
         {
-            printf '&clear %s: cannot read eMMC EXT_CSD:\n' "$dev"
+            OVERALL=$(worst "${OVERALL}" yellow)
+            printf '&yellow %s: cannot read eMMC EXT_CSD:\n' "$dev"
             printf '%s\n' "$out" | tail -n 2 | sed -e 's/^/    /'
             printf '\n'
         } >> "$STATUS"
@@ -996,8 +1008,12 @@ awk -v now="$NOW" -v ret="$((DWPD_WINDOW_HOURS * 7200))" '
 # Persist the samples (best effort - a read-only or missing $XYMONTMP
 # only disables dwpdrecent, it must not break the report).
 if [ -s "$NEWSTATE" ]; then
-    if cat "$NEWSTATE" > "${STATEFILE}.$$" 2>/dev/null; then
-        mv "${STATEFILE}.$$" "$STATEFILE" 2>/dev/null || rm -f "${STATEFILE}.$$"
+    # Reserve the temporary path exclusively; never follow a pre-created symlink.
+    STATE_TMP=$(umask 077; mktemp "${STATEFILE}.XXXXXX") || STATE_TMP=""
+    if [ -n "${STATE_TMP}" ]; then
+        if ! cat "${NEWSTATE}" > "${STATE_TMP}" || ! mv "${STATE_TMP}" "${STATEFILE}"; then
+            rm -f -- "${STATE_TMP}"
+        fi
     fi
 fi
 
@@ -1005,7 +1021,11 @@ fi
     if [ -s "$NOTES" ]; then
         cat "$NOTES"
     else
-        printf 'All monitored disks are healthy\n'
+        if [ "${OVERALL}" = clear ]; then
+            printf 'No usable disk health measurements this poll\n'
+        else
+            printf 'All monitored disks are healthy\n'
+        fi
     fi
     printf '\n'
     cat "$STATUS"
@@ -1015,4 +1035,4 @@ fi
 } > "$WORKDIR/final"
 
 send_report "$OVERALL" "$WORKDIR/final" "$DATA"
-exit 0
+exit "$?"

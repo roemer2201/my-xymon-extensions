@@ -55,6 +55,8 @@
 # Configuration: environment variables and/or $XYMONHOME/etc/my-xymon-extensions/lxc.cfg
 # (see the shipped lxc.cfg; the config file wins over the environment).
 
+# Version: 1.0.1 (2026-10-18)
+
 set -u
 
 # Every number in a Xymon message must use a decimal point. awk formats
@@ -140,7 +142,9 @@ sanitize() {
 
 # match_any <name> <pattern-list> -> true if one space-separated glob
 # pattern of the list matches the name
-match_any() {
+match_any() (
+    # Split configured words without expanding wildcard patterns in the cwd.
+    set -f
     ma_name=$1
     # shellcheck disable=SC2086  # the list is a pattern list on purpose
     for ma_p in $2; do
@@ -150,16 +154,18 @@ match_any() {
         esac
     done
     return 1
-}
+)
 
 # in_list <word> <word-list> -> true if the list contains the word
-in_list() {
+in_list() (
+    # Split configured words without expanding wildcard patterns in the cwd.
+    set -f
     # shellcheck disable=SC2086  # the list is space-separated on purpose
     for il_w in $2; do
         [ "$il_w" = "$1" ] && return 0
     done
     return 1
-}
+)
 
 # state_get <key> -> prints fields 3..NF of the matching state line;
 # fails when the state file or the line is missing.
@@ -180,10 +186,10 @@ send_report() {
     if [ -n "${XYMON:-}" ] && [ -n "${XYMSRV:-}" ]; then
         "$XYMON" "$XYMSRV" "status ${MACHINE}.${COLUMN} $1 $(date) - lxc: ${SUMMARY:-$1}
 
-$(cat "$2")"
+$(cat "$2")" || return 1
         if [ -n "${3:-}" ] && [ -s "${3:-}" ]; then
             "$XYMON" "$XYMSRV" "data ${MACHINE}.${COLUMN}
-$(cat "$3")"
+$(cat "$3")" || return 1
         fi
     else
         # No Xymon environment: print the messages (manual test run)
@@ -228,7 +234,7 @@ clear_report() {
         printf '<!-- ncv_skipend -->\n'
     } > "$WORKDIR/clear"
     send_report clear "$WORKDIR/clear"
-    exit 0
+    exit "$?"
 }
 
 # ncv <name> <numeric-value> -- append an RRD line to the data message
@@ -256,16 +262,24 @@ fi
 # lists that would shift the fields. The byte counters come from
 # lxc-info below, which is a separate package on OpenWrt and may well
 # be missing - everything except the traffic works without it.
-"$LXC_LS" -f -F NAME,STATE,PID,AUTOSTART 2>/dev/null \
-    | awk '$1 != "NAME" && NF >= 4 { print $1, $2, $3, ($4 == "1" ? 1 : 0) }' \
-    > "$WORKDIR/all" 2>/dev/null
+if "${LXC_LS}" -f -F NAME,STATE,PID,AUTOSTART > "${WORKDIR}/inventory" 2> "${WORKDIR}/ls.err"; then
+    awk '$1 != "NAME" && NF >= 4 { print $1, $2, $3, ($4 == "1" ? 1 : 0) }' \
+        "${WORKDIR}/inventory" > "${WORKDIR}/all"
+else
+    : > "${WORKDIR}/all"
+fi
 
-if [ ! -s "$WORKDIR/all" ]; then
-    # Old lxc-ls without -F, or no containers at all. The plain list
-    # still works; state and PID then come from lxc-info, the autostart
-    # flag from the other two sources below.
-    "$LXC_LS" -1 2>/dev/null | awk 'NF == 1 { print $1, "?", "-", "-" }' \
-        > "$WORKDIR/all"
+if [ ! -s "${WORKDIR}/all" ]; then
+    # Old lxc-ls may lack -F; only a successful plain query establishes
+    # an empty inventory. Permission/daemon failures are not "no containers".
+    if ! "${LXC_LS}" -1 > "${WORKDIR}/inventory" 2> "${WORKDIR}/ls.err"; then
+        SUMMARY="cannot query LXC containers"
+        { printf '&yellow lxc-ls failed - container status unknown.\n';
+          cat "${WORKDIR}/ls.err"; } > "${WORKDIR}/query-error"
+        send_report yellow "${WORKDIR}/query-error"
+        exit "$?"
+    fi
+    awk 'NF == 1 { print $1, "?", "-", "-" }' "${WORKDIR}/inventory" > "${WORKDIR}/all"
 fi
 
 if [ ! -s "$WORKDIR/all" ]; then
@@ -324,7 +338,11 @@ cgroup_root_of() {
                 out = ""
                 for (i = 2; i <= k; i++) {
                     out = out "/" c[i]
-                    if (index(c[i], n) > 0) { print out; exit 0 }
+                    # Match complete LXC components; short names can occur in
+                    # unrelated parents such as machine.slice or user.slice.
+                    if (c[i] == n || c[i] == "lxc.payload." n || c[i] == "lxc@" n ".service") {
+                        print out; exit 0
+                    }
                 }
                 exit 1
             }' "$LXC_PROC/$1/cgroup" 2>/dev/null)
@@ -720,8 +738,12 @@ ncv count_down "$N_DOWN"
 # Remember this run's counters (best effort - a read-only $XYMONTMP
 # only disables the rate calculation, it must not kill the report).
 if [ -s "$NEWSTATE" ]; then
-    if cat "$NEWSTATE" > "${STATEFILE}.$$" 2>/dev/null; then
-        mv "${STATEFILE}.$$" "$STATEFILE" 2>/dev/null || rm -f "${STATEFILE}.$$"
+    # Reserve the temporary path exclusively; never follow a pre-created symlink.
+    STATE_TMP=$(umask 077; mktemp "${STATEFILE}.XXXXXX") || STATE_TMP=""
+    if [ -n "${STATE_TMP}" ]; then
+        if ! cat "${NEWSTATE}" > "${STATE_TMP}" || ! mv "${STATE_TMP}" "${STATEFILE}"; then
+            rm -f -- "${STATE_TMP}"
+        fi
     fi
 else
     rm -f "$STATEFILE" 2>/dev/null
@@ -757,4 +779,4 @@ fi
 } > "$WORKDIR/final"
 
 send_report "$WORST" "$WORKDIR/final" "$DATA"
-exit 0
+exit "$?"

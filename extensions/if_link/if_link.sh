@@ -39,6 +39,8 @@
 # $XYMONHOME/etc/my-xymon-extensions/if_link.cfg (see the shipped if_link.cfg; the config
 # file wins over the environment).
 
+# Version: 1.0.1 (2026-10-18)
+
 set -u
 
 # Every number in a Xymon message must use a decimal point. awk formats
@@ -129,7 +131,9 @@ attr() {
 
 # match_any <name> <pattern-list> -> true if one space-separated glob
 # pattern of the list matches the name
-match_any() {
+match_any() (
+    # Split configured words without expanding wildcard patterns in the cwd.
+    set -f
     ma_name=$1
     # shellcheck disable=SC2086  # the list is a pattern list on purpose
     for ma_p in $2; do
@@ -139,7 +143,7 @@ match_any() {
         esac
     done
     return 1
-}
+)
 
 # thresholds_for <interface> -- sets TH_Y and TH_R to the thresholds
 # in effect for that interface. IF_LINK_THRESHOLDS holds entries of
@@ -147,6 +151,7 @@ match_any() {
 # replaces the global IF_LINK_YELLOW/IF_LINK_RED. An empty or
 # non-numeric field means "no threshold".
 thresholds_for() {
+    set -f
     TH_Y="$IF_LINK_YELLOW"
     TH_R="$IF_LINK_RED"
     # shellcheck disable=SC2086  # entries are space-separated
@@ -162,10 +167,12 @@ thresholds_for() {
             $tf_pat)
                 TH_Y=$tf_y
                 TH_R=$tf_r
+                set +f
                 return 0
                 ;;
         esac
     done
+    set +f
     return 0
 }
 
@@ -188,10 +195,10 @@ send_report() {
     if [ -n "${XYMON:-}" ] && [ -n "${XYMSRV:-}" ]; then
         "$XYMON" "$XYMSRV" "status ${MACHINE}.${COLUMN} $1 $(date) - if_link: ${SUMMARY:-$1}
 
-$(cat "$2")"
+$(cat "$2")" || return 1
         if [ -n "${3:-}" ] && [ -s "${3:-}" ]; then
             "$XYMON" "$XYMSRV" "data ${MACHINE}.${COLUMN}
-$(cat "$3")"
+$(cat "$3")" || return 1
         fi
     else
         # No Xymon environment: print the messages (manual test run)
@@ -237,7 +244,7 @@ clear_report() {
         printf '<!-- ncv_skipend -->\n'
     } > "$WORKDIR/clear"
     send_report clear "$WORKDIR/clear"
-    exit 0
+    exit "$?"
 }
 
 # ncv <name> <numeric-value> -- append an RRD line to the data message
@@ -432,8 +439,12 @@ done 3< "$WORKDIR/ifs"
 # Remember this run's counters (best effort - a read-only $XYMONTMP
 # only disables the delta calculation, it must not kill the report).
 if [ -s "$NEWSTATE" ]; then
-    if cat "$NEWSTATE" > "${STATEFILE}.$$" 2>/dev/null; then
-        mv "${STATEFILE}.$$" "$STATEFILE" 2>/dev/null || rm -f "${STATEFILE}.$$"
+    # Reserve the temporary path exclusively; never follow a pre-created symlink.
+    STATE_TMP=$(umask 077; mktemp "${STATEFILE}.XXXXXX") || STATE_TMP=""
+    if [ -n "${STATE_TMP}" ]; then
+        if ! cat "${NEWSTATE}" > "${STATE_TMP}" || ! mv "${STATE_TMP}" "${STATEFILE}"; then
+            rm -f -- "${STATE_TMP}"
+        fi
     fi
 fi
 
@@ -461,4 +472,4 @@ fi
 } > "$WORKDIR/final"
 
 send_report "$WORST" "$WORKDIR/final" "$DATA"
-exit 0
+exit "$?"

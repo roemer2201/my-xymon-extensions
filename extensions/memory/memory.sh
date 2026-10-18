@@ -21,6 +21,8 @@
 # (see the shipped memory.cfg; the config file wins over the
 # environment).
 
+# Version: 1.0.1 (2026-10-18)
+
 set -u
 
 # Every number in a Xymon message must use a decimal point. awk formats
@@ -88,7 +90,7 @@ send_report() {
     if [ -n "${XYMON:-}" ] && [ -n "${XYMSRV:-}" ]; then
         "$XYMON" "$XYMSRV" "status ${MACHINE}.${COLUMN} $1 $(date) - memory is $1
 
-$(cat "$2")"
+$(cat "$2")" || return 1
     else
         # No Xymon environment: print the message (manual test run)
         echo "status ${MACHINE}.${COLUMN} $1 $(date) - memory is $1"
@@ -107,7 +109,7 @@ trap 'rm -rf "$WORKDIR"' EXIT INT TERM
 clear_report() {
     printf '%s\n' "$1" > "$WORKDIR/status"
     send_report clear "$WORKDIR/status"
-    exit 0
+    exit "$?"
 }
 
 if [ ! -r "$MEM_MEMINFO" ]; then
@@ -157,4 +159,4 @@ USED_MB=$(kb2mb "$((TOTAL_KB - AVAIL_KB))")
 } > "$WORKDIR/final"
 
 send_report "$COLOR" "$WORKDIR/final"
-exit 0
+exit "$?"
