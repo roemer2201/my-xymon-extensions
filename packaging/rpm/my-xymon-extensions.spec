@@ -257,6 +257,15 @@ RRD graphs need a one-time setup on the Xymon SERVER (not here):
 EOF
 
 %changelog
+* Sat Oct 17 2026 roemer2201 <r.oliver@web.de> - 0.29.0-1
+- fritzdsl and fritzwan leave this package: they are modules of the new
+  server-only fritzbox collector (my-xymon-extensions-server,
+  Debian/Ubuntu), which polls FRITZ!Box routers from the Xymon server
+  and reports fritzdsl, fritzwan, fritzsys, fritzlog, fritzfw, fritzlan
+  and fritztel. rpm keeps edited fritzdsl/fritzwan configs as .rpmsave;
+  their settings map to fritzbox.cfg (see the fritzbox README). The RRD
+  files and graphs on the Xymon server stay
+
 * Fri Oct 16 2026 roemer2201 <r.oliver@web.de> - 0.28.1-1
 - no change to this package. The opkg package (OpenWrt/TurrisOS) no
   longer keeps an unchanged pre-0.20.0 default config on an upgrade

@@ -226,7 +226,9 @@ masked.
 Up to 0.28 fritzdsl and fritzwan were client extensions with their own
 configs. They left the client packages; the Debian client package
 removes their files and launch snippets (an edited config stays as
-`.dpkg-bak` next to the old place). To carry the setup over:
+`.dpkg-bak` next to the old place). The server package breaks client
+packages older than 0.29.0, so on a host with both the two are upgraded
+together and no column gets two senders. To carry the setup over:
 
 | Old (fritzdsl.cfg / fritzwan.cfg) | New |
 |-----------------------------------|-----|

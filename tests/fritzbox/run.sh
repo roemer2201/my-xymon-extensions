@@ -118,11 +118,19 @@ no_leak() {
 no_env_leak() { [ ! -e "${FB_LOG}/envleak" ]; }
 # shellcheck disable=SC2317,SC2329 # Invoked via ok's command argument.
 state_has() { grep -E -- "${2}" "${STATE}/fritz.box.${1}" >/dev/null 2>&1; }
-snapshot() { rm -rf "${TMP}/snap"; cp -R "${STATE}" "${TMP}/snap"; }
-# The homeplug hand-over file is not Xymon state: it is replaced by every
-# poll that reads the adapter list, delivered or not.
+# copy_state DIR - the state files without the lock and the homeplug
+# hand-over file, which is not Xymon state: it is replaced by every poll
+# that reads the adapter list, delivered or not. (No "diff -x": BusyBox.)
+copy_state() {
+    rm -rf "${1}"; mkdir -p "${1}"
+    for f in "${STATE}"/*; do
+        case "${f}" in */lock|*.homeplug|*/run.*) continue ;; esac
+        [ ! -f "${f}" ] || cp "${f}" "${1}/"
+    done
+}
+snapshot() { copy_state "${TMP}/snap"; }
 # shellcheck disable=SC2317,SC2329 # Invoked via ok's command argument.
-state_unchanged() { diff -r -x lock -x '*.homeplug' "${TMP}/snap" "${STATE}" >/dev/null; }
+state_unchanged() { copy_state "${TMP}/now" && diff -r "${TMP}/snap" "${TMP}/now" >/dev/null; }
 COLUMNS='fritzdsl fritzwan fritzsys fritzlog fritzfw fritzlan fritztel'
 
 # --- baseline poll of the reference box -----------------------------------

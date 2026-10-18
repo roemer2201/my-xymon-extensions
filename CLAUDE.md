@@ -25,6 +25,13 @@ come from native trends messages (explicit unknowns), not NCV.
 fritz-wifi is the second one (TR-064 via curl, flock): it reports into
 the `wifi` column and writes the wifi RRD files via trends messages; its
 password file is never installed by a package.
+fritzbox is the third (TR-064/UPnP via curl, flock, the same password
+file): one collector, one login per box, several columns (fritzdsl,
+fritzwan, fritzsys, fritzlog, fritzfw, fritzlan, fritztel) - the one
+deliberate exception to "one extension, one column". Up to 0.28 fritzdsl
+and fritzwan were client extensions; their RRD files and graph names are
+kept. Its plc module hands the box's adapter list to powerline through a
+file in $XYMONVAR/fritzbox, because a column has only one sender.
 
 ## Hard portability rules
 
