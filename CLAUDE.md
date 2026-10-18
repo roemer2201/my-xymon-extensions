@@ -29,8 +29,9 @@ fritzbox is the third (TR-064/UPnP via curl, flock, the same password
 file): one collector, one login per box, several columns (fritzdsl,
 fritzwan, fritzsys, fritzlog, fritzfw, fritzlan, fritztel) - the one
 deliberate exception to "one extension, one column". Up to 0.28 fritzdsl
-and fritzwan were client extensions; their RRD files and graph names are
-kept. Its plc module hands the box's adapter list to powerline through a
+and fritzwan were client extensions; their RRD files are kept. Its
+status texts carry the trends values a second time as a hidden NCV
+block (pinned in tests/fritzbox/run.sh). Its plc module hands the box's adapter list to powerline through a
 file in $XYMONVAR/fritzbox, because a column has only one sender.
 
 ## Hard portability rules
@@ -165,6 +166,12 @@ target platform.
   first `TEST2RRD` entry wins (prepend with
   `TEST2RRD="x=ncv,$TEST2RRD"` to be independent of it), while for
   duplicate `[graph]` sections the **last** one parsed wins.
+- `GRAPHS` must contain an entry named like the column's `TEST2RRD`
+  name (for `x=ncv` the stock `ncv`), or svcstatus.cgi draws none of
+  `GRAPHS_<column>` (`lib/htmllog.c`). The trends page puts every
+  `<column>,*.rrd` under that entry and draws the graph of that name in
+  pictures of at most 5 files; use `<column>::99` when that graph draws
+  only some of them, or the other pictures stay empty.
 - On Debian/Ubuntu the Xymon **server and client share `/etc/xymon`**,
   and the `xymon` package depends on `xymon-client`, so both of our
   packages can end up on the same host. dpkg refuses two packages that

@@ -17,7 +17,7 @@
 # NCV - keep an explicit U: a failed poll becomes a graph gap, never a
 # zero. Only read-only TR-064 actions are ever sent.
 #
-# Version: 1.0.4  (2026-10-18)
+# Version: 1.0.6  (2026-10-18)
 #
 # Program flow:
 # 1. Resolve settings (defaults < config < environment < CLI), validate
@@ -35,7 +35,7 @@
 # Usage: fritzbox.sh --config FILE [--host NAME] [--dry-run] [--help]
 set -u
 CONFIG_NAME=fritzbox.cfg
-SCRIPT_VERSION=1.0.4
+SCRIPT_VERSION=1.0.6
 
 usage() {
     cat <<'EOF'
@@ -525,11 +525,16 @@ fmt_duration() {
     printf '%dd %dh %dm' "$(($1 / 86400))" "$(($1 % 86400 / 3600))" "$(($1 % 3600 / 60))"
 }
 
-# clean TEXT - a device string for status text: no control characters,
-# no "|" (record separator), at most 120 characters. XML escapes stay:
-# the Xymon status page is HTML.
+# clean TEXT [MAX] - a device string for status text: no control
+# characters, no "|" (record separator), at most MAX bytes (default 120).
+# The box sends UTF-8 and the cut counts bytes (LC_ALL=C), so a
+# character split at the end is removed. XML escapes stay: the Xymon
+# status page is HTML.
+u8_lead=$(printf '\300-\377') u8_lead3=$(printf '\340-\377')
+u8_lead4=$(printf '\360-\377') u8_cont=$(printf '\200-\277')
 clean() {
-    printf '%s' "${1}" | tr -d '\001-\037\177|' | cut -c1-120
+    printf '%s' "${1}" | tr -d '\001-\037\177|' | cut -b "1-${2:-120}" |
+        sed -E "s/([${u8_lead}]|[${u8_lead3}][${u8_cont}]|[${u8_lead4}][${u8_cont}][${u8_cont}])\$//"
 }
 
 # mask TEXT - FRITZBOX_MASK=1 hides addresses and long numbers (public
@@ -838,6 +843,35 @@ holds_note() {
 # Same RRD names and DS types as the former NCV extension, so the graph
 # history continues.
 # ----------------------------------------------------------------------
+# wan_connection - status and uptime of the internet connection (PPP or
+# IP client mode, FRITZBOX_DSL_WAN_SERVICE), asked once per host for
+# fritzdsl and fritzwan. Sets wc_conn, wc_uptime and wc_svc, "" when
+# unknown. Overwrites the last response: read its fields first.
+wan_connection() {
+    [ "${wc_done}" = 0 ] || return 0
+    wc_done=1 wc_conn='' wc_uptime='' wc_svc=''
+    case "${FRITZBOX_DSL_WAN_SERVICE}" in
+        off) wc_list='' ;;
+        ppp) wc_list='urn:dslforum-org:service:WANPPPConnection:1' ;;
+        ip)  wc_list='urn:dslforum-org:service:WANIPConnection:1' ;;
+        *)   wc_list='urn:dslforum-org:service:WANPPPConnection:1 urn:dslforum-org:service:WANIPConnection:1' ;;
+    esac
+    for wc_wan in ${wc_list}; do
+        [ "${host_abort}" = 0 ] || break
+        tr64 "${wc_wan}" GetStatusInfo || continue
+        wc_u=$(field NewUptime)
+        is_uint "${wc_u}" || continue
+        wc_c=$(field NewConnectionStatus | tr -cd 'A-Za-z0-9_-')
+        # A PPP service that is configured but unused reports 0 seconds
+        # while the IP service carries the connection: prefer Connected.
+        if [ "${wc_c}" = Connected ] || [ -z "${wc_uptime}" ]; then
+            wc_uptime=${wc_u} wc_conn=${wc_c}
+            case "${wc_wan}" in *PPP*) wc_svc=PPP ;; *) wc_svc=IP ;; esac
+        fi
+        [ "${wc_c}" != Connected ] || break
+    done
+}
+
 mod_dsl() {
     col_begin fritzdsl 'DSL line'
     d_svc=urn:dslforum-org:service:WANDSLInterfaceConfig:1
@@ -904,33 +938,19 @@ mod_dsl() {
     fi
 
     # WAN connection uptime (PPP or IP client mode)
-    d_uptime='' d_conn=''
-    case "${FRITZBOX_DSL_WAN_SERVICE}" in
-        off) d_list='' ;;
-        ppp) d_list='urn:dslforum-org:service:WANPPPConnection:1' ;;
-        ip)  d_list='urn:dslforum-org:service:WANIPConnection:1' ;;
-        *)   d_list='urn:dslforum-org:service:WANPPPConnection:1 urn:dslforum-org:service:WANIPConnection:1' ;;
-    esac
-    for d_wan in ${d_list}; do
-        [ "${host_abort}" = 0 ] || break
-        tr64 "${d_wan}" GetStatusInfo || continue
-        d_u=$(field NewUptime)
-        is_uint "${d_u}" || continue
-        d_c=$(field NewConnectionStatus | tr -cd 'A-Za-z0-9_-')
-        # A PPP service that is configured but unused reports 0 seconds
-        # while the IP service carries the connection: prefer Connected.
-        if [ "${d_c}" = Connected ] || [ -z "${d_uptime}" ]; then d_uptime=${d_u}; d_conn=${d_c}; fi
-        [ "${d_c}" != Connected ] || break
-    done
+    wan_connection
+    d_uptime=${wc_uptime} d_conn=${wc_conn}
     if [ -n "${d_conn}" ] && [ "${d_conn}" != Connected ]; then
         note yellow "WAN connection status: ${d_conn}"
     fi
     metric uptime "${d_uptime}"
 
     # CRC rate and reconnect detection via the previous run's state.
+    # The fourth field counts the reconnects seen (older states lack it).
     d_state=$(state_file dsl)
-    d_pt='' d_pcrc='' d_pup=''
-    [ ! -r "${d_state}" ] || read -r d_pt d_pcrc d_pup <"${d_state}" || :
+    d_pt='' d_pcrc='' d_pup='' d_prc=''
+    [ ! -r "${d_state}" ] || read -r d_pt d_pcrc d_pup d_prc <"${d_state}" || :
+    is_uint "${d_prc}" || d_prc=0
     d_rate=''
     if is_uint "${d_crc}" && is_uint "${d_pt}" && is_uint "${d_pcrc}" \
         && [ "${now}" -gt "${d_pt}" ] && [ $((now - d_pt)) -ge 60 ] && [ "${d_crc}" -ge "${d_pcrc}" ]; then
@@ -941,12 +961,18 @@ mod_dsl() {
             note yellow "CRC errors: ${d_rate}/min since the last poll (limit ${FRITZBOX_DSL_CRC_WARN}/min)"
         fi
     fi
+    # A shorter uptime than last time is a reconnect (or a connection
+    # lost). The count is a DERIVE counter, so the graph shows each one;
+    # U while the uptime is unknown.
+    d_rc=${d_prc}
     if is_uint "${d_uptime}" && is_uint "${d_pup}" && [ "${d_uptime}" -lt "${d_pup}" ]; then
         plain 'Note: the connection was re-established since the last poll'
+        d_rc=$((d_rc + 1))
     fi
+    if is_uint "${d_uptime}"; then metric reconnect "${d_rc}" DERIVE; else metric reconnect U DERIVE; fi
     # Unknown counters must invalidate the baseline: storing zero here
     # turns the next successful poll into a false CRC-rate alarm.
-    printf '%s %s %s\n' "${now}" "${d_crc:-U}" "${d_uptime:-U}" | save_state dsl
+    printf '%s %s %s %s\n' "${now}" "${d_crc:-U}" "${d_uptime:-U}" "${d_rc}" | save_state dsl
 
     if [ "${d_status}" = Up ] && is_uint "${d_rate_down}" && is_uint "${d_rate_up}"; then
         summary="Up at ${d_rate_down}/${d_rate_up} kbit/s"
@@ -1050,6 +1076,13 @@ mod_wan() {
             fi
         fi
     fi
+    # Link and internet connection as 1/0 for the outage graph; the
+    # connection is the answer fritzdsl uses, unknown stays U.
+    wan_connection
+    w_up=0; [ "${w_link}" != Up ] || w_up=1
+    case "${wc_conn}" in '') w_conn='' ;; Connected) w_conn=1 ;; *) w_conn=0 ;; esac
+    metric link_up "${w_up}"; metric connected "${w_conn}"
+
     if [ -z "${w_rx}" ]; then
         [ "${host_abort}" != 0 ] || plain '&clear traffic counters unavailable - enable UPnP status information (Home Network > Network > Network Settings) for 64-bit counters'
     fi
@@ -1105,6 +1138,8 @@ mod_wan() {
     fi
     [ -z "${w_util_down}${w_util_up}" ] || detail '    utilization      down=%s%% up=%s%%\n' "${w_util_down:-?}" "${w_util_up:-?}"
     [ -z "${w_rx}" ] || detail '    traffic total    received=%s GiB sent=%s GiB [%s counters]\n' "$(gib "${w_rx}")" "$(gib "${w_tx}")" "${w_cnt}"
+    [ -z "${wc_conn}" ] || detail '    connection       %s (%s)%s\n' "${wc_conn}" "${wc_svc}" \
+        "$(is_uint "${wc_uptime}" && [ "${wc_conn}" = Connected ] && printf ', up %s' "$(fmt_duration "${wc_uptime}")")"
     col_end
 }
 
@@ -1323,7 +1358,7 @@ mod_log() {
     # Holds: every new non-green entry keeps its color for HOLD_MINUTES.
     holds_active "${l_state}" >"${cdir}/holds"
     awk '$1 == "new" && $3 != "green"' "${cdir}/classified" | while read -r l_n l_c l_k l_rest; do
-        hold_add "${l_k}" "$(mask "${l_rest%%|*} [${l_c}] ${l_rest#*|}" | cut -c1-200)"
+        hold_add "${l_k}" "$(clean "$(mask "${l_rest%%|*} [${l_c}] ${l_rest#*|}")" 300)"
     done >>"${cdir}/holds"
     # Newest holds first, at most 50.
     awk '{ l[NR] = $0 } END { for (i = NR; i > 0 && i > NR - 50; i--) print l[i] }' "${cdir}/holds" >"${cdir}/holds.keep"
@@ -1360,7 +1395,7 @@ mod_log() {
     head -n "${FRITZBOX_LOG_SHOW}" "${cdir}/classified" | while read -r l_n l_c l_k l_rest; do
         if [ "${l_n}" = new ]; then l_mark="&${l_k}"; else l_mark='  -'; fi
         detail '  %s %s [%s]%s %s\n' "${l_mark}" "${l_rest%%|*}" "${l_c}" "$([ "${l_n}" = new ] && printf ' (new)')" \
-            "$(mask "$(clean "${l_rest#*|}")")"
+            "$(clean "$(mask "${l_rest#*|}")" 300)"
     done
     col_end
 }
@@ -1812,9 +1847,17 @@ deliver_column() {
     {
         printf 'status+%s %s.%s %s %s - %s: %s\n\n' "${FRITZBOX_LIFETIME}" "${wirehost}" "${1}" \
             "${c_color}" "$(date)" "${c_title}" "${c_summary}"
+        # The visible text is for people: NCV skips it (xymond/rrd/
+        # do_ncv.c), whatever its layout. The values follow as hidden
+        # "name : value" lines, the same names as the trends RRDs; an
+        # unknown value is left out.
+        printf '<!-- ncv_skipstart -->\n'
         cat "${cdir}/notes"
         if [ -s "${cdir}/details" ]; then printf '\n'; cat "${cdir}/details"; fi
         printf '\nPolled via TR-064 from %s by fritzbox.sh %s\n' "${base_url}" "${SCRIPT_VERSION}"
+        printf '<!-- ncv_skipend -->\n<!--\n'
+        awk '$2 != "U" { printf "%s : %s\n", $1, $2 }' "${cdir}/metrics"
+        printf '%s\n' '-->' '<!-- ncv_end -->'
     } >"${cdir}/status" || fail 'Cannot build the status message'
     c_sent=1
     deliver "$(cat "${cdir}/status")" || c_sent=0
@@ -1852,7 +1895,7 @@ poll_host() {
     rm -rf "${hw}"
     mkdir "${hw}" || fail 'Cannot create the per-host work directory'
     : >"${hw}/columns"; : >"${hw}/services"; : >"${hw}/igd"
-    host_abort=0 igd_loaded=0
+    host_abort=0 igd_loaded=0 wc_done=0
     now=$(now_s)
     case "${ip}" in ''|0.0.0.0) target=${host} ;; *) target=${ip} ;; esac
     base_url="http://${target}:${FRITZBOX_PORT}"

@@ -55,9 +55,21 @@ extensions; see [Migration](#migration-from-the-fritzdsl-and-fritzwan-client-ext
 3. **hosts.cfg**: tag the box, e.g.
    `192.168.178.1  fritz.box  # fritzbox`. The collector connects to the
    IP address and reports on the host name.
-4. **Try it**: `sudo -u xymon xymoncmd /usr/lib/xymon/server/ext/fritzbox.sh
-   --config /etc/xymon/my-xymon-extensions-server/fritzbox.cfg --dry-run --verbose`
-   prints every status and trends message without sending them.
+4. **Try it** while the collector is still disabled - `--set` switches it
+   on for this one run only:
+
+   ```sh
+   sudo -u xymon xymoncmd --env=/etc/xymon/xymonserver.cfg \
+       /usr/lib/xymon/server/ext/fritzbox.sh \
+       --config /etc/xymon/my-xymon-extensions-server/fritzbox.cfg \
+       --set FRITZBOX_ENABLED=1 --dry-run --verbose
+   ```
+
+   prints every status and trends message without sending them. Without
+   `--set FRITZBOX_ENABLED=1` the shipped config ends the run with
+   "disabled"; without the hosts.cfg tag it ends with "No host tagged
+   fritzbox" (`--host fritz.box` polls one box regardless of the tag).
+   A dry run saves no state, so the first real run is a baseline again.
 5. **Enable**: `FRITZBOX_ENABLED=1` in
    `/etc/xymon/my-xymon-extensions-server/fritzbox.cfg`. The task
    (`/etc/xymon/tasks.d/fritzbox.cfg`) runs every 5 minutes. The graphs
@@ -94,12 +106,18 @@ connected WAN service (`WANPPPConnection`, else `WANIPConnection`;
 FRITZBOX_DSL_WAN_SERVICE). Margins and attenuation arrive in tenths of
 a dB. The CRC rate is computed against the previous poll; a backwards
 uptime is noted as "re-established" (on boxes that pre-empt the
-provider's forced disconnect this happens once a day). The transmit
+provider's forced disconnect this happens once a day) and counted in
+the DERIVE RRD `reconnect`; the count lives in the dsl state file. The
+transmit
 power (GetInfo `UpstreamPower`/`DownstreamPower`) is not used: its unit
 is not documented.
 
 **fritzwan** - link status and capacity from `GetCommonLinkProperties`,
-traffic from the counters as the average rate since the last poll. With
+traffic from the counters as the average rate since the last poll. The
+link (`link_up`, 1 = Up) and the internet connection (`connected`, 1 =
+Connected; the same `GetStatusInfo` answer fritzdsl uses, asked once
+per poll) are recorded as 1/0 for the outage graph; they change no
+color here - a connection that is not up is yellow in fritzdsl. With
 FRITZBOX_WAN_MODE=auto the UPnP/IGD values come first: the IGD link
 capacity is what the box's own online monitor uses as 100% (on the
 reference box 233.1/45.5 Mbit/s, while TR-064 reports the attainable DSL
@@ -132,8 +150,9 @@ prefix (green, only counted) and failed internet telephony (yellow).
 Everything else is **unmatched and yellow**, so Xymon records it in the
 column history - add a rule for it, and it is classified from then on.
 The status lists the newest FRITZBOX_LOG_SHOW (20) entries; only new
-ones carry a color icon. FRITZBOX_MASK=1 hides IP addresses, prefixes
-and long numbers. The box writes its log in the language of its user
+ones carry a color icon. A text longer than 300 bytes is cut there,
+never inside a UTF-8 character. FRITZBOX_MASK=1 hides IP addresses,
+prefixes and long numbers, before the cut. The box writes its log in the language of its user
 interface; the patterns stay ASCII (an umlaut is matched by `.*`).
 
 **fritzfw** - the port mappings of the WAN connection that is up
@@ -209,16 +228,47 @@ outage is a gap and never a bridged or zero value. fritzdsl and fritzwan
 write the files of the former split-NCV extensions (same names, same
 types: the fritzdsl error counters are DERIVE, everything else GAUGE),
 so their history continues; new are `fritzdsl,atuc_crc|fec|hec.rrd`
-(far end). fritzlog writes one file per rules category plus
-`unmatched` (new entries per poll; U on a baseline).
+(far end), `fritzdsl,reconnect.rrd` and `fritzwan,link_up|connected.rrd`.
+fritzlog writes one file per rules category plus `unmatched` (new
+entries per poll; U on a baseline).
+
+| Column | Status page graphs (GRAPHS_<column>) |
+|--------|--------------------------------------|
+| fritzdsl | sync and attainable rate, noise margin, attenuation, CRC errors/minute, FEC corrections/second, HEC errors/minute (each near and far end), errored seconds/hour, WAN connection uptime in hours (every drop is a new connection), DSL resyncs and WAN reconnects as marks with their count |
+| fritzwan | throughput with the volume in GiB for the shown period, link and internet connection 1/0 with availability in %, utilization, link capacity |
+| fritzsys | uptime, clock offset |
+| fritzlog | new entries per category |
+| fritzfw | port mappings |
+| fritzlan | throughput, host counts |
+| fritztel | SIP accounts |
 
 The drop-ins `/etc/xymon/xymonserver.d/{fritzdsl,fritzwan,fritzbox}.cfg`
 add the columns to TEST2RRD without a handler - so svcstatus.cgi shows
 their graphs and the status text is never NCV-parsed - and list the
 graphs (GRAPHS, GRAPHS_<column>); `/etc/xymon/graphs.d/` holds the
-definitions. Only a graph named exactly like the column appears on the
-trends page (it matches graph names against the start of the RRD file
-name); the others are on the status page.
+definitions. Two rules of Xymon 4.3 (read in its sources) shape them:
+
+- The status page draws GRAPHS_<column> only if GRAPHS has an entry
+  named like the column's TEST2RRD name (`lib/htmllog.c`); without one
+  it draws nothing. Up to 0.29.0 fritzdsl and fritzwan lacked it, so
+  their status pages had no graphs.
+- The trends page puts every file `<column>,*.rrd` under that entry and
+  draws the graph of the same name (`web/svcstatus-trends.c`), split
+  into pictures of at most 5 files unless the entry says `::N`. Where
+  that graph draws only some of the files (fritzdsl, fritzwan,
+  fritzsys, fritzlan), `::99` keeps them in one picture - split, every
+  picture but the first stayed empty.
+
+The status text carries the same values a second time, as a hidden
+block that Xymon's NCV parser can read (`xymond/rrd/do_ncv.c`) however
+the visible text changes: the visible part sits between
+`<!-- ncv_skipstart -->` and `<!-- ncv_skipend -->`, then follow the
+values as `name : value` lines (the RRD names; unknown values left out)
+inside an HTML comment, and `<!-- ncv_end -->` closes it. Nothing reads
+the block today; it keeps a switch to NCV (`TEST2RRD+=",<column>=ncv"`
+with a `SPLITNCV_<column>`) open without depending on the layout. Such
+a switch writes the same RRD files as the trends messages, so it only
+makes sense together with dropping those.
 
 ## Settings
 
@@ -264,7 +314,11 @@ together and no column gets two senders. To carry the setup over:
 | MODE (fritzwan) | FRITZBOX_WAN_MODE |
 | UTIL_WARN, UTIL_CRIT | FRITZBOX_WAN_UTIL_WARN, FRITZBOX_WAN_UTIL_CRIT |
 
-The RRD files stay. Two visible changes: fritzwan's `maxbps_*` (and so
+The RRD files stay. After the upgrade to 0.29.1 the status pages of
+fritzdsl and fritzwan show their graphs, without a restart: the
+drop-ins are already in the include lists, and the CGIs read the
+configuration on every call.
+Two visible changes: fritzwan's `maxbps_*` (and so
 the utilization) now uses the IGD link capacity when available - one
 step down in that graph - and xymonserver.d/fritzdsl.cfg and
 fritzwan.cfg no longer name the `ncv` handler.
