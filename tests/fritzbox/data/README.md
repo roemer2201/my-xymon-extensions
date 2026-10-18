@@ -12,6 +12,9 @@ arguments) of a FRITZ!Box 7510, FRITZ!OS 8.26 (271.08.26), on
 - counters, rates, margins, versions, element names and their order:
   as recorded
 
+The `GetTotalPackets*` answers (IGD and TR-064) were recorded by a
+separate read-only probe of the same box on the same day.
+
 The SOAP envelopes are rebuilt around the recorded values; the element
 names are those of the box's answers. The event log keeps the box's
 German messages, including their UTF-8 umlauts - the collector must

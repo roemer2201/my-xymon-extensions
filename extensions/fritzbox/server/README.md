@@ -7,7 +7,7 @@ reports up to seven columns on each box's host:
 | Module | Column | Content |
 |--------|--------|---------|
 | `dsl` | `fritzdsl` | DSL line state, sync/attainable rate, noise margin, attenuation, error counters (near and far end), CRC rate, WAN uptime |
-| `wan` | `fritzwan` | WAN link state, throughput, link capacity, utilization |
+| `wan` | `fritzwan` | WAN link state, throughput, packet rate, link capacity, utilization |
 | `sys` | `fritzsys` | model, FRITZ!OS version, firmware updates, uptime/reboot, clock offset |
 | `log` | `fritzlog` | new entries of the box's event log, classified by a rules file |
 | `fw` | `fritzfw` | port mappings, UPnP port sharing, remote access, MyFRITZ, DynDNS |
@@ -126,7 +126,17 @@ TR-064 fallback detects the counter width: FRITZ!OS 8 returns 64-bit
 values there too, older versions 32-bit ones. A 32-bit wrap is corrected
 only when the previous value was in the upper half of the range;
 anything else going backwards is a reset (reboot), and that round has
-no rate.
+no rate. The packet rate (`pps_down`/`pps_up`, packets per second) comes
+from `GetTotalPacketsReceived`/`GetTotalPacketsSent` in the same order,
+IGD before TR-064, with the same width detection (the reference box
+returns 32-bit values on both). IGD and TR-064 are separate counters -
+on the reference box they differ by millions of packets at the same
+moment - so the state files `HOST.wan` and `HOST.wanpkt` record the
+source, and a poll that has to switch it has no rate. A `HOST.wan` of
+0.30.0 or earlier names no source: the first poll after the update
+shows no throughput. The `NewPacketSendRate`/`NewPacketReceiveRate`
+fields of `GetAddonInfos` are not used: the reference box reports 0
+there.
 
 **fritzsys** - DeviceInfo GetInfo (model, `SoftwareVersion` 271.08.26 =
 hardware 271, FRITZ!OS 8.26, uptime), UserInterface GetInfo and
@@ -230,14 +240,15 @@ outage is a gap and never a bridged or zero value. fritzdsl and fritzwan
 write the files of the former split-NCV extensions (same names, same
 types: the fritzdsl error counters are DERIVE, everything else GAUGE),
 so their history continues; new are `fritzdsl,atuc_crc|fec|hec.rrd`
-(far end), `fritzdsl,reconnect.rrd` and `fritzwan,link_up|connected.rrd`.
+(far end), `fritzdsl,reconnect.rrd`, `fritzwan,link_up|connected.rrd` and
+`fritzwan,pps_down|pps_up.rrd`.
 fritzlog writes one file per rules category plus `unmatched` (new
 entries per poll; U on a baseline).
 
 | Column | Status page graphs (GRAPHS_<column>) |
 |--------|--------------------------------------|
 | fritzdsl | sync and attainable rate, noise margin, attenuation, CRC errors/minute, FEC corrections/second, HEC errors/minute (each near and far end), errored seconds/hour, WAN connection uptime in hours (every drop is a new connection), DSL resyncs and WAN reconnects as marks with their count |
-| fritzwan | throughput with the volume in GiB for the shown period, link and internet connection 1/0 with availability in %, utilization, link capacity |
+| fritzwan | throughput with the volume in GiB for the shown period, packets per second, link and internet connection 1/0 with availability in %, utilization, link capacity |
 | fritzsys | uptime, clock offset |
 | fritzlog | new entries per category |
 | fritzfw | port mappings |

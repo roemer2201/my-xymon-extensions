@@ -1010,6 +1010,33 @@ counter_delta() {
     }'
 }
 
+# counter_width A B - 64 when either value needs more than 32 bits.
+counter_width() {
+    if [ "${#1}" -gt 10 ] || [ "${#2}" -gt 10 ] || [ "${1}" -gt 4294967295 ] || [ "${2}" -gt 4294967295 ]; then
+        printf '64'
+    else
+        printf '32'
+    fi
+}
+
+# counter_rates STATE RX TX WIDTH SOURCE FACTOR - "down up" rates per
+# second times FACTOR since the poll saved in STATE ("time rx tx width
+# source"). Fails without a usable previous poll: none, less than 60 s
+# ago, another width or source, or a counter reset.
+counter_rates() {
+    [ -n "${2}" ] || return 1
+    c_pt='' c_prx='' c_ptx='' c_pw='' c_ps=''
+    c_file=$(state_file "${1}")
+    [ ! -r "${c_file}" ] || read -r c_pt c_prx c_ptx c_pw c_ps <"${c_file}" || :
+    is_uint "${c_pt}" && is_uint "${c_prx}" && is_uint "${c_ptx}" || return 1
+    [ "${c_pw}" = "${4}" ] && [ "${c_ps}" = "${5}" ] || return 1
+    [ "${now}" -gt "${c_pt}" ] && [ $((now - c_pt)) -ge 60 ] || return 1
+    c_drx=$(counter_delta "${2}" "${c_prx}" "${4}") || return 1
+    c_dtx=$(counter_delta "${3}" "${c_ptx}" "${4}") || return 1
+    awk -v r="${c_drx}" -v t="${c_dtx}" -v s="$((now - c_pt))" -v f="${6}" \
+        'BEGIN { printf "%.0f %.0f", r * f / s, t * f / s }'
+}
+
 mod_wan() {
     col_begin fritzwan 'WAN'
     w_tsvc=urn:dslforum-org:service:WANCommonInterfaceConfig:1
@@ -1053,14 +1080,16 @@ mod_wan() {
 
     # Counters: IGD with AVM's 64-bit values first, else TR-064, whose
     # width is detected - FRITZ!OS 8 returns 64-bit values there too.
-    w_rx='' w_tx='' w_width='' w_cnt=''
+    # IGD and TR-064 are different counters (they differ by millions on
+    # the same box), so a rate needs the same source on both polls.
+    w_rx='' w_tx='' w_width='' w_cnt='' w_csrc=''
     if [ "${FRITZBOX_WAN_MODE}" != tr064 ] && has_igd "${w_isvc}" && igd "${w_isvc}" GetAddonInfos; then
         w_a=$(field NewX_AVM_DE_TotalBytesReceived64); w_b=$(field NewX_AVM_DE_TotalBytesSent64)
         if is_uint "${w_a}" && is_uint "${w_b}"; then
-            w_rx=${w_a} w_tx=${w_b} w_width=64 w_cnt='UPnP 64-bit'
+            w_rx=${w_a} w_tx=${w_b} w_width=64 w_cnt='UPnP 64-bit' w_csrc=igd
         else
             w_a=$(field NewTotalBytesReceived); w_b=$(field NewTotalBytesSent)
-            if is_uint "${w_a}" && is_uint "${w_b}"; then w_rx=${w_a} w_tx=${w_b} w_width=32 w_cnt='UPnP 32-bit'; fi
+            if is_uint "${w_a}" && is_uint "${w_b}"; then w_rx=${w_a} w_tx=${w_b} w_width=32 w_cnt='UPnP 32-bit' w_csrc=igd; fi
         fi
     fi
     if [ -z "${w_rx}" ] && [ "${host_abort}" = 0 ] && [ "${FRITZBOX_WAN_MODE}" != igd ] && has_service "${w_tsvc}"; then
@@ -1069,13 +1098,28 @@ mod_wan() {
             if tr64 "${w_tsvc}" GetTotalBytesSent; then
                 w_b=$(field NewTotalBytesSent)
                 if is_uint "${w_a}" && is_uint "${w_b}"; then
-                    w_rx=${w_a} w_tx=${w_b} w_width=32
-                    if [ "${#w_a}" -gt 10 ] || [ "${#w_b}" -gt 10 ] || [ "${w_a}" -gt 4294967295 ] || [ "${w_b}" -gt 4294967295 ]; then w_width=64; fi
+                    w_rx=${w_a} w_tx=${w_b} w_width=$(counter_width "${w_a}" "${w_b}") w_csrc=tr064
                     w_cnt="TR-064 ${w_width}-bit"
                 fi
             fi
         fi
     fi
+
+    # Packet counters, in the same order: IGD (no login), else TR-064.
+    # Their width is detected like that of the TR-064 byte counters.
+    w_prx_now='' w_ptx_now='' w_pwidth='' w_psrc=''
+    if [ "${host_abort}" = 0 ] && [ "${FRITZBOX_WAN_MODE}" != tr064 ] && has_igd "${w_isvc}" \
+        && igd "${w_isvc}" GetTotalPacketsReceived && w_a=$(field NewTotalPacketsReceived) \
+        && igd "${w_isvc}" GetTotalPacketsSent && w_b=$(field NewTotalPacketsSent) \
+        && is_uint "${w_a}" && is_uint "${w_b}"; then
+        w_psrc=igd
+    elif [ "${host_abort}" = 0 ] && [ "${FRITZBOX_WAN_MODE}" != igd ] && has_service "${w_tsvc}" \
+        && tr64 "${w_tsvc}" GetTotalPacketsReceived && w_a=$(field NewTotalPacketsReceived) \
+        && tr64 "${w_tsvc}" GetTotalPacketsSent && w_b=$(field NewTotalPacketsSent) \
+        && is_uint "${w_a}" && is_uint "${w_b}"; then
+        w_psrc=tr064
+    fi
+    [ -z "${w_psrc}" ] || w_prx_now=${w_a} w_ptx_now=${w_b} w_pwidth=$(counter_width "${w_a}" "${w_b}")
     # Link and internet connection as 1/0 for the outage graph; the
     # connection is the answer fritzdsl uses, unknown stays U.
     wan_connection
@@ -1087,19 +1131,17 @@ mod_wan() {
         [ "${host_abort}" != 0 ] || plain '&clear traffic counters unavailable - enable UPnP status information (Home Network > Network > Network Settings) for 64-bit counters'
     fi
 
-    # Throughput as average rate since the previous poll.
-    w_state=$(state_file wan)
-    w_pt='' w_prx='' w_ptx='' w_pw=''
-    [ ! -r "${w_state}" ] || read -r w_pt w_prx w_ptx w_pw <"${w_state}" || :
+    # Throughput and packet rate as averages since the previous poll.
     w_bps_down='' w_bps_up=''
-    if [ -n "${w_rx}" ] && is_uint "${w_pt}" && is_uint "${w_prx}" && is_uint "${w_ptx}" \
-        && [ "${w_pw}" = "${w_width}" ] && [ "${now}" -gt "${w_pt}" ] && [ $((now - w_pt)) -ge 60 ]; then
-        if w_drx=$(counter_delta "${w_rx}" "${w_prx}" "${w_width}") && w_dtx=$(counter_delta "${w_tx}" "${w_ptx}" "${w_width}"); then
-            w_bps_down=$(awk -v d="${w_drx}" -v s="$((now - w_pt))" 'BEGIN { printf "%.0f", d * 8 / s }')
-            w_bps_up=$(awk -v d="${w_dtx}" -v s="$((now - w_pt))" 'BEGIN { printf "%.0f", d * 8 / s }')
-        fi
+    if w_r=$(counter_rates wan "${w_rx}" "${w_tx}" "${w_width}" "${w_csrc}" 8); then
+        w_bps_down=${w_r% *} w_bps_up=${w_r#* }
     fi
-    [ -z "${w_rx}" ] || printf '%s %s %s %s\n' "${now}" "${w_rx}" "${w_tx}" "${w_width}" | save_state wan
+    w_pps_down='' w_pps_up=''
+    if w_r=$(counter_rates wanpkt "${w_prx_now}" "${w_ptx_now}" "${w_pwidth}" "${w_psrc}" 1); then
+        w_pps_down=${w_r% *} w_pps_up=${w_r#* }
+    fi
+    [ -z "${w_rx}" ] || printf '%s %s %s %s %s\n' "${now}" "${w_rx}" "${w_tx}" "${w_width}" "${w_csrc}" | save_state wan
+    [ -z "${w_psrc}" ] || printf '%s %s %s %s %s\n' "${now}" "${w_prx_now}" "${w_ptx_now}" "${w_pwidth}" "${w_psrc}" | save_state wanpkt
 
     w_util_down='' w_util_up=''
     if is_uint "${w_bps_down}" && is_uint "${w_max_down}" && [ "${w_max_down}" -gt 0 ]; then
@@ -1118,6 +1160,7 @@ mod_wan() {
         fi
     done
     metric bps_down "${w_bps_down}"; metric bps_up "${w_bps_up}"
+    metric pps_down "${w_pps_down}"; metric pps_up "${w_pps_up}"
     metric util_down "${w_util_down}"; metric util_up "${w_util_up}"
 
     if [ "${w_link}" = Up ]; then
@@ -1133,6 +1176,7 @@ mod_wan() {
     elif [ -n "${w_rx}" ]; then
         detail '    throughput       not yet available (rates appear with the next poll)\n'
     fi
+    [ -z "${w_pps_down}" ] || detail '    packets          down=%s up=%s per second (average since the last poll)\n' "${w_pps_down}" "${w_pps_up}"
     if is_uint "${w_max_down}" && is_uint "${w_max_up}"; then
         detail '    link capacity    down=%s up=%s Mbit/s [%s]\n' "$(mbit "${w_max_down}")" "$(mbit "${w_max_up}")" "${w_src}"
     fi
