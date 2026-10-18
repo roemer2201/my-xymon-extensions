@@ -37,6 +37,21 @@ Additionally, the SMART overall health verdict (`PASSED`/`FAILED`) turns
 the column **red** on failure, and NVMe *Critical Warning* flags turn it
 yellow — independent of the metric thresholds.
 
+A device that smartctl cannot open or identify at all (no SMART section
+in its output) turns the column **yellow**; exclude a device that never
+delivers SMART data (e.g. behind an unsupported USB bridge) with
+`EXCLUDE`. Devices that answer without usable data (no SMART support)
+stay `clear`. smartctl's exit bit 2 (a SMART command failed) turns the
+column yellow only when the health verdict or all metrics are missing,
+e.g. "Read SMART Data failed" next to a `PASSED` verdict; smartctl also
+sets it for failed optional commands while the output is complete, and
+such a disk stays green. smartctl's failure messages are shown with the
+device. A poll in which
+no device delivered usable data (e.g. all disks in standby) reports
+`clear` instead of claiming healthy disks. An unreadable eMMC device is
+yellow too, except in eMMC-only mode without root, where mmc runs
+unprivileged on purpose and failures stay `clear`.
+
 ## Device naming
 
 Every disk is reported under a name — `S3Z8TEST_temp : 31` in the data

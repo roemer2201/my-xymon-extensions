@@ -98,7 +98,13 @@ ok test -n "$(find "${XYMONTMP}/if_link.${MACHINE}.state" -prune -perm 0600 -pri
 mkdir -p "${TMP}/proc/123" "${TMP}/cg/ca-parent.slice/lxc.payload.ca"
 printf '0::/ca-parent.slice/lxc.payload.ca/init.scope\n' >"${TMP}/proc/123/cgroup"
 printf '1048576\n' >"${TMP}/cg/ca-parent.slice/lxc.payload.ca/memory.current"
-printf 'NAME STATE PID AUTOSTART\nca RUNNING 123 0\nct-off STOPPED - 1\n' >"${TMP}/inventory"
+# Container "cb" got the retry name lxc.payload.cb-1 while a stale
+# lxc.payload.cb still existed.
+mkdir -p "${TMP}/proc/124" "${TMP}/cg/lxc.payload.cb" "${TMP}/cg/lxc.payload.cb-1"
+printf '0::/lxc.payload.cb-1\n' >"${TMP}/proc/124/cgroup"
+printf '3145728\n' >"${TMP}/cg/lxc.payload.cb/memory.current"
+printf '2097152\n' >"${TMP}/cg/lxc.payload.cb-1/memory.current"
+printf 'NAME STATE PID AUTOSTART\nca RUNNING 123 0\ncb RUNNING 124 0\nct-off STOPPED - 1\n' >"${TMP}/inventory"
 # shellcheck disable=SC2016 # The fixture expands INVENTORY when executed.
 printf '#!/bin/sh\ncat "${INVENTORY}"\n' >"${TMP}/bin/lxc-ls"
 chmod +x "${TMP}/bin/lxc-ls"
@@ -109,6 +115,16 @@ export INVENTORY LXC_LS LXC_INFO LXC_AUTOSTART LXC_UCI_AUTO LXC_RAM
 export LXC_CGROUPFS LXC_PROC LXC_IGNORE
 run extensions/lxc/lxc.sh
 ok has '^ca_ram : 1\.0$'
+ok has '^cb_ram : 2\.0$'
+# An exact name further down wins over a retry name above it: container
+# "cc" nested in a cgroup named like a retry of it.
+mkdir -p "${TMP}/proc/125" "${TMP}/cg/lxc.payload.cc-1/lxc.payload.cc"
+printf '0::/lxc.payload.cc-1/lxc.payload.cc/init.scope\n' >"${TMP}/proc/125/cgroup"
+printf '104857600\n' >"${TMP}/cg/lxc.payload.cc-1/memory.current"
+printf '4194304\n' >"${TMP}/cg/lxc.payload.cc-1/lxc.payload.cc/memory.current"
+printf 'cc RUNNING 125 0\n' >>"${TMP}/inventory"
+run extensions/lxc/lxc.sh
+ok has '^cc_ram : 4\.0$'
 ok has '^status reviewhost\.lxc green '
 # A failed inventory query cannot prove that no containers exist.
 LXC_LS=${TMP}/bin/fail
@@ -145,6 +161,7 @@ ok has 'Input/output error'
 printf 'SMARTCTL="%s"\nUSE_SUDO=no\nMMC_DEVICES=none\ndevice /dev/test\n' "${TMP}/bin/fail" >"${SMART_CFG}"
 run extensions/smart/smart.sh
 ok has '^status reviewhost\.smart yellow '
+ok has '^&yellow /dev/test: cannot read SMART data$'
 printf '#!/bin/sh\necho "Device is in STANDBY mode"\nexit 2\n' >"${TMP}/bin/standby"
 chmod +x "${TMP}/bin/standby"
 sed "s|${TMP}/bin/fail|${TMP}/bin/standby|" "${SMART_CFG}" >"${TMP}/smart-new"

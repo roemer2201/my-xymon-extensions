@@ -1449,7 +1449,10 @@ mod_fw() {
     f_enabled=$(awk '$1 == "1"' "${cdir}/maps" | wc -l | tr -d ' ')
 
     # Settings that open the box: UPnP port changes by applications,
-    # remote access to the user interface, MyFRITZ, DynDNS.
+    # remote access to the user interface, MyFRITZ, DynDNS. A failed
+    # query makes the poll partial (the baseline is kept), but does not
+    # make the port mapping list above incomplete.
+    f_maps_partial=${partial}
     f_settings=''
     f_s=urn:dslforum-org:service:X_AVM-DE_UPnP:1
     if [ "${host_abort}" = 0 ] && has_service "${f_s}" && need "${f_s}" GetInfo; then
@@ -1520,13 +1523,14 @@ mod_fw() {
         save_state fw <"${f_state}"
     fi
     holds_note "$(cat "${cdir}/holds")"
-    if [ "${partial}" = 0 ] && [ "${host_abort}" = 0 ]; then
+    if [ "${f_maps_partial}" = 0 ] && [ "${host_abort}" = 0 ]; then
         metric portmaps "${f_count:+${f_enabled}}"
     else
         metric portmaps U
     fi
 
-    if [ "${partial}" = 1 ]; then summary='port mapping list incomplete'
+    if [ "${f_maps_partial}" = 1 ]; then summary='port mapping list incomplete'
+    elif [ "${partial}" = 1 ]; then summary="${f_enabled} port mapping(s), exposure settings incomplete"
     else summary="${f_enabled} port mapping(s)"; fi
     case " ${f_settings} " in *" remote_access=1 "*) summary="${summary}, remote access on" ;; esac
     [ -s "${cdir}/notes" ] || plain 'No unexpected exposure'
