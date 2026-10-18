@@ -81,7 +81,7 @@ into a note without changing the column color.
 | fritzlog | a new entry of a yellow rule, or one no rule matches - for FRITZBOX_HOLD_MINUTES | a new entry of a red rule - for FRITZBOX_HOLD_MINUTES |
 | fritzfw | a mapping outside FRITZBOX_FW_EXPECTED or an expected one missing; without that list, any change of mappings or settings for FRITZBOX_HOLD_MINUTES | (FRITZBOX_FW_COLOR=red) |
 | fritzlan | a FRITZBOX_LAN_REQUIRED device not active; with FRITZBOX_LAN_NEW_MAC=1 a new MAC for FRITZBOX_HOLD_MINUTES | LAN interface not Up |
-| fritztel | - | a SIP account not registered (FRITZBOX_TEL_COLOR) |
+| fritztel | - | an enabled SIP account neither registered nor connected (FRITZBOX_TEL_COLOR) |
 
 The first poll of fritzlog, fritzfw and the new-MAC check is a
 **baseline**: nothing is reported as new or changed.
@@ -157,14 +157,21 @@ check is off by default: phones and virtual machines often use random
 MAC addresses (second hex digit 2, 6, A or E).
 
 **fritztel** - `X_AVM-DE_GetVoIPAccounts` (the account list, without
-passwords) and `X_AVM-DE_GetVoIPStatus` per account; "registered" and
-"connected" (an active call) are green, anything else red. If the
-per-account action is unavailable, the list's text status is used;
-numeric code 2 is also accepted because that is what the reference box
-reports for registered. A failed account-list query yields unknown
-counts, never a fabricated zero. See the [official VoIP status table](https://fritz.support/resources/TR-064_VoIP.pdf).
-DECT handsets (`X_AVM-DE_Dect`) are listed for information;
-what their `Active` flag means is not documented.
+passwords) and `X_AVM-DE_GetVoIPStatus` per account. The documented
+values ([TR-064_VoIP.pdf](https://fritz.support/resources/TR-064_VoIP.pdf),
+table 53) are `disabled`, `not registered`, `registered`, `connected`
+(a call is active) and `unknown`: registered and connected are green, a
+disabled account is listed but neither counted nor an alarm (it is
+switched off on purpose), anything else is red. If the per-account
+action is unavailable, the list's status is used. The documentation
+shows text there; the reference box (FRITZ!OS 8.26) sends `2` for a
+registered account instead, which is accepted - no other number is
+interpreted, as no code table is documented. A failed account-list
+query yields unknown counts, never a fabricated zero. DECT handsets
+(`X_AVM-DE_Dect`) are listed for information: connected while their
+`Active` flag is 1, "currently not connected" while it is 0
+([TR-064_DECT.pdf](https://fritz.support/resources/TR-064_DECT.pdf),
+chapter 5).
 
 **plc** - `X_AVM-DE_Homeplug` GetNumberOfDeviceEntries and
 GetGenericDeviceEntry: MAC (the adapter's PLC MAC), active, name, model,
@@ -185,7 +192,9 @@ truncated port mapping list warns, keeps its previous baseline and
 reports an unknown mapping count instead of a partial total.
 
 The input arguments `NewIndex` for HomePlug/DECT and
-`NewVoIPAccountIndex` for SIP status are documented by FRITZ!:
+`NewVoIPAccountIndex` for SIP status are documented by FRITZ! (the
+official page <https://fritz.com/en/pages/interfaces> links these
+PDFs on fritz.support):
 [HomePlug](https://fritz.support/resources/TR-064_HomePlug.pdf),
 [DECT](https://fritz.support/resources/TR-064_DECT.pdf),
 [VoIP](https://fritz.support/resources/TR-064_VoIP.pdf).

@@ -177,8 +177,8 @@ ok rrd fritzlan active_wlan 2
 ok rrd fritzlan guests_active 1
 ok lacks 'host[0-9]|device[0-9]|02:00:00:00:10'
 ok rrd fritztel sip_registered 3
-ok has '^  &green SIP account 1: 301234568 via sip\.example\.net$'
-ok has '^    DECT 1: "Handset 1" active=0 update available=0$'
+ok has '^  &green SIP account 1: 301234568 via sip\.example\.net \(registered\)$'
+ok has '^    DECT 1: "Handset 1" not connected, update available=0$'
 ok only_read_actions
 ok no_leak
 ok no_env_leak
@@ -298,12 +298,21 @@ ok lacks 'restarted'
 reset_over
 
 # --- fritztel: an unregistered account is red; masking ------------------------
-over x_voip__X_AVM-DE_GetVoIPStatus__1.xml 's|>registered<|>unregistered<|'
+# "not registered" with its blank, as documented (TR-064_VoIP.pdf).
+over x_voip__X_AVM-DE_GetVoIPStatus__1.xml 's|>registered<|>not registered<|'
 run --set FRITZBOX_MODULES=tel --set FRITZBOX_MASK=1
 ok status fritztel red '2/3 SIP account\(s\) registered'
-ok has '^&red SIP account 1 \(##### via sip\.example\.net\) is not registered: unregistered$'
+ok has '^&red SIP account 1 \(##### via sip\.example\.net\) is not registered, status: not registered$'
 ok lacks '30123456'
-rm -f "${OVER}/x_voip__X_AVM-DE_GetVoIPStatus__1.xml"
+# A disabled account is listed, but neither counted nor an alarm.
+over x_voip__X_AVM-DE_GetVoIPStatus__1.xml 's|>registered<|>disabled<|'
+run --set FRITZBOX_MODULES=tel
+ok status fritztel green '2/2 SIP account\(s\) registered'
+ok has '^    SIP account 1: 301234568 via sip\.example\.net \(disabled\)$'
+for i in 0 1 2; do over "x_voip__X_AVM-DE_GetVoIPStatus__${i}.xml" 's|>registered<|>disabled<|'; done
+run --set FRITZBOX_MODULES=tel
+ok status fritztel clear 'no SIP accounts'
+reset_over
 over x_voip__X_AVM-DE_GetVoIPAccounts.xml 's|&lt;AccountList&gt;.*&lt;/AccountList&gt;|\&lt;AccountList\&gt;\&lt;/AccountList\&gt;|'
 run --set FRITZBOX_MODULES=tel
 ok status fritztel clear 'no SIP accounts'

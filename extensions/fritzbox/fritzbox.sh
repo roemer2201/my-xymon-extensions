@@ -17,7 +17,7 @@
 # NCV - keep an explicit U: a failed poll becomes a graph gap, never a
 # zero. Only read-only TR-064 actions are ever sent.
 #
-# Version: 1.0.2  (2026-10-18)
+# Version: 1.0.3  (2026-10-18)
 #
 # Program flow:
 # 1. Resolve settings (defaults < config < environment < CLI), validate
@@ -35,7 +35,7 @@
 # Usage: fritzbox.sh --config FILE [--host NAME] [--dry-run] [--help]
 set -u
 CONFIG_NAME=fritzbox.cfg
-SCRIPT_VERSION=1.0.2
+SCRIPT_VERSION=1.0.3
 
 usage() {
     cat <<'EOF'
@@ -1658,34 +1658,41 @@ mod_tel() {
             }
             /^<Account>/ {
                 i = val("VoIPAccountIndex"); r = val("VoIPRegistrar"); nu = val("VoIPNumber"); st = val("X_AVM-DE_VoIPStatus")
-                gsub(/[^0-9]/, "", i); gsub(/[^A-Za-z0-9._-]/, "", r); gsub(/[^0-9+#*]/, "", nu); gsub(/[^A-Za-z0-9_-]/, "", st)
+                gsub(/[^0-9]/, "", i); gsub(/[^A-Za-z0-9._-]/, "", r); gsub(/[^0-9+#*]/, "", nu); gsub(/[^A-Za-z0-9_ -]/, "", st); gsub(/^ +| +$/, "", st)
                 if (i != "") print i, (r == "" ? "-" : r), (nu == "" ? "-" : nu), (st == "" ? "-" : st)
             }' >"${cdir}/accounts"
     fi
     t_total=0 t_reg=0
     while read -r t_i t_reg_host t_num t_code <&4; do
         [ "${host_abort}" = 0 ] || break
-        t_total=$((t_total + 1))
         t_st=''
         if tr64 "${t_svc}" X_AVM-DE_GetVoIPStatus "<NewVoIPAccountIndex>${t_i}</NewVoIPAccountIndex>"; then
-            t_st=$(field NewX_AVM-DE_VoIPStatus | tr -cd 'A-Za-z0-9_-')
+            # "not registered" contains a blank (TR-064_VoIP.pdf, table 53).
+            t_st=$(field NewX_AVM-DE_VoIPStatus | tr -cd 'A-Za-z0-9_ -' | sed 's/^ *//; s/ *$//')
         fi
         # The documented account list contains text statuses. FRITZ!OS
         # 8.26 also returns numeric code 2 for registered on the reference
         # box; keep that fallback when the per-account action is absent.
+        # The code is not documented, so no other number is interpreted.
         if [ -z "${t_st}" ]; then
             if [ "${t_code}" = 2 ]; then t_st=registered; else t_st=${t_code}; fi
         fi
         t_show="$(mask "${t_num}") via ${t_reg_host}"
-        # AVM documents "connected" as an active VoIP call, which is
-        # healthy too (TR-064_VoIP.pdf, X_AVM-DE_VoIPStatus table).
-        if [ "${t_st}" = registered ] || [ "${t_st}" = connected ]; then
-            t_reg=$((t_reg + 1))
-            detail '  &green SIP account %s: %s\n' "${t_i}" "${t_show}"
-        else
-            finding "${FRITZBOX_TEL_COLOR}" "SIP account ${t_i} (${t_show}) is not registered: ${t_st}"
-            detail '  &%s SIP account %s: %s - %s\n' "${FRITZBOX_TEL_COLOR}" "${t_i}" "${t_show}" "${t_st}"
-        fi
+        # Documented values (TR-064_VoIP.pdf, table 53): disabled, not
+        # registered, registered, connected (a call is active), unknown.
+        # A disabled account is switched off on purpose: listed, but
+        # neither counted nor an alarm.
+        case "${t_st}" in
+            registered|connected)
+                t_total=$((t_total + 1)) t_reg=$((t_reg + 1))
+                detail '  &green SIP account %s: %s (%s)\n' "${t_i}" "${t_show}" "${t_st}" ;;
+            disabled)
+                detail '    SIP account %s: %s (disabled)\n' "${t_i}" "${t_show}" ;;
+            *)
+                t_total=$((t_total + 1))
+                finding "${FRITZBOX_TEL_COLOR}" "SIP account ${t_i} (${t_show}) is not registered, status: ${t_st}"
+                detail '  &%s SIP account %s: %s (%s)\n' "${FRITZBOX_TEL_COLOR}" "${t_i}" "${t_show}" "${t_st}" ;;
+        esac
     done 4<"${cdir}/accounts"
     if [ "${host_abort}" = 0 ]; then
         metric sip_total "${t_total}"; metric sip_registered "${t_reg}"
@@ -1695,10 +1702,11 @@ mod_tel() {
     if [ "${partial}" = 1 ] && [ "${t_total}" = 0 ]; then
         : # the failed request is already noted
     elif [ "${t_total}" = 0 ]; then
-        col_clear 'no SIP accounts' 'no SIP account is configured'
+        col_clear 'no SIP accounts' 'no enabled SIP account is configured'
     fi
 
-    # DECT handsets: information only - "Active" is not documented.
+    # DECT handsets: information only. Active is 1 while the handset is
+    # connected to the box, 0 while it is not (TR-064_DECT.pdf, ch. 5).
     d_svc=urn:dslforum-org:service:X_AVM-DE_Dect:1
     if [ "${host_abort}" = 0 ] && has_service "${d_svc}" && tr64 "${d_svc}" GetNumberOfDectEntries; then
         t_n=$(field NewNumberOfEntries)
@@ -1707,8 +1715,10 @@ mod_tel() {
         while [ "${t_i}" -lt "${t_n}" ] && [ "${t_i}" -lt "${max_entries}" ]; do
             tr64 "${d_svc}" GetGenericDectEntry "<NewIndex>${t_i}</NewIndex>" || break
             t_model=$(clean "$(field NewModel)")
-            detail '    DECT %s: "%s"%s active=%s update available=%s\n' "$(field NewID | tr -cd '0-9')" \
-                "$(clean "$(field NewName)")" "${t_model:+ ${t_model}}" "$(field NewActive | tr -cd '0-9')" \
+            t_conn='not connected'
+            [ "$(field NewActive | tr -cd '0-9')" != 1 ] || t_conn=connected
+            detail '    DECT %s: "%s"%s %s, update available=%s\n' "$(field NewID | tr -cd '0-9')" \
+                "$(clean "$(field NewName)")" "${t_model:+ ${t_model}}" "${t_conn}" \
                 "$(field NewUpdateAvailable | tr -cd '0-9')"
             t_i=$((t_i + 1))
         done
