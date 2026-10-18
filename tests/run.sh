@@ -882,6 +882,223 @@ check_disk_rrds "$out" "" \
     "an absolute DISK_DF path in the note feeds no RRD to the disk parser"
 
 # ----------------------------------------------------------------------
+echo "--- procs ---"
+FAKEPS="$TESTDIR/procs/fakeps"
+PROCSH="$REPO/extensions/procs/procs.sh"
+unset PROCS_MODE PROCS_RULES PROCS_COLUMN PROCS_OSTYPE PROCS_CLASS \
+    PROCS_PSLIST PROCS_PSFORMAT PROCS_CFG 2>/dev/null || true
+
+procs_run() { # procs_run <fakeps kind> [VAR=value ...] - run procs.sh
+    pr_kind=$1
+    shift
+    # shellcheck disable=SC2086  # TESTSH may be multi-word ("busybox sh")
+    env PROCS_PS="$FAKEPS" FAKEPS_KIND="$pr_kind" "$@" $TESTSH "$PROCSH"
+}
+
+# ps_section <client message> -> the [ps] section, as xymond_client's
+# splitmsg() cuts it out.
+ps_section() {
+    printf '%s\n' "$1" | awk '/^\[/ { on = ($0 == "[ps]"); next } on'
+}
+
+# ps_cmds <ps listing> <header word> -> the command of every line the
+# way unix_procs_report() (xymond_client.c) sees it: from the offset of
+# the header word in the FIRST line, header included, lines not longer
+# than that offset skipped.
+ps_cmds() {
+    printf '%s\n' "$1" | awk -v h="$2" '
+        NR == 1 { ofs = index($0, h) - 1; if (ofs < 0) exit 1 }
+        length($0) > ofs { print substr($0, ofs + 1) }'
+}
+
+# expect_cmd <commands> <exact command> <description>
+expect_cmd() {
+    if printf '%s\n' "$1" | grep -Fxq -- "$2"; then
+        echo "ok:   $3"
+    else
+        echo "FAIL: $3 (no command line \"$2\")"
+        FAIL=1
+    fi
+}
+
+# --- server mode: the client message -------------------------------------
+out=$(procs_run procps)
+expect "$out" '^client testhost\.linux$' \
+    "server mode sends a client message for the linux backend"
+expect "$out" '^\[date\]$' "client message has a [date] section"
+psout=$(ps_section "$out")
+if [ "$psout" = "$(cat "$TESTDIR/procs/ps-procps.txt")" ]; then
+    echo "ok:   procps output goes to the server unchanged"
+else
+    echo "FAIL: procps output was altered"
+    FAIL=1
+fi
+expect_not "$out" '^\[(df|uptime|free|msgs|ports|inode)\]$' \
+    "no other client sections (cpu, disk, memory, msgs columns stay untouched)"
+cmds=$(ps_cmds "$psout" CMD)
+expect_cmd "$cmds" ' \_ /usr/sbin/hostapd -s -g /var/run/hostapd/global' \
+    "procps: the server finds the command after the CMD offset"
+
+out=$(procs_run procps-noforest)
+psout=$(ps_section "$out")
+expect "$psout" ' CMD$' "procps without the forest option still delivers the full format"
+
+out=$(procs_run procps PROCS_CLASS=router PROCS_OSTYPE=linux)
+expect "$out" '^client testhost\.linux router$' "PROCS_CLASS is sent as the client class"
+
+# BusyBox without CONFIG_DESKTOP: "ps ww", rewritten into fixed columns.
+out=$(procs_run busybox)
+psout=$(ps_section "$out")
+expect "$psout" '^ +PID +PPID +USER +STAT +VSZ +RSS CMD$' \
+    "busybox: header rewritten with a CMD column"
+cmds=$(ps_cmds "$psout" CMD)
+expect_cmd "$cmds" '/usr/sbin/hostapd -s -g /var/run/hostapd/global' \
+    "busybox: STAT with a blank (\"S <\") does not shift the command"
+expect_cmd "$cmds" '/bin/sh /usr/lib/xymon-standalone/xymon-run.sh all' \
+    "busybox: a PID wider than 5 digits does not shift the command"
+expect_cmd "$cmds" '/usr/sbin/dnsmasq -C /var/etc/dnsmasq.conf.cfg01411c -k -x /var/run/dnsmasq/dnsmasq.cfg01411c.pid' \
+    "busybox: long command lines are complete (ps ww)"
+expect_cmd "$cmds" '[zombie]' "busybox: numeric user and zombie line parsed"
+if [ "$(printf '%s\n' "$cmds" | sed -n '$=')" -eq 13 ]; then
+    echo "ok:   busybox: every process line is kept"
+else
+    echo "FAIL: busybox: process lines lost or added"
+    FAIL=1
+fi
+expect "$psout" ' 2873 +- root +S< ' "busybox: STAT blanks removed, missing PPID shown as -"
+expect "$psout" ' longuser ' "busybox: user name kept as BusyBox prints it"
+
+# BusyBox with CONFIG_DESKTOP: "ps -o ...", columns grow past their width.
+out=$(procs_run busybox-desktop)
+psout=$(ps_section "$out")
+cmds=$(ps_cmds "$psout" CMD)
+expect_cmd "$cmds" 'ps -o stat,pid,ppid,user,vsz,rss,args' \
+    "busybox -o: columns grown past their width do not shift the command"
+expect_cmd "$cmds" '/usr/sbin/hostapd -s -g /var/run/hostapd/global' \
+    "busybox -o: STAT with a blank does not shift the command"
+expect "$psout" '^ 123457  123456 root +R +1992 +700 ' "busybox -o: PPID and RSS kept"
+
+# FreeBSD: the FreeBSD client's command, COMMAND header, freebsd backend.
+out=$(procs_run freebsd PROCS_PSFORMAT=freebsd)
+expect "$out" '^client testhost\.freebsd$' "FreeBSD format is sent to the freebsd backend"
+psout=$(ps_section "$out")
+if [ "$psout" = "$(cat "$TESTDIR/procs/ps-freebsd.txt")" ]; then
+    echo "ok:   FreeBSD ps output goes to the server unchanged"
+else
+    echo "FAIL: FreeBSD ps output was altered"
+    FAIL=1
+fi
+
+# A fixed PROCS_PSFORMAT skips the other attempts.
+out=$(procs_run busybox PROCS_PSFORMAT=procps)
+expect "$out" '^status testhost\.procs clear ' "PROCS_PSFORMAT=procps does not fall back to BusyBox"
+
+# Sending: the message is the second argument of $XYMON, the server's
+# answer (client-local.cfg) is discarded, a failed send is an error.
+cat > "$TMP/fakexymon" <<'XEOF'
+#!/bin/sh
+printf '%s\n' "$1" > "$FAKEXYMON_DIR/server"
+printf '%s\n' "$2" > "$FAKEXYMON_DIR/message"
+echo "[clientconfig from the server]"
+exit "${FAKEXYMON_RC:-0}"
+XEOF
+chmod +x "$TMP/fakexymon"
+mkdir -p "$TMP/fx"
+out=$(procs_run procps XYMON="$TMP/fakexymon" XYMSRV=xymon.example \
+    FAKEXYMON_DIR="$TMP/fx")
+rc=$?
+expect "$(cat "$TMP/fx/message")" '^client testhost\.linux$' "client message handed to \$XYMON"
+expect "$(cat "$TMP/fx/server")" '^xymon\.example$' "client message sent to \$XYMSRV"
+if [ "$rc" -eq 0 ] && [ -z "$out" ]; then
+    echo "ok:   the server's answer to the client message is discarded"
+else
+    echo "FAIL: procs.sh printed the server's answer or failed (rc $rc)"
+    FAIL=1
+fi
+if procs_run procps XYMON="$TMP/fakexymon" XYMSRV=xymon.example \
+    FAKEXYMON_DIR="$TMP/fx" FAKEXYMON_RC=1 >/dev/null 2>&1; then
+    echo "FAIL: a failed send went unnoticed"
+    FAIL=1
+else
+    echo "ok:   a failed send is reported by the exit code"
+fi
+
+# --- local mode: the rules checked like xymond_client ----------------------
+# xymond-<kind>.txt were produced by the real xymond_client (Xymon
+# 4.3.30, --local) from the client messages above and the rules in
+# rules.txt (see there): the local mode must come to the same result.
+RULES=$(cat "$TESTDIR/procs/rules.txt")
+for kind in procps busybox-desktop busybox busybox-noopts freebsd; do
+    fmt=auto
+    [ "$kind" = freebsd ] && fmt=freebsd
+    out=$(procs_run "$kind" PROCS_MODE=local PROCS_RULES="$RULES" PROCS_PSFORMAT="$fmt")
+    got=$(printf '%s\n' "$out" | awk '
+        NR == 1 { sub(/ [A-Z][a-z][a-z] [A-Z][a-z][a-z] .* - /, " - "); print; next }
+        /^&/ { print; next } { exit }')
+    if [ "$got" = "$(cat "$TESTDIR/procs/xymond-$kind.txt")" ]; then
+        echo "ok:   local mode ($kind) matches xymond_client"
+    else
+        echo "FAIL: local mode ($kind) differs from xymond_client:"
+        printf '%s\n' "$got" | diff "$TESTDIR/procs/xymond-$kind.txt" - | sed 's/^/      /'
+        FAIL=1
+    fi
+done
+
+out=$(procs_run procps PROCS_MODE=local PROCS_RULES="$RULES")
+expect "$out" '^$' "local mode: blank line between the checks and the listing"
+expect "$out" ' CMD$' "local mode: the process list is appended"
+expect "$out" 'logger -t cron "a&amp;b &lt;done&gt;"$' \
+    "local mode: the listing is HTML-quoted like prehtmlquoted()"
+if [ "$(printf '%s\n' "$out" | grep -c ' CMD$')" -eq 1 ]; then
+    echo "ok:   local mode: the listing appears once"
+else
+    echo "FAIL: local mode: the listing is missing or repeated"
+    FAIL=1
+fi
+
+out=$(procs_run procps PROCS_MODE=local PROCS_RULES="$RULES" PROCS_PSLIST=no)
+expect_not "$out" ' CMD$' "PROCS_PSLIST=no leaves the listing out"
+
+out=$(procs_run procps PROCS_MODE=local)
+expect "$out" '^status testhost\.procs clear .* - Processes ok$' \
+    "local mode without rules: clear, like the server"
+expect "$out" '^&clear No process checks defined$' "no-rules text as on the server"
+
+out=$(procs_run procps PROCS_MODE=local PROCS_RULES='
+# only the router daemons
+dnsmasq 1 1
+hostapd')
+expect "$out" '^status testhost\.procs green .* - Processes ok$' "local mode: all rules met is green"
+expect_not "$out" 'only the router' "comment lines in PROCS_RULES are ignored"
+
+out=$(procs_run procps PROCS_MODE=local PROCS_COLUMN=psx PROCS_RULES='dnsmasq')
+expect "$out" '^status testhost\.psx green ' "PROCS_COLUMN names the local mode column"
+
+out=$(procs_run busybox-noopts PROCS_MODE=local PROCS_RULES='dnsmasq')
+expect "$out" 'may cut command lines' "busybox without wide output: the cut lines are noted"
+out=$(procs_run busybox PROCS_MODE=local PROCS_RULES='dnsmasq')
+expect_not "$out" 'may cut command lines' "busybox with ps ww: no note"
+
+out=$(procs_run procps PROCS_MODE=local PROCS_RULES='"%(" 1')
+expect "$out" '^status testhost\.procs clear ' "an invalid regex reports clear, not a wrong color"
+expect "$out" 'could not be evaluated' "invalid-rule note present"
+
+# Config file
+printf 'PROCS_MODE="local"\nPROCS_RULES="dnsmasq 2"\n' > "$TMP/procs.cfg"
+out=$(procs_run procps PROCS_CFG="$TMP/procs.cfg")
+expect "$out" '^&red dnsmasq \(found 1, req\. 2 or more\)$' "procs.cfg is read"
+
+# --- no usable ps ------------------------------------------------------------
+out=$(procs_run broken)
+expect "$out" '^status testhost\.procs clear ' "unusable ps reports clear, not red"
+expect "$out" 'no usable process list' "unusable-ps note present"
+out=$(procs_run procps PROCS_PS="$TMP/no-such-ps")
+expect "$out" '^status testhost\.procs clear ' "missing ps reports clear"
+expect "$out" 'ps not found' "missing ps hint present"
+out=$(procs_run procps PROCS_MODE=nonsense)
+expect "$out" '^&clear Unknown PROCS_MODE' "an unknown PROCS_MODE reports clear"
+
+# ----------------------------------------------------------------------
 echo "--- opkg ---"
 export FAKEOPKG="$TESTDIR/opkg/fakeopkg"
 export FAKEOPKG_LISTSDIR="$TMP/opkg-lists"
@@ -3936,7 +4153,7 @@ fi
 # list too), so a snippet there runs twice on a combined host - that is
 # what this guards against.
 # temp is missing on purpose - see the collision check further down.
-for snippet in smart la memory disk opkg wifi if_link lxc claude systemd bcache btrfs; do
+for snippet in smart la memory disk opkg wifi if_link lxc claude systemd bcache btrfs procs; do
     grep -qx "/etc/xymon/clientlaunch.d/$snippet.cfg" "$TMP/client-paths" || {
         echo "FAIL: $snippet snippet is not staged into clientlaunch.d"
         FAIL=1

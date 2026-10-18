@@ -34,7 +34,11 @@ Description: Portable Xymon client extensions with standalone runner
  cache sets and devices (not in the default test list); btrfs - btrfs
  filesystem health (TurrisOS: the root filesystem): device errors,
  unallocated space and metadata, scrub age and result, I/O and commit
- rates; clear without btrfs; xymonext - what the
+ rates; clear without btrfs; procs - process checks: the process
+ list goes to the Xymon server as a client message, whose
+ analysis.cfg PROC rules build the standard "procs" column (BusyBox
+ ps is reformatted for it), or PROC-style rules are checked on the
+ router (PROCS_MODE="local"); xymonext - what the
  tests above cost the router: wall clock time, CPU time and bytes
  sent per test, graphed per extension (the runner calls the
  extensions through its wrapper; switch it off with

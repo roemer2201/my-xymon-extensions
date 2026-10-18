@@ -1,0 +1,9 @@
+  PID  PPID USER   STARTED STAT PRI %CPU     TIME %MEM   RSS    VSZ COMMAND
+    0     0 root   Mon10AM DLs  -16  0.0  0:00.10  0.0     0      0 [kernel]
+    1     0 root   Mon10AM ILs   20  0.0  0:00.02  0.0  1104  11392 /sbin/init
+  412     1 root   Mon10AM Ss    20  0.0  0:00.31  0.0  2948  13232 |-- /usr/sbin/syslogd -s
+  650     1 root   Mon10AM Ss    20  0.0  0:00.12  0.0  8724  21160 |-- /usr/sbin/sshd
+  702     1 root   Mon10AM Is    20  0.0  0:00.05  0.0  2696  13248 |-- /usr/sbin/cron -s
+ 9123   702 root    9:20PM S     20  0.0  0:00.00  0.0  3080  13824 | `-- /bin/sh /usr/local/www/xymon/client/ext/procs.sh
+ 9130  9123 root    9:20PM R+    20  0.0  0:00.00  0.0  2740  13460 |   `-- ps -axd -ww -o pid,ppid,user,start,state,pri,pcpu,cputime,pmem,rss,vsz,command
+  811     1 root   Mon10AM Is+   20  0.0  0:00.00  0.0  2380  12988 `-- /usr/libexec/getty Pc ttyv0

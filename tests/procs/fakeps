@@ -1,0 +1,65 @@
+#!/bin/sh
+# fakeps - canned "ps" replacement for the unit tests of procs.sh.
+#
+# Behaves like the ps implementation named in $FAKEPS_KIND - accepts
+# the same arguments, rejects the others the way that implementation
+# does - and prints the matching fixture from this directory:
+#
+#   procps           procps-ng (full Xymon client command)
+#   procps-noforest  procps-ng that rejects the BSD-style "f"
+#   busybox-desktop  BusyBox with CONFIG_DESKTOP ("-o" only)
+#   busybox          BusyBox without CONFIG_DESKTOP, FEATURE_PS_WIDE on
+#   busybox-noopts   BusyBox without any ps options (ignores all
+#                    arguments, cuts lines at 79 characters)
+#   freebsd          FreeBSD ps (full Xymon client command)
+#   broken           fails for every invocation
+set -u
+DIR=$(cd "$(dirname "$0")" && pwd)
+LINUX_COLS="pid,ppid,user,start,state,pri,pcpu,time:12,pmem,rsz:10,vsz:10,cmd"
+FREEBSD_COLS="pid,ppid,user,start,state,pri,pcpu,cputime,pmem,rss,vsz,command"
+
+invalid() {
+    echo "ps: invalid option -- '$1'" >&2
+    exit 1
+}
+
+cut79() {
+    awk '{ print substr($0, 1, 79) }' "$1"
+}
+
+case "${FAKEPS_KIND:-procps}" in
+    procps)
+        [ "$*" = "-Aww f -o $LINUX_COLS" ] || [ "$*" = "-Aww -o $LINUX_COLS" ] ||
+            invalid "$*"
+        cat "$DIR/ps-procps.txt"
+        ;;
+    procps-noforest)
+        [ "$*" = "-Aww -o $LINUX_COLS" ] || invalid "$*"
+        cat "$DIR/ps-procps.txt"
+        ;;
+    busybox-desktop)
+        case "$*" in
+            "-o stat,pid,ppid,user,vsz,rss,args") cat "$DIR/ps-busybox-desktop.txt" ;;
+            -*w*) invalid w ;;
+            *) printf 'PID   USER     COMMAND\n    1 root     /sbin/procd\n' ;;
+        esac
+        ;;
+    busybox)
+        case "$*" in
+            ww) cat "$DIR/ps-busybox.txt" ;;
+            "") cut79 "$DIR/ps-busybox.txt" ;;
+            *) invalid "$1" ;;
+        esac
+        ;;
+    busybox-noopts)
+        cut79 "$DIR/ps-busybox.txt"
+        ;;
+    freebsd)
+        [ "$*" = "-axd -ww -o $FREEBSD_COLS" ] || invalid "$*"
+        cat "$DIR/ps-freebsd.txt"
+        ;;
+    *)
+        exit 1
+        ;;
+esac
+exit 0

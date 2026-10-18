@@ -1,0 +1,9 @@
+STAT PID   PPID  USER     VSZ  RSS  COMMAND
+S        1     0 root     1532 1052 /sbin/procd
+SW       2     0 root        0    0 [kthreadd]
+S     2402     1 dnsmasq  1340  812 /usr/sbin/dnsmasq -C /var/etc/dnsmasq.conf.cfg01411c -k -x /var/run/dnsmasq/dnsmasq.cfg01411c.pid
+S <   2873     1 root      12m 6052 /usr/sbin/hostapd -s -g /var/run/hostapd/global
+SN    3012     1 root     1004  512 /usr/sbin/crond -f -c /etc/crontabs -l 5
+S     4100     1 longuser 1000  400 /usr/bin/longdaemon --foreground
+S    123456  3012 root     2004  600 /bin/sh /usr/lib/xymon-standalone/xymon-run.sh all
+R    123457 123456 root     1992  700 ps -o stat,pid,ppid,user,vsz,rss,args

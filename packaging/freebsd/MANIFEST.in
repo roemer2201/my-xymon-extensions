@@ -42,6 +42,9 @@ Included extensions:
   the column reports a clear status here - comment its clientlaunch.d
   snippet out or set BTRFS_ENABLE=no in btrfs.cfg to hide or silence
   it.
+* procs - process checks for clientless hosts, with the FreeBSD
+  client's ps command; ships disabled (the Xymon client already sends
+  the process list on full clients).
 
 Requires net-mgmt/xymon-client and sysutils/smartmontools (>= 7.0).
 Activation steps (sudoers rule, clientlaunch.d include, server-side

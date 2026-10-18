@@ -112,7 +112,7 @@ To activate the "smart" extension:
  /var/run/xymon/clientlaunch-include.cfg at every start, and both
  clientlaunch.cfg and the server's tasks.cfg read that file. Hence a
  restart, not a reload.
- "la", "memory" and "disk" ship disabled (see
+ "la", "memory", "disk" and "procs" ship disabled (see
  /etc/xymon/clientlaunch.d) because a full Xymon client already
  reports this information itself.
 The "temp" extension is installed, but its xymonlaunch snippet is NOT:

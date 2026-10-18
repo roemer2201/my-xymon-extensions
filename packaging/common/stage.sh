@@ -73,7 +73,7 @@ task() { # task NAME
         "$DESTDIR$LAUNCHDIR/$1.cfg$SUF"
 }
 
-for ext in smart temp la memory disk opkg wifi if_link lxc claude systemd bcache btrfs; do
+for ext in smart temp la memory disk opkg wifi if_link lxc claude systemd bcache btrfs procs; do
     inst 0755 "extensions/$ext/$ext.sh" "$DESTDIR$EXTDIR/$ext.sh" || exit 1
     inst 0644 "extensions/$ext/$ext.cfg" "$DESTDIR$CFGDIR/$ext.cfg$SUF" || exit 1
     task "$ext" || exit 1
@@ -101,7 +101,7 @@ if [ "$DOCDIR" != "-" ]; then
 
     # Client-side documentation: one README per extension.
     for ext in smart temp la memory disk opkg wifi \
-        if_link lxc claude systemd bcache btrfs xymonext; do
+        if_link lxc claude systemd bcache btrfs procs xymonext; do
         mkdir -p "$DESTDIR$DOCDIR/$ext" || exit 1
         inst 0644 "extensions/$ext/README.md" "$DESTDIR$DOCDIR/$ext/README.md" || exit 1
     done
