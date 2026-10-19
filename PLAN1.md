@@ -177,12 +177,10 @@ extensions/powerline/README.md (folded into server/README.md), inventory
 pruning (POWERLINE_RETENTION_DAYS), and the xymonserver.cfg include that
 let the environment override `--config` (now passed by the task).
 
-- A backward clock step larger than the poll interval reds every adapter
-  until the clock catches up. Intended; worth a line in the server README.
-- A plcrate response whose MAC differs from the queried adapter is a hard
-  error for that adapter - unverifiable without hardware.
-- RPM and FreeBSD server packaging do not exist; the tasks.d layout and the
-  helper's fixed /usr/bin tool paths would need review.
+Resolved since: the backward clock step is documented in the server README
+("A clock running backwards is reported as an error").
+
+The remaining open items moved to TODO.md at the repository root.
 
 Future automatic resumption: implementation is complete; do not restart
 development from this plan without a new request.
