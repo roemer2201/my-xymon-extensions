@@ -7,7 +7,7 @@ reports up to seven columns on each box's host:
 | Module | Column | Content |
 |--------|--------|---------|
 | `dsl` | `fritzdsl` | DSL line state, sync/attainable rate, noise margin, attenuation, error counters (near and far end), CRC rate, WAN uptime |
-| `wan` | `fritzwan` | WAN link state, throughput, link capacity, utilization |
+| `wan` | `fritzwan` | WAN link state, throughput, packet rate, link capacity, utilization |
 | `sys` | `fritzsys` | model, FRITZ!OS version, firmware updates, uptime/reboot, clock offset |
 | `log` | `fritzlog` | new entries of the box's event log, classified by a rules file |
 | `fw` | `fritzfw` | port mappings, UPnP port sharing, remote access, MyFRITZ, DynDNS |
@@ -89,7 +89,7 @@ into a note without changing the column color.
 |--------|--------|-----|
 | fritzdsl | noise margin below 6 dB, CRC rate from 30/min, WAN connection not Connected | line not Up, margin below 3 dB, CRC rate from 300/min |
 | fritzwan | utilization above FRITZBOX_WAN_UTIL_WARN (off) | link not Up, utilization above FRITZBOX_WAN_UTIL_CRIT (off) |
-| fritzsys | update available, reboot within FRITZBOX_HOLD_MINUTES, clock offset above 60 s; last update failed only with FRITZBOX_SYS_UPDATE_FAILED_COLOR=yellow | clock offset above 300 s |
+| fritzsys | update available, reboot within FRITZBOX_HOLD_MINUTES, clock offset above 60 s, a user with the factory default password (FRITZBOX_SYS_DEFAULTPW_COLOR); last update failed only with FRITZBOX_SYS_UPDATE_FAILED_COLOR=yellow | clock offset above 300 s |
 | fritzlog | a new entry of a yellow rule, or one no rule matches - for FRITZBOX_HOLD_MINUTES | a new entry of a red rule - for FRITZBOX_HOLD_MINUTES |
 | fritzfw | a mapping outside FRITZBOX_FW_EXPECTED or an expected one missing; without that list, any change of mappings or settings for FRITZBOX_HOLD_MINUTES | (FRITZBOX_FW_COLOR=red) |
 | fritzlan | a FRITZBOX_LAN_REQUIRED device not active; with FRITZBOX_LAN_NEW_MAC=1 a new MAC for FRITZBOX_HOLD_MINUTES | LAN interface not Up |
@@ -126,13 +126,38 @@ TR-064 fallback detects the counter width: FRITZ!OS 8 returns 64-bit
 values there too, older versions 32-bit ones. A 32-bit wrap is corrected
 only when the previous value was in the upper half of the range;
 anything else going backwards is a reset (reboot), and that round has
-no rate.
+no rate. The packet rate (`pps_down`/`pps_up`, packets per second) comes
+from `GetTotalPacketsReceived`/`GetTotalPacketsSent` in the same order,
+IGD before TR-064, with the same width detection (the reference box
+returns 32-bit values on both). IGD and TR-064 are separate counters -
+on the reference box they differ by millions of packets at the same
+moment - so the state files `HOST.wan` and `HOST.wanpkt` record the
+source, and a poll that has to switch it has no rate. A `HOST.wan` of
+0.30.0 or earlier names no source: the first poll after the update
+shows no throughput. The `NewPacketSendRate`/`NewPacketReceiveRate`
+fields of `GetAddonInfos` are not used: the reference box reports 0
+there.
+
+When the known WAN connection uptime is no greater than the interval
+since the previous sample, both rates are unknown for that poll and a
+new baseline is saved. TR-064 counters reset on a new connection; a
+reset must not be mistaken for a 32-bit wrap or a positive delta just
+because the new count has already exceeded the old one. When connection
+uptime is unavailable, only the counter/source checks can detect resets.
+See the [FRITZ! WANCommonInterfaceConfig specification](https://fritz.support/resources/TR-064_WAN_Common_Interface_Config.pdf).
 
 **fritzsys** - DeviceInfo GetInfo (model, `SoftwareVersion` 271.08.26 =
 hardware 271, FRITZ!OS 8.26, uptime), UserInterface GetInfo and
 `X_AVM-DE_GetInfo` (update available, update state, automatic updates,
-previous version, result of the last update) and Time GetInfo (box time
-and NTP servers). The clock offset is the box time minus the server
+previous version, result of the last update), LANConfigSecurity GetInfo
+(`X_AVM-DE_IsDefaultPasswordActive`: at least one user still has the
+factory default password from the label; a box without the field shows
+"unknown" and no color) and Time GetInfo (box time and NTP servers).
+The password flag accepts the UPnP boolean values `0`/`1`,
+`false`/`true` and `no`/`yes`; malformed values stay "unknown".
+See [LANConfigSecurity](https://fritz.support/resources/TR-064_LAN_Config_Security.pdf)
+and [UPnP Device Architecture, boolean data type](https://upnp.org/specs/arch/UPnP-arch-DeviceArchitecture-v1.1.pdf).
+The clock offset is the box time minus the server
 time at the reply. "Last update failed" is a note by default: the box
 may keep that value until the next successful update.
 
@@ -230,14 +255,15 @@ outage is a gap and never a bridged or zero value. fritzdsl and fritzwan
 write the files of the former split-NCV extensions (same names, same
 types: the fritzdsl error counters are DERIVE, everything else GAUGE),
 so their history continues; new are `fritzdsl,atuc_crc|fec|hec.rrd`
-(far end), `fritzdsl,reconnect.rrd` and `fritzwan,link_up|connected.rrd`.
+(far end), `fritzdsl,reconnect.rrd`, `fritzwan,link_up|connected.rrd` and
+`fritzwan,pps_down|pps_up.rrd`.
 fritzlog writes one file per rules category plus `unmatched` (new
 entries per poll; U on a baseline).
 
 | Column | Status page graphs (GRAPHS_<column>) |
 |--------|--------------------------------------|
 | fritzdsl | sync and attainable rate, noise margin, attenuation, CRC errors/minute, FEC corrections/second, HEC errors/minute (each near and far end), errored seconds/hour, WAN connection uptime in hours (every drop is a new connection), DSL resyncs and WAN reconnects as marks with their count |
-| fritzwan | throughput with the volume in GiB for the shown period, link and internet connection 1/0 with availability in %, utilization, link capacity |
+| fritzwan | throughput with the volume in GiB for the shown period, packets per second, link and internet connection 1/0 with availability in %, utilization, link capacity |
 | fritzsys | uptime, clock offset |
 | fritzlog | new entries per category |
 | fritzfw | port mappings |

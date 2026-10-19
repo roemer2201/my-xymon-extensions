@@ -6,8 +6,8 @@
 # login check, one device description, then the enabled modules. Each
 # module reports one column on the box's own host:
 #   dsl -> fritzdsl  DSL line state, rates, margins, error counters
-#   wan -> fritzwan  WAN link state, throughput, utilization
-#   sys -> fritzsys  model, firmware, updates, uptime, clock offset
+#   wan -> fritzwan  WAN link state, throughput, packet rate, utilization
+#   sys -> fritzsys  model, firmware, updates, default password, uptime, clock
 #   log -> fritzlog  new event log entries, classified by a rules file
 #   fw  -> fritzfw   port mappings, UPnP, remote access, MyFRITZ, DynDNS
 #   lan -> fritzlan  LAN throughput, host counts, required devices
@@ -17,7 +17,7 @@
 # NCV - keep an explicit U: a failed poll becomes a graph gap, never a
 # zero. Only read-only TR-064 actions are ever sent.
 #
-# Version: 1.0.7  (2026-10-18)
+# Version: 1.1.1  (2026-10-19)
 #
 # Program flow:
 # 1. Resolve settings (defaults < config < environment < CLI), validate
@@ -35,7 +35,7 @@
 # Usage: fritzbox.sh --config FILE [--host NAME] [--dry-run] [--help]
 set -u
 CONFIG_NAME=fritzbox.cfg
-SCRIPT_VERSION=1.0.7
+SCRIPT_VERSION=1.1.1
 
 usage() {
     cat <<'EOF'
@@ -83,7 +83,8 @@ on each box's host, plus the adapter list read by powerline.sh.
       FRITZBOX_WAN_UTIL_WARN (0), FRITZBOX_WAN_UTIL_CRIT (0) percent
     fritzsys: FRITZBOX_SYS_CLOCK_WARN (60), FRITZBOX_SYS_CLOCK_CRIT
       (300) seconds; FRITZBOX_SYS_UPDATE_COLOR (yellow),
-      FRITZBOX_SYS_UPDATE_FAILED_COLOR (green)
+      FRITZBOX_SYS_UPDATE_FAILED_COLOR (green),
+      FRITZBOX_SYS_DEFAULTPW_COLOR (yellow)
     fritzlog: FRITZBOX_LOG_RULES (CONFIGDIR/fritzbox-log.rules),
       FRITZBOX_LOG_SHOW (20), FRITZBOX_LOG_UNMATCHED_COLOR (yellow)
     fritzfw: FRITZBOX_FW_EXPECTED (""), FRITZBOX_FW_COLOR (yellow)
@@ -128,7 +129,7 @@ EOF
 setting() {
     # shellcheck disable=SC2163 # Export a validated NAME=VALUE, not positional $1.
     case "${1%%=*}" in
-        FRITZBOX_ENABLED|FRITZBOX_TAG|FRITZBOX_HOSTS|FRITZBOX_USER|FRITZBOX_PASSFILE|FRITZBOX_PORT|FRITZBOX_CONNECT_TIMEOUT|FRITZBOX_MAX_TIME|FRITZBOX_RUN_BUDGET|FRITZBOX_LIFETIME|FRITZBOX_HOLD_MINUTES|FRITZBOX_STATE_DIR|FRITZBOX_MASK|FRITZBOX_MODULES|FRITZBOX_HOSTSCFG|FRITZBOX_XYMONCFG|FRITZBOX_CURL|FRITZBOX_DSL_MARGIN_WARN|FRITZBOX_DSL_MARGIN_CRIT|FRITZBOX_DSL_CRC_WARN|FRITZBOX_DSL_CRC_CRIT|FRITZBOX_DSL_WAN_SERVICE|FRITZBOX_WAN_MODE|FRITZBOX_WAN_UTIL_WARN|FRITZBOX_WAN_UTIL_CRIT|FRITZBOX_SYS_CLOCK_WARN|FRITZBOX_SYS_CLOCK_CRIT|FRITZBOX_SYS_UPDATE_COLOR|FRITZBOX_SYS_UPDATE_FAILED_COLOR|FRITZBOX_LOG_RULES|FRITZBOX_LOG_SHOW|FRITZBOX_LOG_UNMATCHED_COLOR|FRITZBOX_FW_EXPECTED|FRITZBOX_FW_COLOR|FRITZBOX_LAN_REQUIRED|FRITZBOX_LAN_REQUIRED_COLOR|FRITZBOX_LAN_NEW_MAC|FRITZBOX_TEL_COLOR|FRITZBOX_SILENT|FRITZBOX_VERBOSE|FRITZBOX_DEBUG|FRITZBOX_DRY_RUN|FRITZBOX_NOW) export "${1}" ;;
+        FRITZBOX_ENABLED|FRITZBOX_TAG|FRITZBOX_HOSTS|FRITZBOX_USER|FRITZBOX_PASSFILE|FRITZBOX_PORT|FRITZBOX_CONNECT_TIMEOUT|FRITZBOX_MAX_TIME|FRITZBOX_RUN_BUDGET|FRITZBOX_LIFETIME|FRITZBOX_HOLD_MINUTES|FRITZBOX_STATE_DIR|FRITZBOX_MASK|FRITZBOX_MODULES|FRITZBOX_HOSTSCFG|FRITZBOX_XYMONCFG|FRITZBOX_CURL|FRITZBOX_DSL_MARGIN_WARN|FRITZBOX_DSL_MARGIN_CRIT|FRITZBOX_DSL_CRC_WARN|FRITZBOX_DSL_CRC_CRIT|FRITZBOX_DSL_WAN_SERVICE|FRITZBOX_WAN_MODE|FRITZBOX_WAN_UTIL_WARN|FRITZBOX_WAN_UTIL_CRIT|FRITZBOX_SYS_CLOCK_WARN|FRITZBOX_SYS_CLOCK_CRIT|FRITZBOX_SYS_UPDATE_COLOR|FRITZBOX_SYS_UPDATE_FAILED_COLOR|FRITZBOX_SYS_DEFAULTPW_COLOR|FRITZBOX_LOG_RULES|FRITZBOX_LOG_SHOW|FRITZBOX_LOG_UNMATCHED_COLOR|FRITZBOX_FW_EXPECTED|FRITZBOX_FW_COLOR|FRITZBOX_LAN_REQUIRED|FRITZBOX_LAN_REQUIRED_COLOR|FRITZBOX_LAN_NEW_MAC|FRITZBOX_TEL_COLOR|FRITZBOX_SILENT|FRITZBOX_VERBOSE|FRITZBOX_DEBUG|FRITZBOX_DRY_RUN|FRITZBOX_NOW) export "${1}" ;;
         *) printf 'Unknown setting: %s\n' "${1%%=*}" >&2; exit 2 ;;
     esac
 }
@@ -202,6 +203,7 @@ FRITZBOX_DSL_CRC_WARN=30 FRITZBOX_DSL_CRC_CRIT=300 FRITZBOX_DSL_WAN_SERVICE=auto
 FRITZBOX_WAN_MODE=auto FRITZBOX_WAN_UTIL_WARN=0 FRITZBOX_WAN_UTIL_CRIT=0
 FRITZBOX_SYS_CLOCK_WARN=60 FRITZBOX_SYS_CLOCK_CRIT=300
 FRITZBOX_SYS_UPDATE_COLOR=yellow FRITZBOX_SYS_UPDATE_FAILED_COLOR=green
+FRITZBOX_SYS_DEFAULTPW_COLOR=yellow
 FRITZBOX_LOG_RULES=${confdir}/fritzbox-log.rules FRITZBOX_LOG_SHOW=20
 FRITZBOX_LOG_UNMATCHED_COLOR=yellow
 FRITZBOX_FW_EXPECTED='' FRITZBOX_FW_COLOR=yellow
@@ -283,7 +285,7 @@ done
 for n in "${FRITZBOX_DSL_MARGIN_WARN}" "${FRITZBOX_DSL_MARGIN_CRIT}" "${FRITZBOX_DSL_CRC_WARN}" "${FRITZBOX_DSL_CRC_CRIT}" "${FRITZBOX_WAN_UTIL_WARN}" "${FRITZBOX_WAN_UTIL_CRIT}"; do
     case "${n}" in ''|*[!0-9.]*|*.*.*|.*|*.) fail "Expected a number, got '${n}'" ;; esac
 done
-for n in "${FRITZBOX_SYS_UPDATE_COLOR}" "${FRITZBOX_SYS_UPDATE_FAILED_COLOR}" "${FRITZBOX_LOG_UNMATCHED_COLOR}" "${FRITZBOX_FW_COLOR}" "${FRITZBOX_LAN_REQUIRED_COLOR}" "${FRITZBOX_TEL_COLOR}"; do
+for n in "${FRITZBOX_SYS_UPDATE_COLOR}" "${FRITZBOX_SYS_UPDATE_FAILED_COLOR}" "${FRITZBOX_SYS_DEFAULTPW_COLOR}" "${FRITZBOX_LOG_UNMATCHED_COLOR}" "${FRITZBOX_FW_COLOR}" "${FRITZBOX_LAN_REQUIRED_COLOR}" "${FRITZBOX_TEL_COLOR}"; do
     case "${n}" in green|yellow|red) ;; *) fail "Colors must be green, yellow or red, got '${n}'" ;; esac
 done
 case "${FRITZBOX_DSL_WAN_SERVICE}" in auto|ppp|ip|off) ;; *) fail 'FRITZBOX_DSL_WAN_SERVICE must be auto, ppp, ip or off' ;; esac
@@ -994,7 +996,7 @@ mod_dsl() {
 }
 
 # ----------------------------------------------------------------------
-# Module wan -> fritzwan: link state, throughput, utilization.
+# Module wan -> fritzwan: link state, throughput, packet rate, utilization.
 # ----------------------------------------------------------------------
 
 # counter_delta CURRENT PREVIOUS WIDTH - CURRENT - PREVIOUS. A negative
@@ -1008,6 +1010,37 @@ counter_delta() {
         if (d < 0) exit 1
         printf "%.0f", d
     }'
+}
+
+# counter_width A B - 64 when either value needs more than 32 bits.
+counter_width() {
+    if [ "${#1}" -gt 10 ] || [ "${#2}" -gt 10 ] || [ "${1}" -gt 4294967295 ] || [ "${2}" -gt 4294967295 ]; then
+        printf '64'
+    else
+        printf '32'
+    fi
+}
+
+# counter_rates STATE RX TX WIDTH SOURCE FACTOR UPTIME - "down up" rates per
+# second times FACTOR since the poll saved in STATE ("time rx tx width
+# source"). Fails without a usable previous poll: none, less than 60 s
+# ago, another width or source, or a counter reset. Known connection
+# uptime at or below the sample interval means a new connection: its
+# counters may already exceed the old values or look like a 32-bit wrap.
+counter_rates() {
+    [ -n "${2}" ] || return 1
+    c_pt='' c_prx='' c_ptx='' c_pw='' c_ps=''
+    c_file=$(state_file "${1}")
+    [ ! -r "${c_file}" ] || read -r c_pt c_prx c_ptx c_pw c_ps <"${c_file}" || :
+    is_uint "${c_pt}" && is_uint "${c_prx}" && is_uint "${c_ptx}" || return 1
+    [ "${c_pw}" = "${4}" ] && [ "${c_ps}" = "${5}" ] || return 1
+    [ "${now}" -gt "${c_pt}" ] && [ $((now - c_pt)) -ge 60 ] || return 1
+    c_elapsed=$((now - c_pt))
+    if is_uint "${7}" && [ "${7}" -le "${c_elapsed}" ]; then return 1; fi
+    c_drx=$(counter_delta "${2}" "${c_prx}" "${4}") || return 1
+    c_dtx=$(counter_delta "${3}" "${c_ptx}" "${4}") || return 1
+    awk -v r="${c_drx}" -v t="${c_dtx}" -v s="${c_elapsed}" -v f="${6}" \
+        'BEGIN { printf "%.0f %.0f", r * f / s, t * f / s }'
 }
 
 mod_wan() {
@@ -1053,14 +1086,16 @@ mod_wan() {
 
     # Counters: IGD with AVM's 64-bit values first, else TR-064, whose
     # width is detected - FRITZ!OS 8 returns 64-bit values there too.
-    w_rx='' w_tx='' w_width='' w_cnt=''
+    # IGD and TR-064 are different counters (they differ by millions on
+    # the same box), so a rate needs the same source on both polls.
+    w_rx='' w_tx='' w_width='' w_cnt='' w_csrc=''
     if [ "${FRITZBOX_WAN_MODE}" != tr064 ] && has_igd "${w_isvc}" && igd "${w_isvc}" GetAddonInfos; then
         w_a=$(field NewX_AVM_DE_TotalBytesReceived64); w_b=$(field NewX_AVM_DE_TotalBytesSent64)
         if is_uint "${w_a}" && is_uint "${w_b}"; then
-            w_rx=${w_a} w_tx=${w_b} w_width=64 w_cnt='UPnP 64-bit'
+            w_rx=${w_a} w_tx=${w_b} w_width=64 w_cnt='UPnP 64-bit' w_csrc=igd
         else
             w_a=$(field NewTotalBytesReceived); w_b=$(field NewTotalBytesSent)
-            if is_uint "${w_a}" && is_uint "${w_b}"; then w_rx=${w_a} w_tx=${w_b} w_width=32 w_cnt='UPnP 32-bit'; fi
+            if is_uint "${w_a}" && is_uint "${w_b}"; then w_rx=${w_a} w_tx=${w_b} w_width=32 w_cnt='UPnP 32-bit' w_csrc=igd; fi
         fi
     fi
     if [ -z "${w_rx}" ] && [ "${host_abort}" = 0 ] && [ "${FRITZBOX_WAN_MODE}" != igd ] && has_service "${w_tsvc}"; then
@@ -1069,13 +1104,28 @@ mod_wan() {
             if tr64 "${w_tsvc}" GetTotalBytesSent; then
                 w_b=$(field NewTotalBytesSent)
                 if is_uint "${w_a}" && is_uint "${w_b}"; then
-                    w_rx=${w_a} w_tx=${w_b} w_width=32
-                    if [ "${#w_a}" -gt 10 ] || [ "${#w_b}" -gt 10 ] || [ "${w_a}" -gt 4294967295 ] || [ "${w_b}" -gt 4294967295 ]; then w_width=64; fi
+                    w_rx=${w_a} w_tx=${w_b} w_width=$(counter_width "${w_a}" "${w_b}") w_csrc=tr064
                     w_cnt="TR-064 ${w_width}-bit"
                 fi
             fi
         fi
     fi
+
+    # Packet counters, in the same order: IGD (no login), else TR-064.
+    # Their width is detected like that of the TR-064 byte counters.
+    w_prx_now='' w_ptx_now='' w_pwidth='' w_psrc=''
+    if [ "${host_abort}" = 0 ] && [ "${FRITZBOX_WAN_MODE}" != tr064 ] && has_igd "${w_isvc}" \
+        && igd "${w_isvc}" GetTotalPacketsReceived && w_a=$(field NewTotalPacketsReceived) \
+        && igd "${w_isvc}" GetTotalPacketsSent && w_b=$(field NewTotalPacketsSent) \
+        && is_uint "${w_a}" && is_uint "${w_b}"; then
+        w_psrc=igd
+    elif [ "${host_abort}" = 0 ] && [ "${FRITZBOX_WAN_MODE}" != igd ] && has_service "${w_tsvc}" \
+        && tr64 "${w_tsvc}" GetTotalPacketsReceived && w_a=$(field NewTotalPacketsReceived) \
+        && tr64 "${w_tsvc}" GetTotalPacketsSent && w_b=$(field NewTotalPacketsSent) \
+        && is_uint "${w_a}" && is_uint "${w_b}"; then
+        w_psrc=tr064
+    fi
+    [ -z "${w_psrc}" ] || w_prx_now=${w_a} w_ptx_now=${w_b} w_pwidth=$(counter_width "${w_a}" "${w_b}")
     # Link and internet connection as 1/0 for the outage graph; the
     # connection is the answer fritzdsl uses, unknown stays U.
     wan_connection
@@ -1087,19 +1137,17 @@ mod_wan() {
         [ "${host_abort}" != 0 ] || plain '&clear traffic counters unavailable - enable UPnP status information (Home Network > Network > Network Settings) for 64-bit counters'
     fi
 
-    # Throughput as average rate since the previous poll.
-    w_state=$(state_file wan)
-    w_pt='' w_prx='' w_ptx='' w_pw=''
-    [ ! -r "${w_state}" ] || read -r w_pt w_prx w_ptx w_pw <"${w_state}" || :
+    # Throughput and packet rate as averages since the previous poll.
     w_bps_down='' w_bps_up=''
-    if [ -n "${w_rx}" ] && is_uint "${w_pt}" && is_uint "${w_prx}" && is_uint "${w_ptx}" \
-        && [ "${w_pw}" = "${w_width}" ] && [ "${now}" -gt "${w_pt}" ] && [ $((now - w_pt)) -ge 60 ]; then
-        if w_drx=$(counter_delta "${w_rx}" "${w_prx}" "${w_width}") && w_dtx=$(counter_delta "${w_tx}" "${w_ptx}" "${w_width}"); then
-            w_bps_down=$(awk -v d="${w_drx}" -v s="$((now - w_pt))" 'BEGIN { printf "%.0f", d * 8 / s }')
-            w_bps_up=$(awk -v d="${w_dtx}" -v s="$((now - w_pt))" 'BEGIN { printf "%.0f", d * 8 / s }')
-        fi
+    if w_r=$(counter_rates wan "${w_rx}" "${w_tx}" "${w_width}" "${w_csrc}" 8 "${wc_uptime}"); then
+        w_bps_down=${w_r% *} w_bps_up=${w_r#* }
     fi
-    [ -z "${w_rx}" ] || printf '%s %s %s %s\n' "${now}" "${w_rx}" "${w_tx}" "${w_width}" | save_state wan
+    w_pps_down='' w_pps_up=''
+    if w_r=$(counter_rates wanpkt "${w_prx_now}" "${w_ptx_now}" "${w_pwidth}" "${w_psrc}" 1 "${wc_uptime}"); then
+        w_pps_down=${w_r% *} w_pps_up=${w_r#* }
+    fi
+    [ -z "${w_rx}" ] || printf '%s %s %s %s %s\n' "${now}" "${w_rx}" "${w_tx}" "${w_width}" "${w_csrc}" | save_state wan
+    [ -z "${w_psrc}" ] || printf '%s %s %s %s %s\n' "${now}" "${w_prx_now}" "${w_ptx_now}" "${w_pwidth}" "${w_psrc}" | save_state wanpkt
 
     w_util_down='' w_util_up=''
     if is_uint "${w_bps_down}" && is_uint "${w_max_down}" && [ "${w_max_down}" -gt 0 ]; then
@@ -1118,6 +1166,7 @@ mod_wan() {
         fi
     done
     metric bps_down "${w_bps_down}"; metric bps_up "${w_bps_up}"
+    metric pps_down "${w_pps_down}"; metric pps_up "${w_pps_up}"
     metric util_down "${w_util_down}"; metric util_up "${w_util_up}"
 
     if [ "${w_link}" = Up ]; then
@@ -1133,6 +1182,7 @@ mod_wan() {
     elif [ -n "${w_rx}" ]; then
         detail '    throughput       not yet available (rates appear with the next poll)\n'
     fi
+    [ -z "${w_pps_down}" ] || detail '    packets          down=%s up=%s per second (average since the last poll)\n' "${w_pps_down}" "${w_pps_up}"
     if is_uint "${w_max_down}" && is_uint "${w_max_up}"; then
         detail '    link capacity    down=%s up=%s Mbit/s [%s]\n' "$(mbit "${w_max_down}")" "$(mbit "${w_max_up}")" "${w_src}"
     fi
@@ -1212,6 +1262,24 @@ mod_sys() {
         finding "${FRITZBOX_SYS_UPDATE_FAILED_COLOR}" "the last FRITZ!OS update failed${y_when:+ (${y_when})}"
     fi
 
+    # At least one user still has the factory default password (the one
+    # on the label). Not every box or FRITZ!OS has the field: then it
+    # stays unknown. Accept UPnP boolean spellings, but never turn an
+    # invalid value such as -1 or 0x0 into a security finding or an OK.
+    y_defpw=''
+    y_lsvc=urn:dslforum-org:service:LANConfigSecurity:1
+    if [ "${host_abort}" = 0 ] && has_service "${y_lsvc}" && tr64 "${y_lsvc}" GetInfo; then
+        y_defpw=$(field NewX_AVM-DE_IsDefaultPasswordActive | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
+        case "${y_defpw}" in
+            1|true|yes) y_defpw=1 ;;
+            0|false|no) y_defpw=0 ;;
+            *) y_defpw='' ;;
+        esac
+    fi
+    if [ "${y_defpw}" = 1 ]; then
+        finding "${FRITZBOX_SYS_DEFAULTPW_COLOR}" 'at least one user still has the factory default password'
+    fi
+
     # Clock offset: box time against this server's clock at the reply.
     y_offset='' y_ntp1='' y_ntp2='' y_time=''
     y_tsvc=urn:dslforum-org:service:Time:1
@@ -1242,6 +1310,11 @@ mod_sys() {
     [ -z "${y_avail}${y_mode}" ] || detail '    updates          available=%s state=%s auto=%s last=%s%s\n' \
         "${y_avail:-?}" "${y_state:-?}" "${y_mode:-?}" "${y_result:-?}" "${y_when:+ ${y_when}}"
     [ -z "${y_up}" ] || detail '    uptime           %s\n' "$(fmt_duration "${y_up}")"
+    case "${y_defpw}" in
+        0) detail '    default password no\n' ;;
+        1) detail '    default password yes\n' ;;
+        *) detail '    default password unknown\n' ;;
+    esac
     [ -z "${y_time}" ] || detail '    box time         %s (offset %s s)\n' "${y_time}" "${y_offset:-?}"
     [ -z "${y_ntp1}${y_ntp2}" ] || detail '    NTP servers      %s %s\n' "${y_ntp1}" "${y_ntp2}"
     col_end

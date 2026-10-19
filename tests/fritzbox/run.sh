@@ -190,6 +190,8 @@ ok has '\[UPnP 64-bit counters\]$'
 ok rrd fritzwan link_up 1
 ok rrd fritzwan connected 1
 ok has '^    connection       Connected \(PPP\), up 0d 19h 21m$'
+ok rrd fritzwan pps_down U
+ok lacks '^    packets '
 # The values also travel as a hidden NCV block after the visible text.
 ok has '^<!-- ncv_skipstart -->$'
 ok has '^rate_down : 240017$'
@@ -199,6 +201,8 @@ ok ncv_matches_trends
 ok rrd fritzsys uptime 5344796
 ok rrd fritzsys clock_offset 0
 ok has '^    box time         2026-10-18T00:13:21\+02:00 \(offset 0 s\)$'
+ok has '^    default password no$'
+ok lacks 'factory default password'
 ok rrd fritzlog voip_fail U
 ok rrd fritzlog unmatched U
 # Old entries carry no color icon on the baseline.
@@ -226,7 +230,8 @@ ok not grep -q -e '--anyauth' -e '--basic' "${FB_LOG}/argv"
 ok asked '^GET /tr64desc\.xml$'
 ok asked '^GET /devicehostlist\.lua$'
 ok state_has dsl '^1792275201 3102 69660 0$'
-ok state_has wan '^1792275201 902062269148 186340859835 64$'
+ok state_has wan '^1792275201 902062269148 186340859835 64 igd$'
+ok state_has wanpkt '^1792275201 781496626 423526819 32 igd$'
 ok state_has log '^last 261017050731 1$'
 ok state_has fritzdsl.names '^crc DERIVE$'
 ok state_has homeplug '^# fritzbox homeplug fritz\.box 1792275201$'
@@ -237,6 +242,8 @@ ok state_has homeplug '^02:00:00:00:00:A3\|1\|0\|failed\|FRITZ!Powerline 1260E\|
 NOW=$((N0 + 300))
 over igdupnp_control_WANCommonIFC1__GetAddonInfos.xml \
     's/>902062269148</>902099769148</; s/>186340859835</>186344609835</'
+over igdupnp_control_WANCommonIFC1__GetTotalPacketsReceived.xml 's/>781496626</>781796626</'
+over igdupnp_control_WANCommonIFC1__GetTotalPacketsSent.xml 's/>423526819</>423676819</'
 over lanethernetifcfg__GetStatistics.xml 's/>243840809260</>243844559260</; s/>926989326008</>927026826008</'
 over wandslifconfig1__GetStatisticsTotal.xml 's/<NewCRCErrors>3102</<NewCRCErrors>3252</'
 over wanpppconn1__GetGenericPortMappingEntry__0.xml 's/>2222</>2223</'
@@ -248,6 +255,9 @@ ok exit_is 0
 ok rrd fritzwan bps_down 1000000
 ok rrd fritzwan bps_up 100000
 ok rrd fritzwan util_down 0.4
+ok rrd fritzwan pps_down 1000
+ok rrd fritzwan pps_up 500
+ok has '^    packets          down=1000 up=500 per second \(average since the last poll\)$'
 ok status fritzwan green 'Up, 1\.0/0\.1 Mbit/s \(down/up\)'
 ok rrd fritzlan bps_in 100000
 ok rrd fritzlan bps_out 1000000
@@ -336,6 +346,53 @@ ok has '^&yellow the last FRITZ!OS update failed'
 ok lacks 'restarted'
 reset_over
 
+# --- fritzsys: the factory default password ---------------------------------
+over lanconfigsecurity__GetInfo.xml 's|>0<|>1<|'
+run --set FRITZBOX_MODULES=sys
+ok status fritzsys yellow 'FRITZ!Box 7510 \(UI\), FRITZ!OS 8\.26, up 61d 20h 39m'
+ok has '^&yellow at least one user still has the factory default password$'
+ok has '^    default password yes$'
+run --set FRITZBOX_MODULES=sys --set FRITZBOX_SYS_DEFAULTPW_COLOR=green
+ok status fritzsys green 'FRITZ!Box 7510 \(UI\), FRITZ!OS 8\.26, up 61d 20h 39m'
+ok has '^Note: at least one user still has the factory default password$'
+# UPnP boolean text forms must work too; malformed values stay unknown
+# rather than becoming 0/1 after stripping non-digit characters.
+for value in true yes; do
+    over lanconfigsecurity__GetInfo.xml "s|<NewX_AVM-DE_IsDefaultPasswordActive>0<|<NewX_AVM-DE_IsDefaultPasswordActive>${value}<|"
+    run --set FRITZBOX_MODULES=sys
+    ok has '^&yellow at least one user still has the factory default password$'
+    ok has '^    default password yes$'
+done
+for value in false no ' 0 '; do
+    over lanconfigsecurity__GetInfo.xml "s|<NewX_AVM-DE_IsDefaultPasswordActive>0<|<NewX_AVM-DE_IsDefaultPasswordActive>${value}<|"
+    run --set FRITZBOX_MODULES=sys
+    ok has '^    default password no$'
+    ok lacks 'factory default password'
+done
+for value in -1 -0 0x1 0x0 2; do
+    over lanconfigsecurity__GetInfo.xml "s|<NewX_AVM-DE_IsDefaultPasswordActive>0<|<NewX_AVM-DE_IsDefaultPasswordActive>${value}<|"
+    run --set FRITZBOX_MODULES=sys
+    ok has '^    default password unknown$'
+    ok lacks 'factory default password'
+done
+run --set FRITZBOX_MODULES=sys --set FRITZBOX_SYS_DEFAULTPW_COLOR=blue
+ok exit_is 1
+# Without the field, or with a failing request: unknown, no color.
+over lanconfigsecurity__GetInfo.xml '/IsDefaultPasswordActive/d'
+run --set FRITZBOX_MODULES=sys
+ok status fritzsys green 'FRITZ!Box 7510 \(UI\), FRITZ!OS 8\.26, up 61d 20h 39m'
+ok has '^    default password unknown$'
+cp "${FB_DATA}/fault401.xml" "${OVER}/lanconfigsecurity__GetInfo.xml"
+run --set FRITZBOX_MODULES=sys
+ok status fritzsys green 'FRITZ!Box 7510 \(UI\), FRITZ!OS 8\.26, up 61d 20h 39m'
+ok has '^    default password unknown$'
+reset_over
+over tr64desc.xml '/LANConfigSecurity/d'
+run --set FRITZBOX_MODULES=sys
+ok has '^    default password unknown$'
+ok not asked '^lanconfigsecurity '
+reset_over
+
 # --- fritztel: an unregistered account is red; masking ------------------------
 # "not registered" with its blank, as documented (TR-064_VoIP.pdf).
 over x_voip__X_AVM-DE_GetVoIPStatus__1.xml 's|>registered<|>not registered<|'
@@ -404,15 +461,66 @@ ok has '\[TR-064 64-bit counters\]$'
 ok not asked '^igdupnp'
 over wancommonifconfig1__GetTotalBytesReceived.xml 's|>902812111894<|>200<|'
 over wancommonifconfig1__GetTotalBytesSent.xml 's|>191423805702<|>1000<|'
-printf '%s 4294967000 600 32\n' "$((N0 - 300))" >"${STATE}/fritz.box.wan"
+printf '%s 4294967000 600 32 tr064\n' "$((N0 - 300))" >"${STATE}/fritz.box.wan"
 run --set FRITZBOX_MODULES=wan --set FRITZBOX_WAN_MODE=tr064
 # rx wrapped (previous value in the upper half): 496 bytes in 300 s.
 ok rrd fritzwan bps_down 13
 ok rrd fritzwan bps_up 11
-printf '%s 1000 600 32\n' "$((N0 - 300))" >"${STATE}/fritz.box.wan"
+printf '%s 1000 600 32 tr064\n' "$((N0 - 300))" >"${STATE}/fritz.box.wan"
 run --set FRITZBOX_MODULES=wan --set FRITZBOX_WAN_MODE=tr064
 # rx went backwards from a low value: a reset, no rate this round.
 ok rrd fritzwan bps_down U
+# A state of 0.30.0 and earlier names no source: no rate this round.
+printf '%s 100 600 32\n' "$((N0 - 300))" >"${STATE}/fritz.box.wan"
+run --set FRITZBOX_MODULES=wan --set FRITZBOX_WAN_MODE=tr064
+ok rrd fritzwan bps_down U
+ok state_has wan '^1792275201 200 1000 32 tr064$'
+reset_over
+# A new connection resets TR-064 counters, even if the old value was
+# high enough to resemble a wrap or the new count already exceeds it.
+over wanpppconn1__GetStatusInfo.xml 's|>69660<|>100<|'
+over wancommonifconfig1__GetTotalBytesReceived.xml 's|>902812111894<|>1000<|'
+over wancommonifconfig1__GetTotalBytesSent.xml 's|>191423805702<|>2000<|'
+over wancommonifconfig1__GetTotalPacketsReceived.xml 's|>784019552<|>1000<|'
+over wancommonifconfig1__GetTotalPacketsSent.xml 's|>428560384<|>2000<|'
+for previous in 3000000000 100; do
+    printf '%s %s %s 32 tr064\n' "$((N0 - 300))" "${previous}" "${previous}" >"${STATE}/fritz.box.wan"
+    printf '%s %s %s 32 tr064\n' "$((N0 - 300))" "${previous}" "${previous}" >"${STATE}/fritz.box.wanpkt"
+    run --set FRITZBOX_MODULES=wan --set FRITZBOX_WAN_MODE=tr064
+    ok rrd fritzwan bps_down U
+    ok rrd fritzwan bps_up U
+    ok rrd fritzwan pps_down U
+    ok rrd fritzwan pps_up U
+    ok state_has wanpkt '^1792275201 1000 2000 32 tr064$'
+done
+# The new baseline yields rates normally once the connection is old
+# enough; without a reconnect, 32-bit packet wraps remain valid.
+over wanpppconn1__GetStatusInfo.xml 's|>69660<|>400<|'
+NOW=$((N0 + 300)) run --set FRITZBOX_MODULES=wan --set FRITZBOX_WAN_MODE=tr064
+ok rrd fritzwan pps_down 0
+printf '%s 4294967000 4294967000 32 tr064\n' "$((N0 - 300))" >"${STATE}/fritz.box.wanpkt"
+run --set FRITZBOX_MODULES=wan --set FRITZBOX_WAN_MODE=tr064
+ok rrd fritzwan pps_down 4
+ok rrd fritzwan pps_up 8
+reset_over
+# IGD and TR-064 count differently: a change of source is no rate, the
+# packet counters come from the same source as the byte counters.
+printf '%s 902812000000 191423000000 64 igd\n' "$((N0 - 300))" >"${STATE}/fritz.box.wan"
+printf '%s 784000000 428500000 32 igd\n' "$((N0 - 300))" >"${STATE}/fritz.box.wanpkt"
+run --set FRITZBOX_MODULES=wan --set FRITZBOX_WAN_MODE=tr064
+ok rrd fritzwan bps_down U
+ok rrd fritzwan pps_down U
+ok state_has wanpkt '^1792275201 784019552 428560384 32 tr064$'
+ok asked '^wancommonifconfig1 GetTotalPacketsSent$'
+ok not asked '^igdupnp'
+NOW=$((N0 + 300)) run --set FRITZBOX_MODULES=wan --set FRITZBOX_WAN_MODE=tr064
+ok rrd fritzwan pps_down 0
+# A failed IGD packet request falls back to TR-064 within the poll.
+cp "${FB_DATA}/fault401.xml" "${OVER}/igdupnp_control_WANCommonIFC1__GetTotalPacketsSent.xml"
+NOW=$((N0 + 600)) run --set FRITZBOX_MODULES=wan
+ok state_has wanpkt ' tr064$'
+ok rrd fritzwan pps_up 0
+ok state_has wan ' 64 igd$'
 reset_over
 FB_NOIGD=1 run --set FRITZBOX_MODULES='wan fw'
 ok has '^    link capacity    down=268\.3 up=47\.4 Mbit/s \[TR-064\]$'
