@@ -350,17 +350,17 @@ reset_over
 over lanconfigsecurity__GetInfo.xml 's|>0<|>1<|'
 run --set FRITZBOX_MODULES=sys
 ok status fritzsys yellow 'FRITZ!Box 7510 \(UI\), FRITZ!OS 8\.26, up 61d 20h 39m'
-ok has '^&yellow the box still uses its factory default password$'
+ok has '^&yellow at least one user still has the factory default password$'
 ok has '^    default password yes$'
 run --set FRITZBOX_MODULES=sys --set FRITZBOX_SYS_DEFAULTPW_COLOR=green
 ok status fritzsys green 'FRITZ!Box 7510 \(UI\), FRITZ!OS 8\.26, up 61d 20h 39m'
-ok has '^Note: the box still uses its factory default password$'
+ok has '^Note: at least one user still has the factory default password$'
 # UPnP boolean text forms must work too; malformed values stay unknown
 # rather than becoming 0/1 after stripping non-digit characters.
 for value in true yes; do
     over lanconfigsecurity__GetInfo.xml "s|<NewX_AVM-DE_IsDefaultPasswordActive>0<|<NewX_AVM-DE_IsDefaultPasswordActive>${value}<|"
     run --set FRITZBOX_MODULES=sys
-    ok has '^&yellow the box still uses its factory default password$'
+    ok has '^&yellow at least one user still has the factory default password$'
     ok has '^    default password yes$'
 done
 for value in false no ' 0 '; do

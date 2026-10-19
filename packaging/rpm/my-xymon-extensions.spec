@@ -270,11 +270,14 @@ EOF
 * Sun Oct 18 2026 roemer2201 <r.oliver@web.de> - 0.31.0-1
 - no change to this package. The server-only fritzbox collector reports
   the WAN packet rate in fritzwan (pps_down/pps_up, new graph
-  fritzwanpkt) and a factory default password still in use in fritzsys
-  (FRITZBOX_SYS_DEFAULTPW_COLOR, yellow). fritzwan no longer computes a
-  rate across the separate IGD and TR-064 counters when one poll had to
-  fall back: the state records the counter source, so the first poll
-  after the update shows no throughput
+  fritzwanpkt) and, in fritzsys, a user that still has the factory
+  default password (FRITZBOX_SYS_DEFAULTPW_COLOR, yellow). fritzwan no
+  longer computes a rate across the separate IGD and TR-064 counters
+  when one poll had to fall back: the state records the counter source,
+  so the first poll after the update shows no throughput. A WAN
+  connection younger than the poll interval (a reconnect) gives no rate
+  for that poll and a new baseline, so a counter reset is never taken
+  for a 32-bit wrap
 
 * Sun Oct 18 2026 roemer2201 <r.oliver@web.de> - 0.30.0-1
 - new extension "procs" (column "procs", ships disabled): brings the

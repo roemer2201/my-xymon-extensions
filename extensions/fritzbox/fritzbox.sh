@@ -1277,7 +1277,7 @@ mod_sys() {
         esac
     fi
     if [ "${y_defpw}" = 1 ]; then
-        finding "${FRITZBOX_SYS_DEFAULTPW_COLOR}" 'the box still uses its factory default password'
+        finding "${FRITZBOX_SYS_DEFAULTPW_COLOR}" 'at least one user still has the factory default password'
     fi
 
     # Clock offset: box time against this server's clock at the reply.

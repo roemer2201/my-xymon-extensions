@@ -89,7 +89,7 @@ into a note without changing the column color.
 |--------|--------|-----|
 | fritzdsl | noise margin below 6 dB, CRC rate from 30/min, WAN connection not Connected | line not Up, margin below 3 dB, CRC rate from 300/min |
 | fritzwan | utilization above FRITZBOX_WAN_UTIL_WARN (off) | link not Up, utilization above FRITZBOX_WAN_UTIL_CRIT (off) |
-| fritzsys | update available, reboot within FRITZBOX_HOLD_MINUTES, clock offset above 60 s, factory default password still in use (FRITZBOX_SYS_DEFAULTPW_COLOR); last update failed only with FRITZBOX_SYS_UPDATE_FAILED_COLOR=yellow | clock offset above 300 s |
+| fritzsys | update available, reboot within FRITZBOX_HOLD_MINUTES, clock offset above 60 s, a user with the factory default password (FRITZBOX_SYS_DEFAULTPW_COLOR); last update failed only with FRITZBOX_SYS_UPDATE_FAILED_COLOR=yellow | clock offset above 300 s |
 | fritzlog | a new entry of a yellow rule, or one no rule matches - for FRITZBOX_HOLD_MINUTES | a new entry of a red rule - for FRITZBOX_HOLD_MINUTES |
 | fritzfw | a mapping outside FRITZBOX_FW_EXPECTED or an expected one missing; without that list, any change of mappings or settings for FRITZBOX_HOLD_MINUTES | (FRITZBOX_FW_COLOR=red) |
 | fritzlan | a FRITZBOX_LAN_REQUIRED device not active; with FRITZBOX_LAN_NEW_MAC=1 a new MAC for FRITZBOX_HOLD_MINUTES | LAN interface not Up |
