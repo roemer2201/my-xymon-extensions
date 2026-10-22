@@ -1,0 +1,11 @@
+#!/bin/sh
+# Deterministic epoch clock for the FRITZ! collector retry budget tests.
+# Other date formats and --help use the real command selected by the test.
+# Env: FRITZ_TEST_CLOCK_FILE, FRITZ_TEST_REAL_DATE.
+# Version: 1.0.0 (2026-10-22)
+set -u
+if [ "$#" -eq 1 ] && [ "${1}" = +%s ]; then
+    cat "${FRITZ_TEST_CLOCK_FILE}"
+else
+    exec "${FRITZ_TEST_REAL_DATE}" "${@}"
+fi

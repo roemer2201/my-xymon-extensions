@@ -17,7 +17,7 @@
 # NCV - keep an explicit U: a failed poll becomes a graph gap, never a
 # zero. Only read-only TR-064 actions are ever sent.
 #
-# Version: 1.2.0  (2026-10-22)
+# Version: 1.2.1  (2026-10-22)
 #
 # Program flow:
 # 1. Resolve settings (defaults < config < environment < CLI), validate
@@ -37,7 +37,7 @@
 # Usage: fritzbox.sh --config FILE [--host NAME] [--dry-run] [--help]
 set -u
 CONFIG_NAME=fritzbox.cfg
-SCRIPT_VERSION=1.2.0
+SCRIPT_VERSION=1.2.1
 
 usage() {
     cat <<'EOF'
@@ -291,6 +291,10 @@ done
 for n in "${FRITZBOX_RETRIES}" "${FRITZBOX_RETRY_DELAY}" "${FRITZBOX_START_JITTER}"; do
     case "${n}" in ''|*[!0-9]*) fail "Expected a non-negative integer, got '${n}'" ;; esac
 done
+# Settings are decimal; leading zeroes must not select shell octal arithmetic.
+FRITZBOX_RETRIES=$(printf '%s' "${FRITZBOX_RETRIES}" | sed 's/^0*//; s/^$/0/')
+FRITZBOX_RETRY_DELAY=$(printf '%s' "${FRITZBOX_RETRY_DELAY}" | sed 's/^0*//; s/^$/0/')
+FRITZBOX_START_JITTER=$(printf '%s' "${FRITZBOX_START_JITTER}" | sed 's/^0*//; s/^$/0/')
 [ "${FRITZBOX_RETRIES}" -le 5 ] || fail 'FRITZBOX_RETRIES must be 0 to 5'
 [ "${FRITZBOX_RETRY_DELAY}" -le 60 ] || fail 'FRITZBOX_RETRY_DELAY must be 0 to 60 seconds'
 [ "${FRITZBOX_START_JITTER}" -le 60 ] || fail 'FRITZBOX_START_JITTER must be 0 to 60 seconds'
@@ -629,8 +633,8 @@ fetch() {
     done
     debug_dump "GET ${1%%\?*} -> curl ${f_rc}, HTTP ${HTTPCODE:-none}"
     [ "${f_rc}" -eq 0 ] || return 1
-    [ "${ft_try}" -eq 0 ] || retry_note "GET ${1%%\?*}" "${ft_try}" "${ft_err}"
     [ "${HTTPCODE}" = 200 ] || return 4
+    [ "${ft_try}" -eq 0 ] || retry_note "GET ${1%%\?*}" "${ft_try}" "${ft_err}"
     return 0
 }
 
@@ -643,7 +647,11 @@ retry_wait() {
     rw_now=$(date +%s) || return 1
     [ "$((rw_now + FRITZBOX_RETRY_DELAY + FRITZBOX_MAX_TIME))" -le "${poll_deadline}" ] || return 1
     log info "${host}: ${2}: ${CURLERR:-transport error} - retry ${1} of ${FRITZBOX_RETRIES} in ${FRITZBOX_RETRY_DELAY} s"
-    [ "${FRITZBOX_RETRY_DELAY}" -eq 0 ] || sleep "${FRITZBOX_RETRY_DELAY}"
+    if [ "${FRITZBOX_RETRY_DELAY}" -ne 0 ]; then
+        sleep "${FRITZBOX_RETRY_DELAY}" || return 1
+    fi
+    # Logging and a late wake-up may consume the slot reserved above.
+    request_time_available
 }
 
 # retry_note LABEL TRIES ERROR - a request that succeeded only after
@@ -708,9 +716,10 @@ soap() {
     tr '\n' ' ' <"${hw}/resp" | tr '<' '\n' >"${hw}/resp.lines"
     debug_dump "${s_urn##*:service:} ${s_act} -> curl ${s_rc}, HTTP ${HTTPCODE:-none}"
     if [ "${s_rc}" -ne 0 ]; then host_abort=1; return 1; fi
-    [ "${s_try}" -eq 0 ] || retry_note "${s_urn##*:service:} ${s_act}" "${s_try}" "${s_err}"
     case "${HTTPCODE}" in
-        200) return 0 ;;
+        200)
+            [ "${s_try}" -eq 0 ] || retry_note "${s_urn##*:service:} ${s_act}" "${s_try}" "${s_err}"
+            return 0 ;;
         401) host_abort=2; return 2 ;;  # HTML body, not a SOAP fault - never parsed
     esac
     ERRCODE=$(field errorCode)

@@ -93,8 +93,12 @@ syslog, so the status history shows how often it happens. Only when
 every attempt fails is the box unreachable: that column and the ones
 polled after it turn red, and the poll of this box ends. Answers of the
 box (a refused login, a UPnP error) are never retried. A retry starts
-only when the pause and one more request still fit in the run budget;
-several failing requests in one poll can therefore leave the last
+only when the pause and one more request still fit in the run budget.
+The budget is checked again after the pause, in case the process wakes
+late. The success note is emitted only for an HTTP 200 response, never
+for a refused login or another HTTP/SOAP error. Retry counts, delays and
+jitter settings are decimal, including values with leading zeroes.
+Several failing requests in one poll can therefore leave the last
 columns yellow ("run time budget exhausted") instead. Each run starts
 after a random pause of 0 to FRITZBOX_START_JITTER (10) seconds (not
 in a dry run), so fritzbox and fritz-wifi, which share the 5-minute

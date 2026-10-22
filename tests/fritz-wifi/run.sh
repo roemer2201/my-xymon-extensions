@@ -252,6 +252,40 @@ for bad in FRITZ_WIFI_RETRIES=6 FRITZ_WIFI_RETRY_DELAY=61 FRITZ_WIFI_START_JITTE
     ok exit_is 1
 done
 
+# --- retry review regressions ----------------------------------------
+# A received HTTP/SOAP error after a reset is not a successful action.
+FW_FLAKY='GetInfo 1' run --set FRITZ_WIFI_USER=wrong
+ok has '^status\+15 powerline3,lan\.wifi yellow .* - wifi: authentication failed$'
+ok lacks 'succeeded after'
+FW_FLAKY='GetTotalAssociations 1' FW_SCENARIO=err502 run
+ok lacks 'GetTotalAssociations succeeded after'
+FW_FLAKY='GET /tr64desc.xml 1' FW_SCENARIO=desc404 run
+ok lacks 'GET /tr64desc.xml succeeded after'
+
+# Scheduling latency during retry logging must not start a GET or SOAP
+# retry after its slot has expired. The fake clock needs no real wait.
+clock_path=${REPO}/tests/fritz-common/bin
+clock_date=$(command -v date)
+for key in 'GET /tr64desc.xml' GetInfo; do
+    printf '1000\n' >"${TMP}/clock"
+    PATH="${clock_path}:${PATH}" FRITZ_TEST_CLOCK_FILE=${TMP}/clock \
+        FRITZ_TEST_REAL_DATE=${clock_date} FRITZ_TEST_LOG_DELAY=6 FRITZ_TEST_SYSLOG=${FW_SYSLOG} \
+        FW_FLAKY="${key} 1" run --set FRITZ_WIFI_RUN_BUDGET=10 \
+        --set FRITZ_WIFI_MAX_TIME=5 --set FRITZ_WIFI_RETRY_DELAY=0
+    ok has '^status\+15 powerline3,lan\.wifi red .* - wifi: unreachable$'
+    ok test "$(grep -c "${key#GET }" "${FW_LOG}/argv")" -eq 1
+done
+# Leading zeroes are decimal, including delay and jitter values 08/09.
+printf '1000\n' >"${TMP}/clock"
+PATH="${clock_path}:${PATH}" FRITZ_TEST_CLOCK_FILE=${TMP}/clock \
+    FRITZ_TEST_REAL_DATE=${clock_date} FRITZ_TEST_SLEEP_EXTRA=0 \
+    FRITZ_TEST_LOG_DELAY=0 FRITZ_TEST_SYSLOG=${FW_SYSLOG} \
+    FW_FLAKY='GetInfo 1' run --set FRITZ_WIFI_START_JITTER=09 \
+    --set FRITZ_WIFI_RETRY_DELAY=08 --set FRITZ_WIFI_RETRIES=02
+ok exit_is 0
+ok has '^status\+15 powerline3,lan\.wifi green '
+ok has 'GetInfo succeeded after 1 retry\(s\)'
+
 # --- 0 clients is a value; widths are then unknown ---------------------
 FW_CLIENTS1=0 FW_CLIENTS2=0 run
 ok has ' green .* - wifi: 0 client\(s\) on 2 AP interface\(s\)$'

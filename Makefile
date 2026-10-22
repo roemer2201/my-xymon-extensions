@@ -14,6 +14,7 @@ shellcheck:
 	shellcheck --shell=sh tests/powerline/run.sh tests/powerline/bin/*
 	shellcheck --shell=sh tests/fritz-wifi/run.sh tests/fritz-wifi/fakecurl tests/fritz-wifi/bin/*
 	shellcheck --shell=sh tests/fritzbox/run.sh tests/fritzbox/fakecurl tests/fritzbox/bin/*
+	shellcheck --shell=sh tests/fritz-common/bin/*
 
 unittest:
 	sh tests/run.sh

@@ -10,7 +10,7 @@
 # login becomes a graph gap, never a zero. Metrics TR-064 does not
 # provide (busy, noise, airtime, retries, throughput) are not created.
 #
-# Version: 1.3.0  (2026-10-22)
+# Version: 1.3.1  (2026-10-22)
 #
 # Program flow:
 # 1. Resolve settings (defaults < config < environment < CLI), validate
@@ -30,7 +30,7 @@
 # Usage: fritz-wifi.sh --config FILE [--host NAME] [--dry-run] [--help]
 set -u
 CONFIG_NAME=fritz-wifi.cfg
-SCRIPT_VERSION=1.3.0
+SCRIPT_VERSION=1.3.1
 
 usage() {
     cat <<'EOF'
@@ -250,6 +250,10 @@ done
 for n in "${FRITZ_WIFI_RETRIES}" "${FRITZ_WIFI_RETRY_DELAY}" "${FRITZ_WIFI_START_JITTER}"; do
     case "${n}" in ''|*[!0-9]*) fail "Expected a non-negative integer, got '${n}'" ;; esac
 done
+# Settings are decimal; leading zeroes must not select shell octal arithmetic.
+FRITZ_WIFI_RETRIES=$(printf '%s' "${FRITZ_WIFI_RETRIES}" | sed 's/^0*//; s/^$/0/')
+FRITZ_WIFI_RETRY_DELAY=$(printf '%s' "${FRITZ_WIFI_RETRY_DELAY}" | sed 's/^0*//; s/^$/0/')
+FRITZ_WIFI_START_JITTER=$(printf '%s' "${FRITZ_WIFI_START_JITTER}" | sed 's/^0*//; s/^$/0/')
 [ "${FRITZ_WIFI_RETRIES}" -le 5 ] || fail 'FRITZ_WIFI_RETRIES must be 0 to 5'
 [ "${FRITZ_WIFI_RETRY_DELAY}" -le 60 ] || fail 'FRITZ_WIFI_RETRY_DELAY must be 0 to 60 seconds'
 [ "${FRITZ_WIFI_START_JITTER}" -le 60 ] || fail 'FRITZ_WIFI_START_JITTER must be 0 to 60 seconds'
@@ -316,7 +320,11 @@ retry_wait() {
     rw_now=$(date +%s) || return 1
     [ "$((rw_now + FRITZ_WIFI_RETRY_DELAY + FRITZ_WIFI_MAX_TIME))" -le "${poll_deadline}" ] || return 1
     log info "${host}: ${2}: ${CURLERR:-transport error} - retry ${1} of ${FRITZ_WIFI_RETRIES} in ${FRITZ_WIFI_RETRY_DELAY} s"
-    [ "${FRITZ_WIFI_RETRY_DELAY}" -eq 0 ] || sleep "${FRITZ_WIFI_RETRY_DELAY}"
+    if [ "${FRITZ_WIFI_RETRY_DELAY}" -ne 0 ]; then
+        sleep "${FRITZ_WIFI_RETRY_DELAY}" || return 1
+    fi
+    # Logging and a late wake-up may consume the slot reserved above.
+    request_time_available
 }
 
 # retry_note LABEL TRIES ERROR - a request that succeeded only after
@@ -540,9 +548,10 @@ soap() {
     tr '<' '\n' <"${hw}/resp" >"${hw}/resp.lines"
     debug_dump "WLANConfiguration:${s_inst} ${s_act}${4:+ index ${4}} -> curl ${s_rc}, HTTP ${HTTPCODE:-none}"
     [ "${s_rc}" -eq 0 ] || return 1
-    [ "${s_try}" -eq 0 ] || retry_note "WLANConfiguration:${s_inst} ${s_act}" "${s_try}" "${s_err}"
     case "${HTTPCODE}" in
-        200) return 0 ;;
+        200)
+            [ "${s_try}" -eq 0 ] || retry_note "WLANConfiguration:${s_inst} ${s_act}" "${s_try}" "${s_err}"
+            return 0 ;;
         401) return 2 ;;  # HTML body, not a SOAP fault - never parsed
     esac
     ERRCODE=$(field errorCode)
@@ -657,12 +666,12 @@ collect_host() {
         summary='unreachable'
         return 1
     fi
-    [ "${c_try}" -eq 0 ] || retry_note 'GET /tr64desc.xml' "${c_try}" "${c_err}"
     if [ "${HTTPCODE}" != 200 ]; then
         note yellow "TR-064 device description not available at ${base_url}/tr64desc.xml (HTTP ${HTTPCODE}) - is TR-064 enabled?"
         summary='TR-064 error'
         return 1
     fi
+    [ "${c_try}" -eq 0 ] || retry_note 'GET /tr64desc.xml' "${c_try}" "${c_err}"
     tr '<' '\n' <"${hw}/resp" | awk '
         index($0, "serviceType>") == 1 { t = substr($0, 13) }
         index($0, "controlURL>") == 1 { u = substr($0, 12) }

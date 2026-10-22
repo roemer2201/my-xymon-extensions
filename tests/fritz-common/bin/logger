@@ -1,0 +1,14 @@
+#!/bin/sh
+# Record syslog and optionally advance the test clock while logging a
+# retry. This emulates scheduling latency after the initial budget check,
+# including on BusyBox ash where sleep is a builtin and ignores PATH.
+# Env: FRITZ_TEST_SYSLOG, FRITZ_TEST_CLOCK_FILE, FRITZ_TEST_LOG_DELAY.
+# Version: 1.0.0 (2026-10-22)
+set -u
+printf '%s\n' "${*}" >>"${FRITZ_TEST_SYSLOG}"
+case "${*}" in
+    *' - retry '*)
+        clock=$(cat "${FRITZ_TEST_CLOCK_FILE}") || exit 1
+        awk -v t="${clock}" -v d="${FRITZ_TEST_LOG_DELAY:-0}" \
+            'BEGIN { printf "%.0f\n", t + d }' >"${FRITZ_TEST_CLOCK_FILE}" ;;
+esac

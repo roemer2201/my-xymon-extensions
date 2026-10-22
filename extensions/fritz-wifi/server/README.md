@@ -116,7 +116,12 @@ syslog; only when every attempt fails is the device unreachable. Answers
 of the device (a refused login, a UPnP error) are never retried. Each
 run starts after a random pause of 0 to FRITZ_WIFI_START_JITTER (10)
 seconds (not in a dry run), so fritz-wifi and fritzbox, which share the
-5-minute schedule, rarely ask a device at the same moment.
+5-minute schedule, rarely ask a device at the same moment. The budget
+is checked again after each retry pause, so a late wake-up cannot start
+a request whose reserved time has expired. Success notes require an
+HTTP 200 response; refused logins and other HTTP/SOAP errors keep their
+error status without a success note. Retry counts, delays and jitter
+settings are decimal, including values with leading zeroes.
 
 A wrong and an empty password look the same to the device: HTTP 401 with
 an HTML body. That is recognized by the status code; the body is never

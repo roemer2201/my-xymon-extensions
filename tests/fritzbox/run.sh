@@ -356,6 +356,45 @@ for bad in FRITZBOX_RETRIES=6 FRITZBOX_RETRY_DELAY=61 FRITZBOX_START_JITTER=61 F
     ok exit_is 1
 done
 
+# --- retry review regressions -----------------------------------------------
+# Transport recovery is not action success: a subsequent HTTP/SOAP
+# error must retain its error status without a misleading success note.
+FB_FLAKY='GetInfo 1' run --set FRITZBOX_MODULES=sys --set FRITZBOX_USER=wrong
+ok status fritzsys yellow 'authentication failed'
+ok lacks 'succeeded after'
+mkdir -p "${OVER}"
+cp "${FB_DATA}/fault401.xml" "${OVER}/deviceinfo__GetInfo.xml"
+FB_FLAKY='GetInfo 1' run --set FRITZBOX_MODULES=sys
+ok lacks 'succeeded after'
+reset_over
+FB_NOIGD=1 FB_FLAKY='GET /igddesc.xml 1' run --set FRITZBOX_MODULES=wan
+ok lacks 'GET /igddesc.xml succeeded after'
+
+# Scheduling latency during retry logging can consume the reserved
+# slot. No further curl request may start without MAX_TIME remaining.
+clock_path=${REPO}/tests/fritz-common/bin
+clock_date=$(command -v date)
+for key in 'GET /tr64desc.xml' GetInfo; do
+    printf '1000\n' >"${TMP}/clock"
+    PATH="${clock_path}:${PATH}" FRITZ_TEST_CLOCK_FILE=${TMP}/clock \
+        FRITZ_TEST_REAL_DATE=${clock_date} FRITZ_TEST_LOG_DELAY=6 FRITZ_TEST_SYSLOG=${FB_SYSLOG} \
+        FB_FLAKY="${key} 1" run --set FRITZBOX_MODULES=sys \
+        --set FRITZBOX_RUN_BUDGET=10 --set FRITZBOX_RETRY_DELAY=0
+    ok status fritzsys red 'unreachable'
+    ok test "$(grep -c "${key#GET }" "${FB_LOG}/argv")" -eq 1
+done
+# Decimal settings with leading zeroes must not enter shell octal
+# arithmetic. The synthetic sleep keeps jitter and retry tests instant.
+printf '1000\n' >"${TMP}/clock"
+PATH="${clock_path}:${PATH}" FRITZ_TEST_CLOCK_FILE=${TMP}/clock \
+    FRITZ_TEST_REAL_DATE=${clock_date} FRITZ_TEST_SLEEP_EXTRA=0 \
+    FRITZ_TEST_LOG_DELAY=0 FRITZ_TEST_SYSLOG=${FB_SYSLOG} \
+    FB_FLAKY='GetInfo 1' run --set FRITZBOX_MODULES=sys \
+    --set FRITZBOX_START_JITTER=09 --set FRITZBOX_RETRY_DELAY=08 --set FRITZBOX_RETRIES=02
+ok exit_is 0
+ok status fritzsys green 'FRITZ!Box 7510 \(UI\), FRITZ!OS 8\.26, up 61d 20h 39m'
+ok has 'GetInfo succeeded after 1 retry\(s\)'
+
 # --- an exhausted run budget never starts a request --------------------------
 run --set FRITZBOX_RUN_BUDGET=1
 for c in ${COLUMNS}; do ok status "${c}" yellow 'run time budget exhausted'; done
