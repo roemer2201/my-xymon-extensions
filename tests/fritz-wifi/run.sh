@@ -21,7 +21,7 @@ PASSFILE=${TMP}/fritz.passwd
 
 # Sandbox environment; nothing of the caller's fritz-wifi setup leaks in.
 for v in $(env | sed -n 's/^\(FRITZ_WIFI_[A-Z_]*\)=.*/\1/p'); do unset "${v}"; done
-unset FRITZPASSWORT FW_SCENARIO FW_DOWN FW_SLOW FW_CLIENTS1 FW_CLIENTS2 FW_SEND_FAIL
+unset FRITZPASSWORT FW_SCENARIO FW_DOWN FW_SLOW FW_CLIENTS1 FW_CLIENTS2 FW_SEND_FAIL FW_FLAKY
 PATH="${HERE}/bin:${PATH}"
 FW_DATA=${HERE}/data FW_LOG=${TMP}/log FW_MESSAGES=${TMP}/messages FW_SYSLOG=${TMP}/syslog
 FW_USER=xymon
@@ -30,10 +30,13 @@ FW_PASS='geheim pass"wo\rt'
 FRITZ_WIFI_CONFIG=/dev/null FRITZ_WIFI_HOSTSCFG=${HERE}/hosts FRITZ_WIFI_XYMONCFG=/nonexistent
 FRITZ_WIFI_STATE_DIR=${STATE} FRITZ_WIFI_PASSFILE=${PASSFILE} FRITZ_WIFI_CURL=${HERE}/fakecurl
 XYMON=${HERE}/bin/fixture-send XYMSRV=127.0.0.1
+# No start jitter and no pause between retries: the tests stay fast.
+FRITZ_WIFI_START_JITTER=0 FRITZ_WIFI_RETRY_DELAY=0
 # shellcheck disable=SC2090 # See FW_PASS above.
 export PATH FW_DATA FW_LOG FW_MESSAGES FW_SYSLOG FW_USER FW_PASS
 export FRITZ_WIFI_CONFIG FRITZ_WIFI_HOSTSCFG FRITZ_WIFI_XYMONCFG FRITZ_WIFI_STATE_DIR
 export FRITZ_WIFI_PASSFILE FRITZ_WIFI_CURL XYMON XYMSRV
+export FRITZ_WIFI_START_JITTER FRITZ_WIFI_RETRY_DELAY
 
 # The reference password file: an IP entry that must not match, then the
 # device with the default user ("-") and a password containing blanks, a
@@ -218,6 +221,36 @@ FW_SLOW=192.0.2.1 run
 ok has '^status\+15 powerline3,lan\.wifi red .* - wifi: unreachable$'
 ok has 'curl: \(28\) Connection timed out'
 ok rrd clients_wl2g_ap1 U
+# Every unreachable request was tried three times (two retries).
+ok test "$(grep -c 'tr64desc' "${FW_LOG}/argv")" -eq 3
+
+# --- a reset connection is retried, only that request -------------------
+FW_FLAKY='GetTotalAssociations 1' run
+ok exit_is 0
+ok has '^status\+15 powerline3,lan\.wifi green '
+ok has '^Note: WLANConfiguration:1 GetTotalAssociations succeeded after 1 retry\(s\) - first error: curl: \(56\) Recv failure: Connection reset by peer$'
+ok syslog_has 'info: powerline3\.lan: WLANConfiguration:1 GetTotalAssociations: curl: \(56\) Recv failure: Connection reset by peer - retry 1 of 2 in 0 s$'
+ok rrd clients_wl2g_ap1 1
+ok ncv_safe
+FW_FLAKY='GET /tr64desc.xml 2' run
+ok has '^status\+15 powerline3,lan\.wifi green '
+ok has '^Note: GET /tr64desc\.xml succeeded after 2 retry\(s\)'
+FW_FLAKY='GetInfo 3' run
+ok has '^status\+15 powerline3,lan\.wifi red .* - wifi: unreachable$'
+ok has '^&red cannot reach TR-064 at http://192\.0\.2\.1:49000 - curl: \(56\) Recv failure: Connection reset by peer$'
+FW_FLAKY='GetInfo 1' run --set FRITZ_WIFI_RETRIES=0
+ok has '^status\+15 powerline3,lan\.wifi red .* - wifi: unreachable$'
+# No retry without the time for the pause and one more request.
+FW_FLAKY='GET /tr64desc.xml 1' run --set FRITZ_WIFI_RUN_BUDGET=6 --set FRITZ_WIFI_RETRY_DELAY=4
+ok has '^status\+15 powerline3,lan\.wifi red .* - wifi: unreachable$'
+# The start jitter waits 0..N seconds; a dry run skips it.
+run --verbose --set FRITZ_WIFI_START_JITTER=1
+ok exit_is 0
+ok err_has 'Start jitter: [01] s$'
+for bad in FRITZ_WIFI_RETRIES=6 FRITZ_WIFI_RETRY_DELAY=61 FRITZ_WIFI_START_JITTER=61 FRITZ_WIFI_RETRIES=x; do
+    run --set "${bad}"
+    ok exit_is 1
+done
 
 # --- 0 clients is a value; widths are then unknown ---------------------
 FW_CLIENTS1=0 FW_CLIENTS2=0 run

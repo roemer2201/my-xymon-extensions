@@ -267,6 +267,18 @@ RRD graphs need a one-time setup on the Xymon SERVER (not here):
 EOF
 
 %changelog
+* Thu Oct 22 2026 roemer2201 <r.oliver@web.de> - 0.32.0-1
+- no change to this package. The server-only collectors fritzbox and
+  fritz-wifi retry a request that failed in transport (connection reset
+  or refused, timeout) up to two more times, 20 seconds apart, within
+  the run budget (FRITZBOX_/FRITZ_WIFI_RETRIES, _RETRY_DELAY); only that
+  request, the rest of the poll goes on. A request that needed a retry
+  leaves an uncolored note in its column and a syslog message. Each run
+  starts after a random pause of up to 10 seconds (_START_JITTER), so
+  the two collectors rarely ask a device at the same moment. fritzbox
+  columns after an unreachable request show its curl error again
+  instead of "connection failed"
+
 * Sun Oct 18 2026 roemer2201 <r.oliver@web.de> - 0.31.0-1
 - no change to this package. The server-only fritzbox collector reports
   the WAN packet rate in fritzwan (pps_down/pps_up, new graph

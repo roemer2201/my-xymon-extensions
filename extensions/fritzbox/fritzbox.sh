@@ -17,16 +17,18 @@
 # NCV - keep an explicit U: a failed poll becomes a graph gap, never a
 # zero. Only read-only TR-064 actions are ever sent.
 #
-# Version: 1.1.1  (2026-10-19)
+# Version: 1.2.0  (2026-10-22)
 #
 # Program flow:
 # 1. Resolve settings (defaults < config < environment < CLI), validate
 #    them, optionally prompt for the password (--ask-password).
-# 2. Take the lock, build the host list (hosts.cfg tag or --host) and
-#    check the password file (owner and permissions).
+# 2. Take the lock, wait a random start jitter, build the host list
+#    (hosts.cfg tag or --host) and check the password file (owner and
+#    permissions).
 # 3. Per host, one after another: read /tr64desc.xml (and /igddesc.xml),
 #    probe the login, then run the enabled modules within the run time
-#    budget. A transport failure or a refused login ends the host.
+#    budget. A transport failure is retried per request; one that stays
+#    or a refused login ends the host.
 # 4. Per column: color, status text and RRD values; after a failure the
 #    RRD names of the last clean run get U.
 # 5. Deliver status and trends (or print them with --dry-run), then save
@@ -35,7 +37,7 @@
 # Usage: fritzbox.sh --config FILE [--host NAME] [--dry-run] [--help]
 set -u
 CONFIG_NAME=fritzbox.cfg
-SCRIPT_VERSION=1.1.1
+SCRIPT_VERSION=1.2.0
 
 usage() {
     cat <<'EOF'
@@ -72,6 +74,10 @@ on each box's host, plus the adapter list read by powerline.sh.
     FRITZBOX_PORT (49000), FRITZBOX_CONNECT_TIMEOUT (3 seconds),
     FRITZBOX_MAX_TIME (5 seconds per request)
     FRITZBOX_RUN_BUDGET (180 seconds for network requests)
+    FRITZBOX_RETRIES (2), FRITZBOX_RETRY_DELAY (20 seconds): further
+      attempts of a request that failed in transport (curl error)
+    FRITZBOX_START_JITTER (10): random pause of 0..N seconds at the
+      start of a run (not in a dry run)
     FRITZBOX_LIFETIME (15 minutes), FRITZBOX_HOLD_MINUTES (60)
     FRITZBOX_STATE_DIR (XYMONVAR/fritzbox), FRITZBOX_MASK (0)
     FRITZBOX_HOSTSCFG (HOSTSCFG), FRITZBOX_XYMONCFG
@@ -129,7 +135,7 @@ EOF
 setting() {
     # shellcheck disable=SC2163 # Export a validated NAME=VALUE, not positional $1.
     case "${1%%=*}" in
-        FRITZBOX_ENABLED|FRITZBOX_TAG|FRITZBOX_HOSTS|FRITZBOX_USER|FRITZBOX_PASSFILE|FRITZBOX_PORT|FRITZBOX_CONNECT_TIMEOUT|FRITZBOX_MAX_TIME|FRITZBOX_RUN_BUDGET|FRITZBOX_LIFETIME|FRITZBOX_HOLD_MINUTES|FRITZBOX_STATE_DIR|FRITZBOX_MASK|FRITZBOX_MODULES|FRITZBOX_HOSTSCFG|FRITZBOX_XYMONCFG|FRITZBOX_CURL|FRITZBOX_DSL_MARGIN_WARN|FRITZBOX_DSL_MARGIN_CRIT|FRITZBOX_DSL_CRC_WARN|FRITZBOX_DSL_CRC_CRIT|FRITZBOX_DSL_WAN_SERVICE|FRITZBOX_WAN_MODE|FRITZBOX_WAN_UTIL_WARN|FRITZBOX_WAN_UTIL_CRIT|FRITZBOX_SYS_CLOCK_WARN|FRITZBOX_SYS_CLOCK_CRIT|FRITZBOX_SYS_UPDATE_COLOR|FRITZBOX_SYS_UPDATE_FAILED_COLOR|FRITZBOX_SYS_DEFAULTPW_COLOR|FRITZBOX_LOG_RULES|FRITZBOX_LOG_SHOW|FRITZBOX_LOG_UNMATCHED_COLOR|FRITZBOX_FW_EXPECTED|FRITZBOX_FW_COLOR|FRITZBOX_LAN_REQUIRED|FRITZBOX_LAN_REQUIRED_COLOR|FRITZBOX_LAN_NEW_MAC|FRITZBOX_TEL_COLOR|FRITZBOX_SILENT|FRITZBOX_VERBOSE|FRITZBOX_DEBUG|FRITZBOX_DRY_RUN|FRITZBOX_NOW) export "${1}" ;;
+        FRITZBOX_ENABLED|FRITZBOX_TAG|FRITZBOX_HOSTS|FRITZBOX_USER|FRITZBOX_PASSFILE|FRITZBOX_PORT|FRITZBOX_CONNECT_TIMEOUT|FRITZBOX_MAX_TIME|FRITZBOX_RUN_BUDGET|FRITZBOX_RETRIES|FRITZBOX_RETRY_DELAY|FRITZBOX_START_JITTER|FRITZBOX_LIFETIME|FRITZBOX_HOLD_MINUTES|FRITZBOX_STATE_DIR|FRITZBOX_MASK|FRITZBOX_MODULES|FRITZBOX_HOSTSCFG|FRITZBOX_XYMONCFG|FRITZBOX_CURL|FRITZBOX_DSL_MARGIN_WARN|FRITZBOX_DSL_MARGIN_CRIT|FRITZBOX_DSL_CRC_WARN|FRITZBOX_DSL_CRC_CRIT|FRITZBOX_DSL_WAN_SERVICE|FRITZBOX_WAN_MODE|FRITZBOX_WAN_UTIL_WARN|FRITZBOX_WAN_UTIL_CRIT|FRITZBOX_SYS_CLOCK_WARN|FRITZBOX_SYS_CLOCK_CRIT|FRITZBOX_SYS_UPDATE_COLOR|FRITZBOX_SYS_UPDATE_FAILED_COLOR|FRITZBOX_SYS_DEFAULTPW_COLOR|FRITZBOX_LOG_RULES|FRITZBOX_LOG_SHOW|FRITZBOX_LOG_UNMATCHED_COLOR|FRITZBOX_FW_EXPECTED|FRITZBOX_FW_COLOR|FRITZBOX_LAN_REQUIRED|FRITZBOX_LAN_REQUIRED_COLOR|FRITZBOX_LAN_NEW_MAC|FRITZBOX_TEL_COLOR|FRITZBOX_SILENT|FRITZBOX_VERBOSE|FRITZBOX_DEBUG|FRITZBOX_DRY_RUN|FRITZBOX_NOW) export "${1}" ;;
         *) printf 'Unknown setting: %s\n' "${1%%=*}" >&2; exit 2 ;;
     esac
 }
@@ -194,6 +200,7 @@ FRITZBOX_ENABLED=1 FRITZBOX_TAG=fritzbox FRITZBOX_HOSTS='' FRITZBOX_USER=''
 FRITZBOX_PASSFILE=${confdir}/fritz.passwd
 FRITZBOX_PORT=49000 FRITZBOX_CONNECT_TIMEOUT=3 FRITZBOX_MAX_TIME=5
 FRITZBOX_RUN_BUDGET=180 FRITZBOX_LIFETIME=15 FRITZBOX_HOLD_MINUTES=60
+FRITZBOX_RETRIES=2 FRITZBOX_RETRY_DELAY=20 FRITZBOX_START_JITTER=10
 FRITZBOX_STATE_DIR=${XYMONVAR:-}/fritzbox FRITZBOX_MASK=0
 FRITZBOX_MODULES='dsl wan sys log fw lan tel plc'
 FRITZBOX_HOSTSCFG=${HOSTSCFG:-${XYMONHOME:-}/etc/hosts.cfg}
@@ -281,6 +288,12 @@ for n in "${FRITZBOX_PORT}" "${FRITZBOX_CONNECT_TIMEOUT}" "${FRITZBOX_MAX_TIME}"
 done
 [ "${FRITZBOX_PORT}" -le 65535 ] || fail "Invalid TR-064 port ${FRITZBOX_PORT}"
 [ "${FRITZBOX_RUN_BUDGET}" -lt 240 ] || fail 'The run budget must be below the task MAXTIME of 240 seconds'
+for n in "${FRITZBOX_RETRIES}" "${FRITZBOX_RETRY_DELAY}" "${FRITZBOX_START_JITTER}"; do
+    case "${n}" in ''|*[!0-9]*) fail "Expected a non-negative integer, got '${n}'" ;; esac
+done
+[ "${FRITZBOX_RETRIES}" -le 5 ] || fail 'FRITZBOX_RETRIES must be 0 to 5'
+[ "${FRITZBOX_RETRY_DELAY}" -le 60 ] || fail 'FRITZBOX_RETRY_DELAY must be 0 to 60 seconds'
+[ "${FRITZBOX_START_JITTER}" -le 60 ] || fail 'FRITZBOX_START_JITTER must be 0 to 60 seconds'
 # Thresholds may be decimals; 0 disables a check.
 for n in "${FRITZBOX_DSL_MARGIN_WARN}" "${FRITZBOX_DSL_MARGIN_CRIT}" "${FRITZBOX_DSL_CRC_WARN}" "${FRITZBOX_DSL_CRC_CRIT}" "${FRITZBOX_WAN_UTIL_WARN}" "${FRITZBOX_WAN_UTIL_CRIT}"; do
     case "${n}" in ''|*[!0-9.]*|*.*.*|.*|*.) fail "Expected a number, got '${n}'" ;; esac
@@ -331,6 +344,19 @@ now_s() {
 }
 poll_deadline=$(($(date +%s) + FRITZBOX_RUN_BUDGET))
 hold_seconds=$((FRITZBOX_HOLD_MINUTES * 60))
+
+# Start jitter: fritzbox.sh and fritz-wifi.sh start on the same 5-minute
+# schedule and ask the same box; a random pause of 0..START_JITTER
+# seconds spreads their TR-064 sessions. It counts against the run
+# budget. /dev/urandom, not awk's srand(): two runs started in the same
+# second would get the same "random" value.
+if [ "${FRITZBOX_START_JITTER}" -gt 0 ] && [ "${FRITZBOX_DRY_RUN}" = 0 ]; then
+    j_rand=$(od -An -N2 -tu2 /dev/urandom 2>/dev/null | tr -cd '0-9')
+    case "${j_rand}" in ''|*[!0-9]*) j_rand=$$ ;; esac
+    j_wait=$((j_rand % (FRITZBOX_START_JITTER + 1)))
+    log debug "Start jitter: ${j_wait} s"
+    [ "${j_wait}" -eq 0 ] || sleep "${j_wait}"
+fi
 
 # Reserve time for status delivery: a request may consume MAX_TIME even
 # when the device never replies. Expired requests are never started.
@@ -587,17 +613,47 @@ field() {
 fetch() {
     HTTPCODE='' ERRCODE='' CURLERR=''
     request_time_available || return 5
-    : >"${hw}/resp"
-    HTTPCODE=$("${FRITZBOX_CURL}" --silent --show-error \
-        --connect-timeout "${FRITZBOX_CONNECT_TIMEOUT}" --max-time "${FRITZBOX_MAX_TIME}" \
-        --output "${hw}/resp" --write-out '%{http_code}' \
-        "${base_url}${1}" </dev/null 2>"${hw}/curlerr")
-    f_rc=${?}
-    CURLERR=$(head -n 1 "${hw}/curlerr")
+    ft_try=0 ft_err=''
+    while :; do
+        : >"${hw}/resp"
+        HTTPCODE=$("${FRITZBOX_CURL}" --silent --show-error \
+            --connect-timeout "${FRITZBOX_CONNECT_TIMEOUT}" --max-time "${FRITZBOX_MAX_TIME}" \
+            --output "${hw}/resp" --write-out '%{http_code}' \
+            "${base_url}${1}" </dev/null 2>"${hw}/curlerr")
+        f_rc=${?}
+        CURLERR=$(head -n 1 "${hw}/curlerr")
+        [ "${f_rc}" -ne 0 ] || break
+        [ -n "${ft_err}" ] || ft_err=${CURLERR:-curl exit ${f_rc}}
+        ft_try=$((ft_try + 1))
+        retry_wait "${ft_try}" "GET ${1%%\?*}" || break
+    done
     debug_dump "GET ${1%%\?*} -> curl ${f_rc}, HTTP ${HTTPCODE:-none}"
     [ "${f_rc}" -eq 0 ] || return 1
+    [ "${ft_try}" -eq 0 ] || retry_note "GET ${1%%\?*}" "${ft_try}" "${ft_err}"
     [ "${HTTPCODE}" = 200 ] || return 4
     return 0
+}
+
+# retry_wait TRY LABEL - after a transport error (curl failed, e.g. the
+# box reset the connection): true, after the pause, when attempt TRY+1
+# may follow - retries left and the run budget holds the pause and one
+# more request. HTTP and UPnP errors are answers and never retried.
+retry_wait() {
+    [ "${1}" -le "${FRITZBOX_RETRIES}" ] || return 1
+    rw_now=$(date +%s) || return 1
+    [ "$((rw_now + FRITZBOX_RETRY_DELAY + FRITZBOX_MAX_TIME))" -le "${poll_deadline}" ] || return 1
+    log info "${host}: ${2}: ${CURLERR:-transport error} - retry ${1} of ${FRITZBOX_RETRIES} in ${FRITZBOX_RETRY_DELAY} s"
+    [ "${FRITZBOX_RETRY_DELAY}" -eq 0 ] || sleep "${FRITZBOX_RETRY_DELAY}"
+}
+
+# retry_note LABEL TRIES ERROR - a request that succeeded only after
+# TRIES retries: an uncolored line in the open column (the requests
+# before the first module go to the first column), so the status
+# history shows how often the box drops a connection.
+retry_note() {
+    rn_text="Note: ${1} succeeded after ${2} retry(s) - first error: ${3}"
+    log info "${host}: ${rn_text#Note: }"
+    if [ "${col_open}" = 1 ]; then plain "${rn_text}"; else printf '%s\n' "${rn_text}" >>"${hw}/retries"; fi
 }
 
 # soap MODE PATH URN ACTION [ARGXML] - one SOAP call; MODE is auth
@@ -609,8 +665,10 @@ fetch() {
 # A 1, 2 or 5 also ends the poll of this host (host_abort).
 soap() {
     s_mode=${1} s_path=${2} s_urn=${3} s_act=${4} s_args=${5:-}
-    HTTPCODE='' ERRCODE='' CURLERR=''
+    # After a host level failure CURLERR keeps its reason for the
+    # columns that follow.
     [ "${host_abort}" = 0 ] || return "${host_abort}"
+    HTTPCODE='' ERRCODE='' CURLERR=''
     case "${s_act}" in
         GetSecurityKeys|X_AVM-DE_GetVoIPAccount|X_AVM-DE_GetClient*|X_AVM-DE_GetConfigFile)
             log error "Refusing TR-064 action ${s_act}: it returns secrets"; return 4 ;;
@@ -619,7 +677,6 @@ soap() {
     esac
     if ! request_time_available; then host_abort=5; return 5; fi
     if [ "${s_mode}" = auth ]; then s_cfg=${cred_config}; else s_cfg=''; fi
-    : >"${hw}/resp"
     # The action element needs its own closing tag: AVM devices answer a
     # self-closing one with "502 XML error".
     # --digest --ntlm, not --digest alone: with a single method curl sends
@@ -628,19 +685,30 @@ soap() {
     # of the 401 challenge. With two methods curl sends the full body,
     # then picks Digest from the challenge. Not --anyauth: that would
     # fall back to Basic, the password in clear text over plain HTTP.
-    HTTPCODE=$(printf '%s\n' "${s_cfg}" | "${FRITZBOX_CURL}" --silent --show-error \
-        --digest --ntlm --config - \
-        --connect-timeout "${FRITZBOX_CONNECT_TIMEOUT}" --max-time "${FRITZBOX_MAX_TIME}" \
-        --output "${hw}/resp" --write-out '%{http_code}' \
-        --header 'Content-Type: text/xml; charset="utf-8"' \
-        --header "SoapAction: \"${s_urn}#${s_act}\"" \
-        --data "<?xml version='1.0' encoding='utf-8'?><s:Envelope s:encodingStyle='http://schemas.xmlsoap.org/soap/encoding/' xmlns:s='http://schemas.xmlsoap.org/soap/envelope/'><s:Body><u:${s_act} xmlns:u='${s_urn}'>${s_args}</u:${s_act}></s:Body></s:Envelope>" \
-        "${base_url}${s_path}" 2>"${hw}/curlerr")
-    s_rc=${?}
-    CURLERR=$(head -n 1 "${hw}/curlerr")
+    # A transport error is retried (retry_wait) before it ends the poll.
+    s_try=0 s_err=''
+    while :; do
+        : >"${hw}/resp"
+        HTTPCODE=$(printf '%s\n' "${s_cfg}" | "${FRITZBOX_CURL}" --silent --show-error \
+            --digest --ntlm --config - \
+            --connect-timeout "${FRITZBOX_CONNECT_TIMEOUT}" --max-time "${FRITZBOX_MAX_TIME}" \
+            --output "${hw}/resp" --write-out '%{http_code}' \
+            --header 'Content-Type: text/xml; charset="utf-8"' \
+            --header "SoapAction: \"${s_urn}#${s_act}\"" \
+            --data "<?xml version='1.0' encoding='utf-8'?><s:Envelope s:encodingStyle='http://schemas.xmlsoap.org/soap/encoding/' xmlns:s='http://schemas.xmlsoap.org/soap/envelope/'><s:Body><u:${s_act} xmlns:u='${s_urn}'>${s_args}</u:${s_act}></s:Body></s:Envelope>" \
+            "${base_url}${s_path}" 2>"${hw}/curlerr")
+        s_rc=${?}
+        CURLERR=$(head -n 1 "${hw}/curlerr")
+        [ "${s_rc}" -ne 0 ] || break
+        [ -n "${s_err}" ] || s_err=${CURLERR:-curl exit ${s_rc}}
+        s_try=$((s_try + 1))
+        retry_wait "${s_try}" "${s_urn##*:service:} ${s_act}" || break
+    done
+    s_cfg=''
     tr '\n' ' ' <"${hw}/resp" | tr '<' '\n' >"${hw}/resp.lines"
     debug_dump "${s_urn##*:service:} ${s_act} -> curl ${s_rc}, HTTP ${HTTPCODE:-none}"
     if [ "${s_rc}" -ne 0 ]; then host_abort=1; return 1; fi
+    [ "${s_try}" -eq 0 ] || retry_note "${s_urn##*:service:} ${s_act}" "${s_try}" "${s_err}"
     case "${HTTPCODE}" in
         200) return 0 ;;
         401) host_abort=2; return 2 ;;  # HTML body, not a SOAP fault - never parsed
@@ -735,6 +803,13 @@ col_begin() {
     : >"${cdir}/notes"; : >"${cdir}/details"; : >"${cdir}/metrics"
     color=green summary='' partial=0
     printf '%s\n' "${col}" >>"${hw}/columns"
+    col_open=1
+    # Retries of the requests before the first module (description,
+    # login probe) are shown in the first column.
+    if [ -s "${hw}/retries" ]; then
+        while IFS= read -r cb_line; do plain "${cb_line}"; done <"${hw}/retries"
+        : >"${hw}/retries"
+    fi
 }
 
 # note COLOR TEXT - a colored line above the details; raises the color.
@@ -815,6 +890,7 @@ col_end() {
     esac
     [ -n "${summary}" ] || summary=${color}
     printf '%s\n%s\n%s\n%s\n' "${color}" "${partial}" "${col_title}" "${summary}" >"${cdir}/meta"
+    col_open=0
 }
 
 # hold_add COLOR TEXT - print a hold line "hold UNTIL COLOR TEXT" that
@@ -1975,8 +2051,8 @@ poll_host() {
     hw="${work}/host"
     rm -rf "${hw}"
     mkdir "${hw}" || fail 'Cannot create the per-host work directory'
-    : >"${hw}/columns"; : >"${hw}/services"; : >"${hw}/igd"
-    host_abort=0 igd_loaded=0 wc_done=0
+    : >"${hw}/columns"; : >"${hw}/services"; : >"${hw}/igd"; : >"${hw}/retries"
+    host_abort=0 igd_loaded=0 wc_done=0 col_open=0
     now=$(now_s)
     case "${ip}" in ''|0.0.0.0) target=${host} ;; *) target=${ip} ;; esac
     base_url="http://${target}:${FRITZBOX_PORT}"
