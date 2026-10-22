@@ -10,16 +10,18 @@
 # login becomes a graph gap, never a zero. Metrics TR-064 does not
 # provide (busy, noise, airtime, retries, throughput) are not created.
 #
-# Version: 1.2.0  (2026-09-24)
+# Version: 1.3.1  (2026-10-22)
 #
 # Program flow:
 # 1. Resolve settings (defaults < config < environment < CLI), validate
 #    them, optionally prompt for the password (--ask-password).
-# 2. Take the lock, build the host list (hosts.cfg tag or --host) and
-#    check the password file (owner and permissions).
+# 2. Take the lock, wait a random start jitter, build the host list
+#    (hosts.cfg tag or --host) and check the password file (owner and
+#    permissions).
 # 3. Per host, one after another: within the run time budget read
 #    /tr64desc.xml, then for every enabled WLANConfiguration instance
-#    GetInfo, GetTotalAssociations and client details.
+#    GetInfo, GetTotalAssociations and client details. A transport
+#    failure is retried per request; one that stays ends the host.
 # 4. Build color, status text and RRD values; after a failure the names
 #    of the last clean run get U.
 # 5. Deliver status and trends (or print them with --dry-run) and
@@ -28,7 +30,7 @@
 # Usage: fritz-wifi.sh --config FILE [--host NAME] [--dry-run] [--help]
 set -u
 CONFIG_NAME=fritz-wifi.cfg
-SCRIPT_VERSION=1.2.0
+SCRIPT_VERSION=1.3.1
 
 usage() {
     cat <<'EOF'
@@ -63,6 +65,10 @@ into the Xymon "wifi" column (and its RRD files) of each device's host.
     FRITZ_WIFI_PORT (49000), FRITZ_WIFI_CONNECT_TIMEOUT (3 seconds),
     FRITZ_WIFI_MAX_TIME (3 seconds per request)
     FRITZ_WIFI_RUN_BUDGET (180 seconds for network requests)
+    FRITZ_WIFI_RETRIES (2), FRITZ_WIFI_RETRY_DELAY (20 seconds):
+      further attempts of a request that failed in transport (curl error)
+    FRITZ_WIFI_START_JITTER (10): random pause of 0..N seconds at the
+      start of a run (not in a dry run)
     FRITZ_WIFI_LIFETIME (15 minutes), FRITZ_WIFI_COLUMN (wifi)
     FRITZ_WIFI_STATE_DIR (XYMONVAR/fritz-wifi)
     FRITZ_WIFI_HOSTSCFG (HOSTSCFG), FRITZ_WIFI_XYMONCFG
@@ -103,7 +109,7 @@ EOF
 setting() {
     # shellcheck disable=SC2163 # Export a validated NAME=VALUE, not positional $1.
     case "${1%%=*}" in
-        FRITZ_WIFI_ENABLED|FRITZ_WIFI_TAG|FRITZ_WIFI_HOSTS|FRITZ_WIFI_USER|FRITZ_WIFI_PASSFILE|FRITZ_WIFI_PORT|FRITZ_WIFI_CONNECT_TIMEOUT|FRITZ_WIFI_MAX_TIME|FRITZ_WIFI_RUN_BUDGET|FRITZ_WIFI_LIFETIME|FRITZ_WIFI_COLUMN|FRITZ_WIFI_STATE_DIR|FRITZ_WIFI_HOSTSCFG|FRITZ_WIFI_XYMONCFG|FRITZ_WIFI_CURL|FRITZ_WIFI_SILENT|FRITZ_WIFI_VERBOSE|FRITZ_WIFI_DEBUG|FRITZ_WIFI_DRY_RUN) export "${1}" ;;
+        FRITZ_WIFI_ENABLED|FRITZ_WIFI_TAG|FRITZ_WIFI_HOSTS|FRITZ_WIFI_USER|FRITZ_WIFI_PASSFILE|FRITZ_WIFI_PORT|FRITZ_WIFI_CONNECT_TIMEOUT|FRITZ_WIFI_MAX_TIME|FRITZ_WIFI_RUN_BUDGET|FRITZ_WIFI_RETRIES|FRITZ_WIFI_RETRY_DELAY|FRITZ_WIFI_START_JITTER|FRITZ_WIFI_LIFETIME|FRITZ_WIFI_COLUMN|FRITZ_WIFI_STATE_DIR|FRITZ_WIFI_HOSTSCFG|FRITZ_WIFI_XYMONCFG|FRITZ_WIFI_CURL|FRITZ_WIFI_SILENT|FRITZ_WIFI_VERBOSE|FRITZ_WIFI_DEBUG|FRITZ_WIFI_DRY_RUN) export "${1}" ;;
         *) printf 'Unknown setting: %s\n' "${1%%=*}" >&2; exit 2 ;;
     esac
 }
@@ -167,6 +173,7 @@ FRITZ_WIFI_ENABLED=1 FRITZ_WIFI_TAG=fritzwifi FRITZ_WIFI_HOSTS='' FRITZ_WIFI_USE
 FRITZ_WIFI_PASSFILE=${XYMONHOME:-}/etc/my-xymon-extensions-server/fritz.passwd
 FRITZ_WIFI_PORT=49000 FRITZ_WIFI_CONNECT_TIMEOUT=3 FRITZ_WIFI_MAX_TIME=3
 FRITZ_WIFI_RUN_BUDGET=180
+FRITZ_WIFI_RETRIES=2 FRITZ_WIFI_RETRY_DELAY=20 FRITZ_WIFI_START_JITTER=10
 FRITZ_WIFI_LIFETIME=15 FRITZ_WIFI_COLUMN=wifi
 FRITZ_WIFI_STATE_DIR=${XYMONVAR:-}/fritz-wifi
 FRITZ_WIFI_HOSTSCFG=${HOSTSCFG:-${XYMONHOME:-}/etc/hosts.cfg}
@@ -240,6 +247,16 @@ for n in "${FRITZ_WIFI_PORT}" "${FRITZ_WIFI_CONNECT_TIMEOUT}" "${FRITZ_WIFI_MAX_
 done
 [ "${FRITZ_WIFI_PORT}" -le 65535 ] || fail "Invalid TR-064 port ${FRITZ_WIFI_PORT}"
 [ "${FRITZ_WIFI_RUN_BUDGET}" -lt 240 ] || fail 'The run budget must be below the task MAXTIME of 240 seconds'
+for n in "${FRITZ_WIFI_RETRIES}" "${FRITZ_WIFI_RETRY_DELAY}" "${FRITZ_WIFI_START_JITTER}"; do
+    case "${n}" in ''|*[!0-9]*) fail "Expected a non-negative integer, got '${n}'" ;; esac
+done
+# Settings are decimal; leading zeroes must not select shell octal arithmetic.
+FRITZ_WIFI_RETRIES=$(printf '%s' "${FRITZ_WIFI_RETRIES}" | sed 's/^0*//; s/^$/0/')
+FRITZ_WIFI_RETRY_DELAY=$(printf '%s' "${FRITZ_WIFI_RETRY_DELAY}" | sed 's/^0*//; s/^$/0/')
+FRITZ_WIFI_START_JITTER=$(printf '%s' "${FRITZ_WIFI_START_JITTER}" | sed 's/^0*//; s/^$/0/')
+[ "${FRITZ_WIFI_RETRIES}" -le 5 ] || fail 'FRITZ_WIFI_RETRIES must be 0 to 5'
+[ "${FRITZ_WIFI_RETRY_DELAY}" -le 60 ] || fail 'FRITZ_WIFI_RETRY_DELAY must be 0 to 60 seconds'
+[ "${FRITZ_WIFI_START_JITTER}" -le 60 ] || fail 'FRITZ_WIFI_START_JITTER must be 0 to 60 seconds'
 case "${FRITZ_WIFI_COLUMN}" in ''|*[!a-z0-9_-]*) fail 'The column name must be lowercase letters, digits, _ or -' ;; esac
 case "${FRITZ_WIFI_TAG}" in ''|*[!A-Za-z0-9_-]*) fail 'Invalid hosts.cfg tag' ;; esac
 case "${FRITZ_WIFI_USER}" in *:*) fail 'The TR-064 user name must not contain a colon' ;; esac
@@ -273,11 +290,50 @@ flock -n 9 || { log debug 'Another fritz-wifi run holds the lock'; exit 0; }
 work=$(mktemp -d "${FRITZ_WIFI_STATE_DIR}/run.XXXXXX") || fail 'Cannot create temporary directory'
 poll_deadline=$(($(date +%s) + FRITZ_WIFI_RUN_BUDGET))
 
+# Start jitter: fritz-wifi.sh and fritzbox.sh start on the same 5-minute
+# schedule and may ask the same device; a random pause of
+# 0..START_JITTER seconds spreads their TR-064 sessions. It counts
+# against the run budget. /dev/urandom, not awk's srand(): two runs
+# started in the same second would get the same "random" value.
+if [ "${FRITZ_WIFI_START_JITTER}" -gt 0 ] && [ "${FRITZ_WIFI_DRY_RUN}" = 0 ]; then
+    j_rand=$(od -An -N2 -tu2 /dev/urandom 2>/dev/null | tr -cd '0-9')
+    case "${j_rand}" in ''|*[!0-9]*) j_rand=$$ ;; esac
+    j_wait=$((j_rand % (FRITZ_WIFI_START_JITTER + 1)))
+    log debug "Start jitter: ${j_wait} s"
+    [ "${j_wait}" -eq 0 ] || sleep "${j_wait}"
+fi
+
 # Reserve time for status delivery: a request may consume MAX_TIME even
 # when the device never replies. Expired requests are never started.
 request_time_available() {
     now=$(date +%s) || fail 'Cannot read the current time'
     [ "$((now + FRITZ_WIFI_MAX_TIME))" -le "${poll_deadline}" ]
+}
+
+# retry_wait TRY LABEL - after a transport error (curl failed, e.g. the
+# device reset the connection): true, after the pause, when attempt
+# TRY+1 may follow - retries left and the run budget holds the pause
+# and one more request. HTTP and UPnP errors are answers and never
+# retried.
+retry_wait() {
+    [ "${1}" -le "${FRITZ_WIFI_RETRIES}" ] || return 1
+    rw_now=$(date +%s) || return 1
+    [ "$((rw_now + FRITZ_WIFI_RETRY_DELAY + FRITZ_WIFI_MAX_TIME))" -le "${poll_deadline}" ] || return 1
+    log info "${host}: ${2}: ${CURLERR:-transport error} - retry ${1} of ${FRITZ_WIFI_RETRIES} in ${FRITZ_WIFI_RETRY_DELAY} s"
+    if [ "${FRITZ_WIFI_RETRY_DELAY}" -ne 0 ]; then
+        sleep "${FRITZ_WIFI_RETRY_DELAY}" || return 1
+    fi
+    # Logging and a late wake-up may consume the slot reserved above.
+    request_time_available
+}
+
+# retry_note LABEL TRIES ERROR - a request that succeeded only after
+# TRIES retries: an uncolored line below the notes of the status, so
+# the history shows how often the device drops a connection.
+retry_note() {
+    rn_text="Note: ${1} succeeded after ${2} retry(s) - first error: ${3}"
+    log info "${host}: ${rn_text#Note: }"
+    printf '%s\n' "${rn_text}" >>"${hw}/retries"
 }
 
 # ----------------------------------------------------------------------
@@ -462,7 +518,6 @@ soap() {
         *) log error "Refusing TR-064 action ${s_act}: not on the read-only list"; return 4 ;;
     esac
     s_urn="urn:dslforum-org:service:WLANConfiguration:${s_inst}"
-    : >"${hw}/resp"
     # The action element needs its own closing tag: the reference device
     # answers a self-closing one with "502 XML error".
     # --digest --ntlm, not --digest alone: with a single method curl sends
@@ -471,21 +526,32 @@ soap() {
     # of the 401 challenge. With two methods curl sends the full body,
     # then picks Digest from the challenge. Not --anyauth: that would
     # fall back to Basic, the password in clear text over plain HTTP.
-    HTTPCODE=$(printf '%s\n' "${cred_config}" | "${FRITZ_WIFI_CURL}" --silent --show-error \
-        --digest --ntlm --config - \
-        --connect-timeout "${FRITZ_WIFI_CONNECT_TIMEOUT}" --max-time "${FRITZ_WIFI_MAX_TIME}" \
-        --output "${hw}/resp" --write-out '%{http_code}' \
-        --header 'Content-Type: text/xml; charset="utf-8"' \
-        --header "SoapAction: \"${s_urn}#${s_act}\"" \
-        --data "<?xml version='1.0' encoding='utf-8'?><s:Envelope s:encodingStyle='http://schemas.xmlsoap.org/soap/encoding/' xmlns:s='http://schemas.xmlsoap.org/soap/envelope/'><s:Body><u:${s_act} xmlns:u='${s_urn}'>${s_args}</u:${s_act}></s:Body></s:Envelope>" \
-        "${base_url}${s_path}" 2>"${hw}/curlerr")
-    s_rc=${?}
-    CURLERR=$(head -n 1 "${hw}/curlerr")
+    # A transport error is retried (retry_wait) before it ends the poll.
+    s_try=0 s_err=''
+    while :; do
+        : >"${hw}/resp"
+        HTTPCODE=$(printf '%s\n' "${cred_config}" | "${FRITZ_WIFI_CURL}" --silent --show-error \
+            --digest --ntlm --config - \
+            --connect-timeout "${FRITZ_WIFI_CONNECT_TIMEOUT}" --max-time "${FRITZ_WIFI_MAX_TIME}" \
+            --output "${hw}/resp" --write-out '%{http_code}' \
+            --header 'Content-Type: text/xml; charset="utf-8"' \
+            --header "SoapAction: \"${s_urn}#${s_act}\"" \
+            --data "<?xml version='1.0' encoding='utf-8'?><s:Envelope s:encodingStyle='http://schemas.xmlsoap.org/soap/encoding/' xmlns:s='http://schemas.xmlsoap.org/soap/envelope/'><s:Body><u:${s_act} xmlns:u='${s_urn}'>${s_args}</u:${s_act}></s:Body></s:Envelope>" \
+            "${base_url}${s_path}" 2>"${hw}/curlerr")
+        s_rc=${?}
+        CURLERR=$(head -n 1 "${hw}/curlerr")
+        [ "${s_rc}" -ne 0 ] || break
+        [ -n "${s_err}" ] || s_err=${CURLERR:-curl exit ${s_rc}}
+        s_try=$((s_try + 1))
+        retry_wait "${s_try}" "WLANConfiguration:${s_inst} ${s_act}" || break
+    done
     tr '<' '\n' <"${hw}/resp" >"${hw}/resp.lines"
     debug_dump "WLANConfiguration:${s_inst} ${s_act}${4:+ index ${4}} -> curl ${s_rc}, HTTP ${HTTPCODE:-none}"
     [ "${s_rc}" -eq 0 ] || return 1
     case "${HTTPCODE}" in
-        200) return 0 ;;
+        200)
+            [ "${s_try}" -eq 0 ] || retry_note "WLANConfiguration:${s_inst} ${s_act}" "${s_try}" "${s_err}"
+            return 0 ;;
         401) return 2 ;;  # HTML body, not a SOAP fault - never parsed
     esac
     ERRCODE=$(field errorCode)
@@ -580,13 +646,20 @@ collect_host() {
         summary='run time budget exhausted'
         return 1
     fi
-    : >"${hw}/resp"
-    HTTPCODE=$("${FRITZ_WIFI_CURL}" --silent --show-error \
-        --connect-timeout "${FRITZ_WIFI_CONNECT_TIMEOUT}" --max-time "${FRITZ_WIFI_MAX_TIME}" \
-        --output "${hw}/resp" --write-out '%{http_code}' \
-        "${base_url}/tr64desc.xml" </dev/null 2>"${hw}/curlerr")
-    c_rc=${?}
-    CURLERR=$(head -n 1 "${hw}/curlerr")
+    c_try=0 c_err=''
+    while :; do
+        : >"${hw}/resp"
+        HTTPCODE=$("${FRITZ_WIFI_CURL}" --silent --show-error \
+            --connect-timeout "${FRITZ_WIFI_CONNECT_TIMEOUT}" --max-time "${FRITZ_WIFI_MAX_TIME}" \
+            --output "${hw}/resp" --write-out '%{http_code}' \
+            "${base_url}/tr64desc.xml" </dev/null 2>"${hw}/curlerr")
+        c_rc=${?}
+        CURLERR=$(head -n 1 "${hw}/curlerr")
+        [ "${c_rc}" -ne 0 ] || break
+        [ -n "${c_err}" ] || c_err=${CURLERR:-curl exit ${c_rc}}
+        c_try=$((c_try + 1))
+        retry_wait "${c_try}" 'GET /tr64desc.xml' || break
+    done
     debug_dump "tr64desc.xml -> curl ${c_rc}, HTTP ${HTTPCODE:-none}"
     if [ "${c_rc}" -ne 0 ]; then
         note red "$(soap_problem 1)"
@@ -598,6 +671,7 @@ collect_host() {
         summary='TR-064 error'
         return 1
     fi
+    [ "${c_try}" -eq 0 ] || retry_note 'GET /tr64desc.xml' "${c_try}" "${c_err}"
     tr '<' '\n' <"${hw}/resp" | awk '
         index($0, "serviceType>") == 1 { t = substr($0, 13) }
         index($0, "controlURL>") == 1 { u = substr($0, 12) }
@@ -820,6 +894,7 @@ poll_host() {
     rm -rf "${hw}"
     mkdir "${hw}" || fail 'Cannot create the per-host work directory'
     : >"${hw}/notes"; : >"${hw}/metrics"; : >"${hw}/radios"; : >"${hw}/ifs"; : >"${hw}/clients"
+    : >"${hw}/retries"
     color=green summary='' partial=0 nif=0 total=0
     case "${ip}" in ''|0.0.0.0) target=${host} ;; *) target=${ip} ;; esac
     base_url="http://${target}:${FRITZ_WIFI_PORT}"
@@ -867,6 +942,7 @@ poll_host() {
             "${FRITZ_WIFI_COLUMN}" "${color}" "$(date)" "${summary}"
         printf '%s\n' '<!-- ncv_skipstart -->'
         if [ -s "${hw}/notes" ]; then cat "${hw}/notes"; printf '\n'; fi
+        if [ -s "${hw}/retries" ]; then cat "${hw}/retries"; printf '\n'; fi
         if [ -s "${hw}/ifs" ]; then render_details; printf '\n'; fi
         printf 'Source: TR-064 at %s [tr064]. Channel utilization, noise, TX power,\n' "${base_url}"
         printf '%s\n' 'throughput, airtime and retries are not provided by TR-064 (n/a).'

@@ -80,7 +80,29 @@ extensions; see [Migration](#migration-from-the-fritzdsl-and-fritzwan-client-ext
 
 Common to all columns: the box unreachable is **red**; a refused login,
 no password, no device description or an exhausted run budget is
-**yellow**; curl missing is **clear**. A service the box does not offer
+**yellow**; curl missing is **clear**.
+
+A request that fails in transport - the box resets or refuses the
+connection, or does not answer in time - is tried up to
+FRITZBOX_RETRIES (2) more times, FRITZBOX_RETRY_DELAY (20) seconds
+apart; only that request, the rest of the poll goes on as usual. A
+request that then succeeds leaves an uncolored line in its column
+("Note: ... succeeded after 1 retry(s) - first error: ...", the requests
+before the first module in the first column) and an info message in
+syslog, so the status history shows how often it happens. Only when
+every attempt fails is the box unreachable: that column and the ones
+polled after it turn red, and the poll of this box ends. Answers of the
+box (a refused login, a UPnP error) are never retried. A retry starts
+only when the pause and one more request still fit in the run budget.
+The budget is checked again after the pause, in case the process wakes
+late. The success note is emitted only for an HTTP 200 response, never
+for a refused login or another HTTP/SOAP error. Retry counts, delays and
+jitter settings are decimal, including values with leading zeroes.
+Several failing requests in one poll can therefore leave the last
+columns yellow ("run time budget exhausted") instead. Each run starts
+after a random pause of 0 to FRITZBOX_START_JITTER (10) seconds (not
+in a dry run), so fritzbox and fritz-wifi, which share the 5-minute
+schedule, rarely ask the box at the same moment. A service the box does not offer
 makes its column clear (e.g. fritzdsl on a cable box). Every setting
 named `..._COLOR` accepts green, yellow or red; green turns the finding
 into a note without changing the column color.
@@ -316,6 +338,9 @@ Frequently used:
 | FRITZBOX_MASK | 0 | 1 = mask addresses and numbers in fritzlog/fritztel |
 | FRITZBOX_LIFETIME | 15 | status lifetime in minutes |
 | FRITZBOX_RUN_BUDGET | 180 | seconds for network requests (task MAXTIME 4m) |
+| FRITZBOX_RETRIES | 2 | further attempts of a request that failed in transport |
+| FRITZBOX_RETRY_DELAY | 20 | seconds between those attempts |
+| FRITZBOX_START_JITTER | 10 | random pause of 0..N seconds at the start of a run |
 
 `--ask-password` prompts once (for a manual run with `--host`);
 `FRITZPASSWORT` in the environment is used for every host and removed

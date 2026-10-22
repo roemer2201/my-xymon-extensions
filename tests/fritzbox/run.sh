@@ -25,7 +25,7 @@ N0=1792275201
 
 # Sandbox environment; nothing of the caller's fritzbox setup leaks in.
 for v in $(env | sed -n 's/^\(FRITZBOX_[A-Z_]*\)=.*/\1/p'); do unset "${v}"; done
-unset FRITZPASSWORT FB_DOWN FB_NOIGD FB_SEND_FAIL
+unset FRITZPASSWORT FB_DOWN FB_NOIGD FB_SEND_FAIL FB_FLAKY
 PATH="${HERE}/bin:${PATH}"
 FB_DATA=${HERE}/data FB_OVER=${OVER} FB_LOG=${TMP}/log FB_MESSAGES=${TMP}/messages FB_SYSLOG=${TMP}/syslog
 FB_USER=monitor
@@ -34,11 +34,14 @@ FB_PASS='box pass"wo\rd'
 FRITZBOX_CONFIG=/dev/null FRITZBOX_HOSTSCFG=${HERE}/hosts FRITZBOX_XYMONCFG=/nonexistent
 FRITZBOX_STATE_DIR=${STATE} FRITZBOX_PASSFILE=${PASSFILE} FRITZBOX_CURL=${HERE}/fakecurl
 FRITZBOX_LOG_RULES=${REPO}/extensions/fritzbox/fritzbox-log.rules
+# No start jitter and no pause between retries: the tests stay fast.
+FRITZBOX_START_JITTER=0 FRITZBOX_RETRY_DELAY=0
 XYMON=${HERE}/bin/fixture-send XYMSRV=127.0.0.1
 # shellcheck disable=SC2090 # See FB_PASS above.
 export PATH FB_DATA FB_OVER FB_LOG FB_MESSAGES FB_SYSLOG FB_USER FB_PASS
 export FRITZBOX_CONFIG FRITZBOX_HOSTSCFG FRITZBOX_XYMONCFG FRITZBOX_STATE_DIR
 export FRITZBOX_PASSFILE FRITZBOX_CURL FRITZBOX_LOG_RULES XYMON XYMSRV
+export FRITZBOX_START_JITTER FRITZBOX_RETRY_DELAY
 
 # The password file: an entry for another device, then the box with a
 # user and a password containing blanks, a double quote and a backslash.
@@ -312,6 +315,85 @@ ok rrd fritzdsl rate_down U
 ok rrd fritzwan bps_down U
 ok state_unchanged
 NOW=''
+
+# --- a reset connection is retried, only that request ---------------------------
+FB_FLAKY='GetAddonInfos 1' run --set 'FRITZBOX_MODULES=wan sys'
+ok exit_is 0
+ok status fritzwan green 'Up'
+ok status fritzsys green 'FRITZ!Box 7510 \(UI\), FRITZ!OS 8\.26, up 61d 20h 39m'
+ok has '^Note: WANCommonInterfaceConfig:1 GetAddonInfos succeeded after 1 retry\(s\) - first error: curl: \(56\) Recv failure: Connection reset by peer$'
+ok grep -q 'info: fritz.box: WANCommonInterfaceConfig:1 GetAddonInfos: curl: (56) Recv failure: Connection reset by peer - retry 1 of 2 in 0 s$' "${FB_SYSLOG}"
+ok test "$(grep -c '^igdupnp_control_WANCommonIFC1 GetAddonInfos$' "${FB_LOG}/actions")" -eq 1
+ok ncv_matches_trends
+# Two failures are still caught; the third ends the poll as before.
+FB_FLAKY='GetAddonInfos 2' run --set 'FRITZBOX_MODULES=wan sys'
+ok status fritzwan green 'Up'
+ok has 'GetAddonInfos succeeded after 2 retry\(s\)'
+FB_FLAKY='GetAddonInfos 3' run --set 'FRITZBOX_MODULES=wan sys'
+ok status fritzwan red 'unreachable'
+ok status fritzsys red 'unreachable'
+ok test "$(grep -c '^&red cannot reach TR-064 at http://192\.0\.2\.1:49000 - curl: (56) Recv failure: Connection reset by peer$' "${FB_MESSAGES}")" -eq 2
+FB_FLAKY='GetAddonInfos 1' run --set 'FRITZBOX_MODULES=wan' --set FRITZBOX_RETRIES=0
+ok status fritzwan red 'unreachable'
+# Requests before the first module: the note goes to the first column.
+FB_FLAKY='GET /tr64desc.xml 2' run --set 'FRITZBOX_MODULES=dsl wan'
+ok status fritzdsl green 'Up at 240017/46719 kbit/s'
+ok test "$(grep -c '^Note: GET /tr64desc\.xml succeeded after 2 retry(s)' "${FB_MESSAGES}")" -eq 1
+FB_FLAKY='GetInfo 1' run --set FRITZBOX_MODULES=sys
+ok status fritzsys green 'FRITZ!Box 7510 \(UI\), FRITZ!OS 8\.26, up 61d 20h 39m'
+ok has '^Note: DeviceInfo:1 GetInfo succeeded after 1 retry\(s\)'
+# No retry without the time for the pause and one more request.
+FB_FLAKY='GET /tr64desc.xml 1' run --set FRITZBOX_MODULES=sys --set FRITZBOX_RUN_BUDGET=8 --set FRITZBOX_RETRY_DELAY=4
+ok status fritzsys red 'unreachable'
+# The start jitter waits 0..N seconds; a dry run skips it.
+run --verbose --set FRITZBOX_START_JITTER=1 --set FRITZBOX_MODULES=sys
+ok exit_is 0
+ok err_has 'Start jitter: [01] s$'
+run --verbose --dry-run --set FRITZBOX_START_JITTER=1 --set FRITZBOX_MODULES=sys
+ok not err_has 'Start jitter'
+for bad in FRITZBOX_RETRIES=6 FRITZBOX_RETRY_DELAY=61 FRITZBOX_START_JITTER=61 FRITZBOX_RETRIES=-1; do
+    run --set "${bad}"
+    ok exit_is 1
+done
+
+# --- retry review regressions -----------------------------------------------
+# Transport recovery is not action success: a subsequent HTTP/SOAP
+# error must retain its error status without a misleading success note.
+FB_FLAKY='GetInfo 1' run --set FRITZBOX_MODULES=sys --set FRITZBOX_USER=wrong
+ok status fritzsys yellow 'authentication failed'
+ok lacks 'succeeded after'
+mkdir -p "${OVER}"
+cp "${FB_DATA}/fault401.xml" "${OVER}/deviceinfo__GetInfo.xml"
+FB_FLAKY='GetInfo 1' run --set FRITZBOX_MODULES=sys
+ok lacks 'succeeded after'
+reset_over
+FB_NOIGD=1 FB_FLAKY='GET /igddesc.xml 1' run --set FRITZBOX_MODULES=wan
+ok lacks 'GET /igddesc.xml succeeded after'
+
+# Scheduling latency during retry logging can consume the reserved
+# slot. No further curl request may start without MAX_TIME remaining.
+clock_path=${REPO}/tests/fritz-common/bin
+clock_date=$(command -v date)
+for key in 'GET /tr64desc.xml' GetInfo; do
+    printf '1000\n' >"${TMP}/clock"
+    PATH="${clock_path}:${PATH}" FRITZ_TEST_CLOCK_FILE=${TMP}/clock \
+        FRITZ_TEST_REAL_DATE=${clock_date} FRITZ_TEST_LOG_DELAY=6 FRITZ_TEST_SYSLOG=${FB_SYSLOG} \
+        FB_FLAKY="${key} 1" run --set FRITZBOX_MODULES=sys \
+        --set FRITZBOX_RUN_BUDGET=10 --set FRITZBOX_RETRY_DELAY=0
+    ok status fritzsys red 'unreachable'
+    ok test "$(grep -c "${key#GET }" "${FB_LOG}/argv")" -eq 1
+done
+# Decimal settings with leading zeroes must not enter shell octal
+# arithmetic. The synthetic sleep keeps jitter and retry tests instant.
+printf '1000\n' >"${TMP}/clock"
+PATH="${clock_path}:${PATH}" FRITZ_TEST_CLOCK_FILE=${TMP}/clock \
+    FRITZ_TEST_REAL_DATE=${clock_date} FRITZ_TEST_SLEEP_EXTRA=0 \
+    FRITZ_TEST_LOG_DELAY=0 FRITZ_TEST_SYSLOG=${FB_SYSLOG} \
+    FB_FLAKY='GetInfo 1' run --set FRITZBOX_MODULES=sys \
+    --set FRITZBOX_START_JITTER=09 --set FRITZBOX_RETRY_DELAY=08 --set FRITZBOX_RETRIES=02
+ok exit_is 0
+ok status fritzsys green 'FRITZ!Box 7510 \(UI\), FRITZ!OS 8\.26, up 61d 20h 39m'
+ok has 'GetInfo succeeded after 1 retry\(s\)'
 
 # --- an exhausted run budget never starts a request --------------------------
 run --set FRITZBOX_RUN_BUDGET=1

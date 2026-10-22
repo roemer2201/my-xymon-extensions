@@ -103,8 +103,25 @@ section - which matters only if you defined one.
 | No password, or the password file rejected | yellow | U for everything |
 | Unexpected TR-064 answer (HTTP 502/500, empty, missing NewEnable) | yellow | U for the affected value |
 | Run time budget exhausted before a required request | yellow | U for values not measured |
-| Device unreachable or timed out | red | U for everything |
+| Device unreachable or timed out (after the retries) | red | U for everything |
 | No WLAN service, every network disabled, curl missing | clear | - |
+
+A request that fails in transport - the device resets or refuses the
+connection, or does not answer in time - is tried up to
+FRITZ_WIFI_RETRIES (2) more times, FRITZ_WIFI_RETRY_DELAY (20) seconds
+apart, while the run budget holds the pause and one more request. One
+that then succeeds leaves an uncolored line in the status ("Note: ...
+succeeded after 1 retry(s) - first error: ...") and an info message in
+syslog; only when every attempt fails is the device unreachable. Answers
+of the device (a refused login, a UPnP error) are never retried. Each
+run starts after a random pause of 0 to FRITZ_WIFI_START_JITTER (10)
+seconds (not in a dry run), so fritz-wifi and fritzbox, which share the
+5-minute schedule, rarely ask a device at the same moment. The budget
+is checked again after each retry pause, so a late wake-up cannot start
+a request whose reserved time has expired. Success notes require an
+HTTP 200 response; refused logins and other HTTP/SOAP errors keep their
+error status without a success note. Retry counts, delays and jitter
+settings are decimal, including values with leading zeroes.
 
 A wrong and an empty password look the same to the device: HTTP 401 with
 an HTML body. That is recognized by the status code; the body is never

@@ -11,6 +11,8 @@
 #                desc404
 #   FW_CLIENTS1/2 client counts reported for instance 1/2 (default 1)
 #   FW_DOWN      host names/IPs that refuse connections (curl exit 7)
+#   FW_FLAKY     "KEY N": the first N requests for KEY (a SOAP action,
+#                or "GET /path") fail like a reset connection (curl 56)
 #   FW_SLOW      host names/IPs that time out (curl exit 28)
 #
 # Authentication like the device and curl: a SOAP call with --digest as
@@ -62,6 +64,21 @@ case " ${FW_SLOW:-} " in *" $host "*)
     echo "curl: (28) Connection timed out after 5001 milliseconds" >&2
     printf '000'; exit 28 ;;
 esac
+
+# A flaky device: the first N requests for one key are reset. The count
+# lives in the log directory, which every test run starts empty.
+if [ -n "${FW_FLAKY:-}" ]; then
+    if [ -n "$data" ]; then key=$action; else key="GET $path"; fi
+    if [ "$key" = "${FW_FLAKY% *}" ]; then
+        n=$(cat "${FW_LOG}/flaky" 2>/dev/null || echo 0)
+        if [ "$n" -lt "${FW_FLAKY##* }" ]; then
+            echo $((n + 1)) >"${FW_LOG}/flaky"
+            [ "$config" = 0 ] || cat >/dev/null
+            echo "curl: (56) Recv failure: Connection reset by peer" >&2
+            printf '000'; exit 56
+        fi
+    fi
+fi
 
 scenario=${FW_SCENARIO:-ok}
 if [ "$path" = /tr64desc.xml ]; then
