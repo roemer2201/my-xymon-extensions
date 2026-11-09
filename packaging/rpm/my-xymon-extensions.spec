@@ -267,6 +267,16 @@ RRD graphs need a one-time setup on the Xymon SERVER (not here):
 EOF
 
 %changelog
+* Mon Nov 09 2026 roemer2201 <r.oliver@web.de> - 0.33.0-1
+- no change to the scripts of this package. The smart graph definitions
+  (smart/server/graphs.d/smart.cfg, shipped here as documentation for
+  the Xymon server) show cur, min and max for every value in the legend:
+  life used, available spare, reallocated, pending and uncorrectable
+  sectors, interface CRC errors and NVMe media errors gained the missing
+  min or max, and all smart graphs list them in the order cur, min, max.
+  Min and max cover the period the graph shows, so the change of e.g.
+  life used over 48 days can be read from the legend
+
 * Thu Oct 22 2026 roemer2201 <r.oliver@web.de> - 0.32.0-1
 - no change to this package. The server-only collectors fritzbox and
   fritz-wifi retry a request that failed in transport (connection reset
