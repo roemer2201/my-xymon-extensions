@@ -276,13 +276,14 @@ rm -f "${TMP}/smart-mmc.cfg"
 # tsda (ZFN1TEST) has pending=8 and crc=3. Accepted at exactly these
 # values the disk is green; the accepted values are shown. The serial
 # may contain spaces like in diskalias. NVMe spare is "lower is worse":
-# accepted 100 keeps 100 green.
-cat "${TESTDIR}/smart/smart_test.cfg" > "${TMP}/smart-accept.cfg"
+# accepted 49 keeps 49 green despite the usual spare warning at 50.
+sed 's|^device /dev/tnvme0$|device /dev/tnvme-low-spare|' \
+    "${TESTDIR}/smart/smart_test.cfg" > "${TMP}/smart-accept.cfg"
 cat >> "${TMP}/smart-accept.cfg" <<'EOF'
 MMC_DEVICES="/dev/tmmc0"
 diskaccept ZFN1TEST pending 8
 diskaccept "ZFN1 TEST" crc 3
-diskaccept S5GXTEST spare 100
+diskaccept S5GXTEST spare 49
 EOF
 # shellcheck disable=SC2086
 out=$(SMART_CFG="${TMP}/smart-accept.cfg" ${TESTSH} "${REPO}/extensions/smart/smart.sh")
@@ -292,7 +293,7 @@ expect "${out}" '&green /dev/tsda - ST4000DM004-2CV104 - S/N ZFN1TEST' \
     "disk with accepted values is green"
 expect "${out}" '^    accepted \(diskaccept\): crc=3 pending=8$' \
     "accepted values are listed under the disk"
-expect "${out}" '^    accepted \(diskaccept\): spare=100$' \
+expect "${out}" '^    accepted \(diskaccept\): spare=49$' \
     "accepted spare (lower is worse) is listed"
 expect "${out}" '^ZFN1TEST_pending : 8$' \
     "diskaccept does not change the graph data"
@@ -365,6 +366,8 @@ diskaccept ZFN1TEST crc 3
 diskaccept ZFN1TEST hours 100
 diskaccept ZFN1TEST realloc 1.5
 diskaccept ZFN1TEST realloc
+diskaccept ZFN1TEST pending 9999999999999999999999999999999999999999
+diskaccept - pending 8
 EOF
 # shellcheck disable=SC2086
 out=$(SMART_CFG="${TMP}/smart-accept.cfg" ${TESTSH} "${REPO}/extensions/smart/smart.sh")
@@ -375,8 +378,41 @@ expect "${out}" '^&yellow smart\.cfg: ignored diskaccept ZFN1TEST realloc 1\.5: 
     "non-integer value is named"
 expect "${out}" '^&yellow smart\.cfg: ignored diskaccept ZFN1TEST realloc: expected 3 arguments' \
     "missing value is named"
+expect "${out}" '^&yellow smart\.cfg: ignored diskaccept ZFN1TEST pending .*outside the supported integer range' \
+    "an overflowing value is rejected without replacing a valid rule"
+expect "${out}" '^&yellow smart\.cfg: ignored diskaccept - pending 8: no serial number' \
+    "the unknown serial placeholder is rejected"
 expect "${out}" '&green /dev/tsda - ST4000DM004' \
     "valid lines still apply next to invalid ones"
+
+# The detected serial must not be unescaped by awk before matching.
+cat > "${TMP}/smart-accept.cfg" <<'EOF'
+SMARTCTL="${FAKESMARTCTL}"
+USE_SUDO=no
+MMC_DEVICES=none
+device /dev/tsda-literal
+diskaccept ZFN1TEST pending 8
+diskaccept 'ZFN1\124EST' crc 3
+EOF
+# shellcheck disable=SC2086
+out=$(SMART_CFG="${TMP}/smart-accept.cfg" ${TESTSH} "${REPO}/extensions/smart/smart.sh")
+expect "${out}" '^&yellow /dev/tsda-literal: pending=8$' \
+    "a look-alike serial cannot suppress a disk fault"
+expect_not "${out}" '^&yellow /dev/tsda-literal: crc=' \
+    "a literal backslash in the exact serial matches"
+
+# Report an invalid rule even when hardware discovery has nothing to check.
+cat > "${TMP}/smart-accept.cfg" <<'EOF'
+SMARTCTL="${FAKESMARTCTL}"
+USE_SUDO=no
+MMC_DEVICES=none
+diskaccept ZFN1TEST invalid 8
+EOF
+# shellcheck disable=SC2086
+out=$(SMART_CFG="${TMP}/smart-accept.cfg" ${TESTSH} "${REPO}/extensions/smart/smart.sh")
+expect "${out}" '^status testhost\.smart yellow ' "invalid rule warns without devices"
+expect "${out}" '^&yellow smart\.cfg: ignored diskaccept ZFN1TEST invalid 8:' \
+    "configuration warning survives early exit"
 rm -f "${TMP}/smart-accept.cfg"
 
 # --- dwpdrecent: rolling window over a persisted sample ---------------

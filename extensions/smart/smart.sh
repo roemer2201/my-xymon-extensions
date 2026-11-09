@@ -17,12 +17,12 @@
 #   1. Load configuration and discover SMART/eMMC devices.
 #   2. Collect health metrics and resolve unique graph names.
 #   3. Update DWPD history for disks with an available graph name.
-#   4. Report all health checks and the deduplicated RRD data.
+#   4. Apply per-disk accepted values and report health and RRD data.
 #
 # Runs unmodified on Ubuntu, Rocky Linux (EL) and FreeBSD.
 # Configuration: $XYMONHOME/etc/my-xymon-extensions/smart.cfg (see the shipped smart.cfg).
 
-# Version: 1.1.0 (2026-11-09)
+# Version: 1.1.1 (2026-11-09)
 
 set -u
 
@@ -113,13 +113,24 @@ diskaccept() {
     esac
     case "${3:-}" in
         ''|*[!0-9]*) da_err="${da_err:+${da_err}, }value \"${3:-}\" is not a whole number" ;;
+        *)
+            # Use the same integer parser as the threshold checks. Report
+            # its range error in the Xymon status instead of shell stderr.
+            if ! [ "${3}" -ge 0 ] 2>/dev/null; then
+                da_err="${da_err:+${da_err}, }value \"${3}\" is outside the supported integer range"
+            fi
+            ;;
     esac
-    [ -n "${da_serial}" ] || da_err="no serial number"
+    case "${da_serial}" in
+        ''|-) da_err="no serial number" ;;
+        *[[:cntrl:]]*) da_err="serial number contains control characters" ;;
+    esac
     if [ "$#" -ne 3 ]; then
         da_err="expected 3 arguments (serial metric value), got $#"
     fi
     if [ -n "${da_err}" ]; then
-        ACCEPT_ERRORS="${ACCEPT_ERRORS}diskaccept $*: ${da_err}
+        da_note=$(printf '%s' "diskaccept ${*}: ${da_err}" | tr -d '[:cntrl:]')
+        ACCEPT_ERRORS="${ACCEPT_ERRORS}${da_note}
 "
         return 0
     fi
@@ -284,8 +295,11 @@ check_lo() {
 # if any; the last matching line wins
 accept_for() {
     [ -n "${ACCEPTS}" ] && [ "${1}" != "-" ] || return 0
-    printf '%s' "${ACCEPTS}" | awk -v s="${1}" -v m="${2}" \
-        '("x" $1) == ("x" s) && $2 == m { v = $3 } END { if (v != "") print v }'
+    # awk -v interprets backslash escapes, which can change disk identity.
+    printf '%s' "${ACCEPTS}" | DISK_ACCEPT_SERIAL="${1}" awk -v m="${2}" '
+        BEGIN { s = "x" ENVIRON["DISK_ACCEPT_SERIAL"] }
+        ("x" $1) == s && $2 == m { v = $3 }
+        END { if (v != "") print v }'
 }
 
 # is_accepted <metric> <value> <accepted value> -> true if the value is
@@ -476,6 +490,13 @@ NOTES="$WORKDIR/notes"
 : > "$NOTES"
 : > "$WORKDIR/names"
 
+# Preserve config warnings even if discovery ends before the disk loop.
+if [ -n "${ACCEPT_ERRORS}" ]; then
+    printf '%s' "${ACCEPT_ERRORS}" | while IFS= read -r line; do
+        printf '&yellow smart.cfg: ignored %s\n' "${line}"
+    done >> "${NOTES}"
+fi
+
 # dwpdrecent keeps a few samples per device between runs. Losing this
 # file (reboot with a tmpfs $XYMONTMP, first run, fresh install) only
 # costs one window of history - it is re-seeded silently and never
@@ -490,8 +511,13 @@ cp "$STATEFILE" "$OLDSTATE" 2>/dev/null || : > "$OLDSTATE"
 NOW=$(date +%s)
 
 clear_report() {
-    printf '%s\n' "$1" > "$STATUS"
-    send_report clear "$STATUS"
+    if [ -s "${NOTES}" ]; then
+        { cat "${NOTES}"; printf '\n%s\n' "${1}"; } > "${STATUS}"
+        send_report yellow "${STATUS}"
+    else
+        printf '%s\n' "${1}" > "${STATUS}"
+        send_report clear "${STATUS}"
+    fi
     exit "$?"
 }
 
@@ -610,17 +636,9 @@ fi
 
 # --- per-device checks --------------------------------------------------
 OVERALL=clear
+[ ! -s "${NOTES}" ] || OVERALL=yellow
 NDEV=0
 ANY_ACCEPTED=no
-
-# A diskaccept line that was ignored leaves its metric on the normal
-# thresholds; say so, or a typo would go unnoticed.
-if [ -n "${ACCEPT_ERRORS}" ]; then
-    printf '%s' "${ACCEPT_ERRORS}" | while IFS= read -r line; do
-        printf '&yellow smart.cfg: ignored %s\n' "${line}"
-    done >> "${NOTES}"
-    OVERALL=yellow
-fi
 
 while IFS='|' read -r dev opts alias <&3; do
     [ -n "$dev" ] || continue
@@ -938,7 +956,8 @@ while IFS='|' read -r dev opts alias <&3; do
     accepted=""
     while read -r m v; do
         [ -n "$m" ] || continue
-        acc=$(accept_for "$serial" "$m")
+        acc=""
+        [ -z "${ACCEPTS}" ] || acc=$(accept_for "${serial}" "${m}")
         c=$(metric_color "$m" "$v" "$acc")
         if [ "$c" != "green" ]; then
             devcolor=$(worst "$devcolor" "$c")
@@ -1079,7 +1098,8 @@ for dev in $MMCLIST; do
     pairs=""
     accepted=""
     if [ -n "$wear" ]; then
-        acc=$(accept_for "$serial" wear)
+        acc=""
+        [ -z "${ACCEPTS}" ] || acc=$(accept_for "${serial}" wear)
         c=$(metric_color wear "$wear" "$acc")
         if [ "$c" != "green" ]; then
             devcolor=$(worst "$devcolor" "$c")

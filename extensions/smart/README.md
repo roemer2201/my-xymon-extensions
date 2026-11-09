@@ -80,8 +80,12 @@ the disk (`accepted (diskaccept): realloc=34`); the graph data is not
 changed. Every metric with a threshold can be accepted (`temp`,
 `wear`, `realloc`, `pending`, `uncorr`, `crc`, `mediaerr`, `spare`),
 eMMC `wear` included (serial from sysfs). The SMART health verdict and
-NVMe critical warnings cannot. An invalid line is ignored, so the
-metric keeps its normal check, and is named in a yellow note.
+NVMe critical warnings cannot. Serial numbers match literally after
+removing spaces and tabs; a missing serial (`-`) cannot be accepted.
+Values must be non-negative whole numbers in the shell's supported
+integer range. If several valid rules match the same disk and metric,
+the last one wins. An invalid rule is ignored and produces a yellow
+configuration note, even if no disks are discovered.
 
 ## Device naming
 
