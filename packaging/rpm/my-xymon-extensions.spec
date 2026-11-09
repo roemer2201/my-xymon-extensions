@@ -267,6 +267,24 @@ RRD graphs need a one-time setup on the Xymon SERVER (not here):
 EOF
 
 %changelog
+* Mon Nov 09 2026 roemer2201 <r.oliver@web.de> - 0.33.0-1
+- smart accepts a known value per disk: "diskaccept <serial> <metric>
+  <value>" in smart.cfg keeps that metric green on the disk with this
+  serial number up to the value (spare: down to it), so a disk with a
+  known, stable defect no longer keeps the column yellow for good. A
+  worse value is checked against the normal thresholds again and its
+  note names the accepted value; all other disks keep the normal
+  thresholds. Accepted values are listed under the disk, an invalid
+  line is ignored and named in a yellow note
+- the smart graph definitions (smart/server/graphs.d/smart.cfg, shipped
+  here as documentation for the Xymon server) show cur, min and max for
+  every value in the legend: life used, available spare, reallocated,
+  pending and uncorrectable sectors, interface CRC errors and NVMe
+  media errors gained the missing min or max, and all smart graphs
+  list them in the order cur, min, max. Min and max cover the period
+  the graph shows, so e.g. the change of life used over 48 days can be
+  read from the legend
+
 * Thu Oct 22 2026 roemer2201 <r.oliver@web.de> - 0.32.0-1
 - no change to this package. The server-only collectors fritzbox and
   fritz-wifi retry a request that failed in transport (connection reset
