@@ -52,6 +52,37 @@ no device delivered usable data (e.g. all disks in standby) reports
 yellow too, except in eMMC-only mode without root, where mmc runs
 unprivileged on purpose and failures stay `clear`.
 
+### Accepting a known value (`diskaccept`)
+
+A disk with a known, stable defect keeps the column yellow for good,
+and Xymon reports no further change - neither a growing defect on that
+disk nor a new one on another. Accept the current value of that one
+disk in `smart.cfg`:
+
+```sh
+diskaccept WD-WMAY02853240 realloc 34
+diskaccept WD-WCAVY5959337 uncorr 1
+```
+
+Up to the accepted value (for `spare`, which is "lower is worse": down
+to it) the metric is green on the disk with that serial number - the
+`S/N` on the status page, spaces ignored. A worse value is checked
+against the normal thresholds again, so realloc 35 turns yellow and 50
+(`REALLOC_CRIT`) red, and the note names the accepted value:
+
+```
+&yellow /dev/sde: realloc=35 (accepted: 34)
+```
+
+All other disks keep the normal thresholds, and a replacement disk
+starts without any accepted value. Accepted values are listed under
+the disk (`accepted (diskaccept): realloc=34`); the graph data is not
+changed. Every metric with a threshold can be accepted (`temp`,
+`wear`, `realloc`, `pending`, `uncorr`, `crc`, `mediaerr`, `spare`),
+eMMC `wear` included (serial from sysfs). The SMART health verdict and
+NVMe critical warnings cannot. An invalid line is ignored, so the
+metric keeps its normal check, and is named in a yellow note.
+
 ## Device naming
 
 Every disk is reported under a name — `S3Z8TEST_temp : 31` in the data

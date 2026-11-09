@@ -272,6 +272,113 @@ if [ "$(id -u)" -ne 0 ]; then
 fi
 rm -f "${TMP}/smart-mmc.cfg"
 
+# --- diskaccept: accept a known value per disk (serial number) -------
+# tsda (ZFN1TEST) has pending=8 and crc=3. Accepted at exactly these
+# values the disk is green; the accepted values are shown. The serial
+# may contain spaces like in diskalias. NVMe spare is "lower is worse":
+# accepted 100 keeps 100 green.
+cat "${TESTDIR}/smart/smart_test.cfg" > "${TMP}/smart-accept.cfg"
+cat >> "${TMP}/smart-accept.cfg" <<'EOF'
+MMC_DEVICES="/dev/tmmc0"
+diskaccept ZFN1TEST pending 8
+diskaccept "ZFN1 TEST" crc 3
+diskaccept S5GXTEST spare 100
+EOF
+# shellcheck disable=SC2086
+out=$(SMART_CFG="${TMP}/smart-accept.cfg" ${TESTSH} "${REPO}/extensions/smart/smart.sh")
+expect "${out}" '^status testhost\.smart green ' \
+    "accepted values turn the column green"
+expect "${out}" '&green /dev/tsda - ST4000DM004-2CV104 - S/N ZFN1TEST' \
+    "disk with accepted values is green"
+expect "${out}" '^    accepted \(diskaccept\): crc=3 pending=8$' \
+    "accepted values are listed under the disk"
+expect "${out}" '^    accepted \(diskaccept\): spare=100$' \
+    "accepted spare (lower is worse) is listed"
+expect "${out}" '^ZFN1TEST_pending : 8$' \
+    "diskaccept does not change the graph data"
+expect "${out}" '^All monitored disks are healthy or within accepted values$' \
+    "the summary mentions accepted values"
+
+# A value worse than the accepted one is checked against the normal
+# thresholds again, and the note names the accepted value. Lines for
+# another serial do not apply.
+cat "${TESTDIR}/smart/smart_test.cfg" > "${TMP}/smart-accept.cfg"
+cat >> "${TMP}/smart-accept.cfg" <<'EOF'
+MMC_DEVICES="/dev/tmmc0"
+diskaccept ZFN1TEST pending 7
+diskaccept ZFN1TEST crc 3
+diskaccept OTHERDISK pending 100
+EOF
+# shellcheck disable=SC2086
+out=$(SMART_CFG="${TMP}/smart-accept.cfg" ${TESTSH} "${REPO}/extensions/smart/smart.sh")
+expect "${out}" '^status testhost\.smart yellow ' \
+    "a value above the accepted one warns again"
+expect "${out}" '^&yellow /dev/tsda: pending=8 \(accepted: 7\)$' \
+    "the note shows the accepted value"
+expect_not "${out}" '&yellow /dev/tsda: crc=' \
+    "the other accepted metric stays green"
+
+# Above the accepted value the CRIT threshold still turns it red.
+cat "${TESTDIR}/smart/smart_test.cfg" > "${TMP}/smart-accept.cfg"
+cat >> "${TMP}/smart-accept.cfg" <<'EOF'
+MMC_DEVICES="/dev/tmmc0"
+PENDING_CRIT=8
+diskaccept ZFN1TEST pending 5
+diskaccept ZFN1TEST crc 3
+EOF
+# shellcheck disable=SC2086
+out=$(SMART_CFG="${TMP}/smart-accept.cfg" ${TESTSH} "${REPO}/extensions/smart/smart.sh")
+expect "${out}" '^&red /dev/tsda: pending=8 \(accepted: 5\)$' \
+    "above the accepted value the CRIT threshold applies"
+
+# eMMC: the serial comes from sysfs (CID), wear is the only metric.
+cat > "${TMP}/smart-accept.cfg" <<'EOF'
+SMARTCTL="/nonexistent/smartctl"
+USE_SUDO="no"
+MMC_UTILS="${FAKEMMC}"
+MMC_DEVICES="/dev/tmmc0"
+WEAR_WARN=10
+diskaccept 0x1a2b3c4d wear 10
+EOF
+# shellcheck disable=SC2086
+out=$(SMART_CFG="${TMP}/smart-accept.cfg" SMART_SYS_BLOCK="${TESTDIR}/smart/sys" \
+    ${TESTSH} "${REPO}/extensions/smart/smart.sh")
+expect "${out}" '^status testhost\.smart green ' "accepted eMMC wear is green"
+expect "${out}" '^    accepted \(diskaccept\): wear=10$' \
+    "accepted eMMC wear is listed"
+sed 's/^diskaccept .*/diskaccept 0x1a2b3c4d wear 5/' "${TMP}/smart-accept.cfg" \
+    > "${TMP}/smart-accept.new"
+mv "${TMP}/smart-accept.new" "${TMP}/smart-accept.cfg"
+# shellcheck disable=SC2086
+out=$(SMART_CFG="${TMP}/smart-accept.cfg" SMART_SYS_BLOCK="${TESTDIR}/smart/sys" \
+    ${TESTSH} "${REPO}/extensions/smart/smart.sh")
+expect "${out}" '^&yellow /dev/tmmc0: wear=10 \(accepted: 5\)$' \
+    "eMMC wear above the accepted value warns"
+
+# Invalid lines are ignored (the metric keeps its normal check) and
+# named in a yellow note.
+cat "${TESTDIR}/smart/smart_test.cfg" > "${TMP}/smart-accept.cfg"
+cat >> "${TMP}/smart-accept.cfg" <<'EOF'
+MMC_DEVICES="/dev/tmmc0"
+diskaccept ZFN1TEST pending 8
+diskaccept ZFN1TEST crc 3
+diskaccept ZFN1TEST hours 100
+diskaccept ZFN1TEST realloc 1.5
+diskaccept ZFN1TEST realloc
+EOF
+# shellcheck disable=SC2086
+out=$(SMART_CFG="${TMP}/smart-accept.cfg" ${TESTSH} "${REPO}/extensions/smart/smart.sh")
+expect "${out}" '^status testhost\.smart yellow ' "invalid diskaccept lines warn"
+expect "${out}" '^&yellow smart\.cfg: ignored diskaccept ZFN1TEST hours 100: unknown metric "hours"$' \
+    "unknown metric is named"
+expect "${out}" '^&yellow smart\.cfg: ignored diskaccept ZFN1TEST realloc 1\.5: value "1\.5" is not a whole number$' \
+    "non-integer value is named"
+expect "${out}" '^&yellow smart\.cfg: ignored diskaccept ZFN1TEST realloc: expected 3 arguments' \
+    "missing value is named"
+expect "${out}" '&green /dev/tsda - ST4000DM004' \
+    "valid lines still apply next to invalid ones"
+rm -f "${TMP}/smart-accept.cfg"
+
 # --- dwpdrecent: rolling window over a persisted sample ---------------
 # A usable reference sample is between one and two windows old (default
 # 24h/48h). 30h back with 22788 GiB written means 500 GiB over 1.25

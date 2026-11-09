@@ -22,7 +22,7 @@
 # Runs unmodified on Ubuntu, Rocky Linux (EL) and FreeBSD.
 # Configuration: $XYMONHOME/etc/my-xymon-extensions/smart.cfg (see the shipped smart.cfg).
 
-# Version: 1.0.1 (2026-10-18)
+# Version: 1.1.0 (2026-11-09)
 
 set -u
 
@@ -73,6 +73,8 @@ DWPD_SAMPLE_HOURS=1    # dwpdrecent: minimum spacing between stored samples
 DEVLIST=""             # filled by device() from smart.cfg, else auto-scan
 USERMAP=""             # filled by attrmap() from smart.cfg
 ALIASES=""             # filled by diskalias() from smart.cfg
+ACCEPTS=""             # filled by diskaccept() from smart.cfg
+ACCEPT_ERRORS=""       # invalid diskaccept() lines, reported in the status
 
 # sysfs block directory; overridable for the test suite only.
 SYS_BLOCK="${SMART_SYS_BLOCK:-/sys/block}"
@@ -92,6 +94,36 @@ device() {
 # shellcheck disable=SC2317,SC2329  # called indirectly from the sourced config
 diskalias() {
     ALIASES="${ALIASES}$(printf '%s' "${1:-}" | tr -d ' \t') ${2:-}
+"
+}
+
+# diskaccept <serial> <metric> <value>
+# Accept a known value of one metric on the disk with this serial
+# number: up to that value (spare: down to it) the metric is green; a
+# worse value is checked against the normal thresholds again. Spaces in
+# the serial are ignored, like in diskalias(). Invalid lines are
+# ignored and named in the status, so the metric keeps its normal check.
+# shellcheck disable=SC2317,SC2329  # called indirectly from the sourced config
+diskaccept() {
+    da_serial=$(printf '%s' "${1:-}" | tr -d ' \t')
+    da_err=""
+    case "${2:-}" in
+        temp|wear|realloc|pending|uncorr|crc|mediaerr|spare) ;;
+        *) da_err="unknown metric \"${2:-}\"" ;;
+    esac
+    case "${3:-}" in
+        ''|*[!0-9]*) da_err="${da_err:+${da_err}, }value \"${3:-}\" is not a whole number" ;;
+    esac
+    [ -n "${da_serial}" ] || da_err="no serial number"
+    if [ "$#" -ne 3 ]; then
+        da_err="expected 3 arguments (serial metric value), got $#"
+    fi
+    if [ -n "${da_err}" ]; then
+        ACCEPT_ERRORS="${ACCEPT_ERRORS}diskaccept $*: ${da_err}
+"
+        return 0
+    fi
+    ACCEPTS="${ACCEPTS}${da_serial} ${2} ${3}
 "
 }
 
@@ -248,8 +280,30 @@ check_lo() {
     fi
 }
 
-# metric_color <metric> <value>
+# accept_for <serial> <metric> -> the value accepted with diskaccept(),
+# if any; the last matching line wins
+accept_for() {
+    [ -n "${ACCEPTS}" ] && [ "${1}" != "-" ] || return 0
+    printf '%s' "${ACCEPTS}" | awk -v s="${1}" -v m="${2}" \
+        '("x" $1) == ("x" s) && $2 == m { v = $3 } END { if (v != "") print v }'
+}
+
+# is_accepted <metric> <value> <accepted value> -> true if the value is
+# no worse than the accepted one
+is_accepted() {
+    [ -n "${3}" ] || return 1
+    case "${1}" in
+        spare) [ "${2}" -ge "${3}" ] ;;
+        *)     [ "${2}" -le "${3}" ] ;;
+    esac
+}
+
+# metric_color <metric> <value> [accepted value]
 metric_color() {
+    if is_accepted "$1" "$2" "${3:-}"; then
+        echo green
+        return 0
+    fi
     case "$1" in
         temp)     check_hi "$2" "$TEMP_WARN" "$TEMP_CRIT" ;;
         wear)     check_hi "$2" "$WEAR_WARN" "$WEAR_CRIT" ;;
@@ -557,6 +611,16 @@ fi
 # --- per-device checks --------------------------------------------------
 OVERALL=clear
 NDEV=0
+ANY_ACCEPTED=no
+
+# A diskaccept line that was ignored leaves its metric on the normal
+# thresholds; say so, or a typo would go unnoticed.
+if [ -n "${ACCEPT_ERRORS}" ]; then
+    printf '%s' "${ACCEPT_ERRORS}" | while IFS= read -r line; do
+        printf '&yellow smart.cfg: ignored %s\n' "${line}"
+    done >> "${NOTES}"
+    OVERALL=yellow
+fi
 
 while IFS='|' read -r dev opts alias <&3; do
     [ -n "$dev" ] || continue
@@ -871,13 +935,17 @@ while IFS='|' read -r dev opts alias <&3; do
     fi
 
     pairs=""
+    accepted=""
     while read -r m v; do
         [ -n "$m" ] || continue
-        c=$(metric_color "$m" "$v")
+        acc=$(accept_for "$serial" "$m")
+        c=$(metric_color "$m" "$v" "$acc")
         if [ "$c" != "green" ]; then
             devcolor=$(worst "$devcolor" "$c")
-            printf '&%s %s: %s=%s\n' "$c" "$devlabel" "$m" "$v" >> "$NOTES"
+            printf '&%s %s: %s=%s%s\n' "$c" "$devlabel" "$m" "$v" \
+                "${acc:+ (accepted: ${acc})}" >> "$NOTES"
         fi
+        [ -n "$acc" ] && accepted="$accepted $m=$acc"
         pairs="$pairs $m=$v"
         if [ "${emit_data}" = yes ]; then
             printf '%s_%s : %s\n' "${name}" "${m}" "${v}" >> "${DATA}"
@@ -890,6 +958,8 @@ while IFS='|' read -r dev opts alias <&3; do
         [ -n "$health" ] && printf ' - health: %s' "$health"
         printf '%s\n' "$dbnote"
         [ -n "$pairs" ] && printf '    %s\n' "${pairs# }"
+        [ -n "$accepted" ] && ANY_ACCEPTED=yes \
+            && printf '    accepted (diskaccept): %s\n' "${accepted# }"
         [ -n "${s_diag}" ] && printf '%s\n' "${s_diag}" | sed -e 's/^/    /'
         printf '\n'
     } >> "$STATUS"
@@ -1007,12 +1077,16 @@ for dev in $MMCLIST; do
     fi
 
     pairs=""
+    accepted=""
     if [ -n "$wear" ]; then
-        c=$(metric_color wear "$wear")
+        acc=$(accept_for "$serial" wear)
+        c=$(metric_color wear "$wear" "$acc")
         if [ "$c" != "green" ]; then
             devcolor=$(worst "$devcolor" "$c")
-            printf '&%s %s: wear=%s\n' "$c" "$devlabel" "$wear" >> "$NOTES"
+            printf '&%s %s: wear=%s%s\n' "$c" "$devlabel" "$wear" \
+                "${acc:+ (accepted: ${acc})}" >> "$NOTES"
         fi
+        [ -n "$acc" ] && accepted=" wear=$acc"
         pairs=" wear=$wear"
         if [ "${emit_data}" = yes ]; then
             printf '%s_wear : %s\n' "${name}" "${wear}" >> "${DATA}"
@@ -1025,6 +1099,8 @@ for dev in $MMCLIST; do
         [ -n "$health" ] && printf ' - health: %s' "$health"
         printf '\n'
         [ -n "$pairs" ] && printf '    %s\n' "${pairs# }"
+        [ -n "$accepted" ] && ANY_ACCEPTED=yes \
+            && printf '    accepted (diskaccept): %s\n' "${accepted# }"
         printf '\n'
     } >> "$STATUS"
 
@@ -1061,7 +1137,9 @@ fi
         if [ "${OVERALL}" = clear ]; then
             printf 'No usable disk health measurements this poll\n'
         else
-            printf 'All monitored disks are healthy\n'
+            printf 'All monitored disks are healthy'
+            [ "${ANY_ACCEPTED}" = yes ] && printf ' or within accepted values'
+            printf '\n'
         fi
     fi
     printf '\n'
