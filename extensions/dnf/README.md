@@ -34,10 +34,10 @@ Every color can be changed in [dnf.cfg](dnf.cfg); `green` keeps a
 finding in the report without coloring the column, and
 `DNF_REBOOT_COLOR="off"` removes the reboot check altogether.
 
-Packages dnf does not offer — excluded in `dnf.conf` or held by the
-versionlock plugin — never show up in `check-update` and so do not
-count as pending. A security advisory for such a package is still
-listed, marked "not offered by check-update".
+If DNF returns a security advisory for a package that `check-update`
+did not list, the advisory still appears, marked "not offered by
+check-update". An update listed by `check-update` is a candidate;
+DNF can still rule it out when resolving an upgrade transaction.
 
 ### Why `-C` on every call
 
@@ -79,10 +79,12 @@ shortly before dnf refreshes it. dnf's default is 48 hours;
 LC_ALL=C dnf -C repolist -v --enabled | grep -E '^Repo-(id|expire)'
 ```
 
-A repository without any cache is reported by name. If dnf then
-refuses to work at all (`Cache-only enabled but no cache for '…'`),
-the column says "update status unknown" until root ran
-`dnf makecache`.
+A repository without cached primary metadata is reported by name.
+If DNF skips it, the column marks the results as incomplete and still
+shows any updates it found. No graph data is sent for that run. If
+DNF refuses to work at all (`Cache-only enabled but no cache for '…'`),
+the column says "update status unknown". Run `dnf makecache` as root
+to rebuild missing metadata.
 
 ## The status message
 

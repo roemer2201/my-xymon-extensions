@@ -21,7 +21,7 @@
 #
 # Program flow:
 #   1. defaults -> config file -> dnf binary (none: report clear)
-#   2. dnf --version                  -> dnf5 is not supported: clear
+#   2. dnf -C --version               -> dnf5 is not supported: clear
 #   3. dnf -C repolist --enabled      -> enabled repositories
 #      (none: report yellow)
 #   4. mtime of the cached metadata per repository, straight from the
@@ -36,8 +36,8 @@
 #      dnf -C updateinfo list --updates --security --with-cve
 #                                     -> CVEs per package
 #   7. status message (worst color wins; overview first) plus a "data"
-#      message with the graphed values (plain NCV on the server, see
-#      server/README.md)
+#      message with the graphed values if every repository has cached
+#      metadata (plain NCV on the server, see server/README.md)
 #
 # Why "-C" (cache only) on every call: dnf keeps one metadata cache
 # per user. Without -C the xymon user would download its own copy of
@@ -114,12 +114,24 @@ if [ -n "$CFGFILE" ] && [ -r "$CFGFILE" ]; then
 fi
 COLUMN="${DNF_COLUMN}"
 
-# Non-numeric values would blow up the arithmetic below, and an invalid
-# color or lifetime produces a status message the Xymon server rejects;
-# all of them fall back to the built-in defaults instead.
-case "${DNF_MAXAGE}" in ''|*[!0-9]*) DNF_MAXAGE=72 ;; esac
-case "${DNF_TIMEOUT}" in ''|*[!0-9]*) DNF_TIMEOUT=120 ;; esac
-case "${DNF_LIFETIME}" in ''|*[!0-9]*|0) DNF_LIFETIME=30 ;; esac
+# decimal_or_default <value> <default> -- normalize leading zeroes so
+# the shell does not treat decimal settings as octal. Reject values
+# outside the range of a signed 32-bit integer.
+decimal_or_default() {
+    case "${1}" in
+        ''|*[!0-9]*) printf '%s' "${2}"; return ;;
+    esac
+    dd_value=$(printf '%s\n' "${1}" | sed 's/^0*//; s/^$/0/')
+    if [ "${dd_value}" -le 2147483647 ] 2>/dev/null; then
+        printf '%s' "${dd_value}"
+    else
+        printf '%s' "${2}"
+    fi
+}
+DNF_MAXAGE=$(decimal_or_default "${DNF_MAXAGE}" 72)
+DNF_TIMEOUT=$(decimal_or_default "${DNF_TIMEOUT}" 120)
+DNF_LIFETIME=$(decimal_or_default "${DNF_LIFETIME}" 30)
+[ "${DNF_LIFETIME}" -ne 0 ] || DNF_LIFETIME=30
 
 # valid_color <value> <default> -> the value if it is a color a finding
 # may have, else the default. "green" keeps a finding in the report
@@ -244,14 +256,16 @@ run_dnf() {
     fi
 }
 
-# fail_report <name> <exit-code> <command> -- a dnf command failed, so
+# fail_report <name> <exit-code> <command> [reason] -- dnf output is unusable, so
 # what is pending is unknown: yellow, with dnf's own error message and
 # whatever is already known about the repositories.
 fail_report() {
     SUMMARY="update status unknown"
     {
         printf '<!-- ncv_skipstart -->\n'
-        if [ "${2}" -eq 124 ]; then
+        if [ -n "${4:-}" ]; then
+            printf '&yellow "dnf -C %s": %s - update status unknown. Last lines:\n' "${3}" "${4}"
+        elif [ "${2}" -eq 124 ]; then
             printf '&yellow "dnf -C %s" did not finish within %s second(s) - update status unknown.\n' \
                 "${3}" "${DNF_TIMEOUT}"
         else
@@ -287,7 +301,10 @@ fi
 # dnf5 (Fedora 41 and later) is a rewrite with other commands
 # ("advisory" instead of "updateinfo") and another cache layout; its
 # output would be misread here, so say so instead of guessing.
-DNF_VERSION=$("${DNF_BIN}" --version 2>/dev/null | head -n 1)
+run_dnf version --version
+RC=$?
+[ "${RC}" -eq 0 ] || fail_report version "${RC}" "--version"
+DNF_VERSION=$(head -n 1 "${WORKDIR}/version.out")
 case "${DNF_VERSION}" in
     dnf5*|[5-9].*|[1-9][0-9].*)
         short_report clear "update check not applicable" \
@@ -326,8 +343,7 @@ fi
 # of all matching directories counts. Within a directory only the
 # primary metadata counts, as for libdnf: other files are fetched on
 # demand ("dnf provides" downloads the file lists) and would make a
-# cache look fresh that no refresh has touched for weeks. A directory
-# without primary metadata falls back to all of its files.
+# cache look fresh that no refresh has touched for weeks.
 # "date -r FILE" prints the mtime with GNU coreutils, BusyBox and
 # FreeBSD alike.
 NOW=$(date +%s)
@@ -350,18 +366,13 @@ while IFS='|' read -r r_id r_name; do
         r_suffix=${r_dir#"${DNF_CACHEDIR}/${r_id}-"}
         case "${r_suffix}" in ''|*[!0-9a-f]*) continue ;; esac
         [ "${#r_suffix}" -eq 16 ] || continue
-        r_found=no
-        for r_pattern in '*primary.xml*' '*'; do
-            for r_file in "${r_dir}"/repodata/${r_pattern}; do
-                [ -f "${r_file}" ] || continue
-                r_mtime=$(date -r "${r_file}" +%s 2>/dev/null) || continue
-                case "${r_mtime}" in ''|*[!0-9]*) continue ;; esac
-                r_found=yes
-                if [ -z "${r_newest}" ] || [ "${r_mtime}" -gt "${r_newest}" ]; then
-                    r_newest=${r_mtime}
-                fi
-            done
-            [ "${r_found}" = no ] || break
+        for r_file in "${r_dir}"/repodata/*primary.xml*; do
+            [ -f "${r_file}" ] || continue
+            r_mtime=$(date -r "${r_file}" +%s 2>/dev/null) || continue
+            case "${r_mtime}" in ''|*[!0-9]*) continue ;; esac
+            if [ -z "${r_newest}" ] || [ "${r_mtime}" -gt "${r_newest}" ]; then
+                r_newest=${r_mtime}
+            fi
         done
     done
 
@@ -379,7 +390,11 @@ while IFS='|' read -r r_id r_name; do
     if [ -z "${AGEMIN}" ] || [ "${r_age}" -lt "${AGEMIN}" ]; then AGEMIN=${r_age}; fi
     if [ -z "${AGEMAX}" ] || [ "${r_age}" -gt "${AGEMAX}" ]; then AGEMAX=${r_age}; fi
 
-    if [ "${DNF_MAXAGE}" -gt 0 ] && [ "${r_age}" -gt $((DNF_MAXAGE * 3600)) ]; then
+    # Compare in hours to avoid overflowing the configured limit in seconds.
+    r_hours=$((r_age / 3600))
+    if [ "${DNF_MAXAGE}" -gt 0 ] &&
+       { [ "${r_hours}" -gt "${DNF_MAXAGE}" ] ||
+         { [ "${r_hours}" -eq "${DNF_MAXAGE}" ] && [ $((r_age % 3600)) -gt 0 ]; }; }; then
         NSTALE=$((NSTALE + 1))
         printf '&yellow %s (%s): metadata %s hour(s) old\n' \
             "${r_id}" "${r_name}" "$(hours "${r_age}")" >> "${REPOTXT}"
@@ -401,10 +416,10 @@ NREPOPROBLEMS=$((NSTALE + NNOCACHE))
 # carries on without it and, with -q, without a word. Step 4 has
 # already reported such a repository by name.
 run_dnf check -q check-update
-RC=$?
-case "${RC}" in
+CHECK_RC=$?
+case "${CHECK_RC}" in
     0|100) ;;
-    *) fail_report check "${RC}" "check-update" ;;
+    *) fail_report check "${CHECK_RC}" "check-update" ;;
 esac
 
 # dnf prints these two lines itself when the running kernel is older
@@ -421,7 +436,7 @@ fi
 : > "${WORKDIR}/summary.out"
 : > "${WORKDIR}/list.out"
 : > "${WORKDIR}/cve.out"
-if [ "${RC}" -eq 100 ]; then
+if [ "${CHECK_RC}" -eq 100 ]; then
     run_dnf summary -q updateinfo summary --updates --security
     RC=$?
     [ "${RC}" -eq 0 ] || fail_report summary "${RC}" "updateinfo summary --updates --security"
@@ -480,7 +495,8 @@ kind == "check" {
     if ($0 !~ /^[ \t]/) nbuf = 0
     for (i = 1; i <= NF; i++) buf[++nbuf] = $i
     if (nbuf < 3) next
-    if (nbuf == 3 && buf[1] ~ /\./ && buf[2] ~ /^[0-9]/ && !(buf[1] in ver)) {
+    if (nbuf == 3 && buf[1] ~ /\./ &&
+        buf[2] ~ /^([0-9]+:)?[[:alnum:]_.+~^]+-[[:alnum:]_.+~^]+$/ && !(buf[1] in ver)) {
         order[++npkg] = buf[1]
         ver[buf[1]] = buf[2]
         repo[buf[1]] = buf[3]
@@ -526,8 +542,7 @@ END {
             nother++
         }
     }
-    # An advisory for a package check-update did not offer (excluded,
-    # version locked): still a known security issue, so it is listed.
+    # Keep advisories even when check-update does not list their package.
     for (k in rank) {
         if (k in done) continue
         print rank[k] "|" k "|-|-|" psev[k] "|" nids[k] "|" (ncve[k] + 0) "|" ids[k] "|" cves[k] > secfile
@@ -551,7 +566,8 @@ END {
     print "p_unknown", npsev["Unknown"] + 0 > countfile
 }' kind=check "${WORKDIR}/check.out" \
    kind=list "${WORKDIR}/list.out" \
-   kind=cve "${WORKDIR}/cve.out"
+   kind=cve "${WORKDIR}/cve.out" ||
+    fail_report check "${CHECK_RC}" "check-update" "could not process package and advisory lists"
 
 # count <name> -> the number the join stored under that name
 count() {
@@ -559,6 +575,9 @@ count() {
         "${WORKDIR}/counts"
 }
 NUPDATES=$(count updates)
+if [ "${CHECK_RC}" -eq 100 ] && [ "${NUPDATES}" -eq 0 ]; then
+    fail_report check "${CHECK_RC}" "check-update" "reported updates, but no package rows could be read"
+fi
 NSEC=$(count security)
 NOTHER=$(count other)
 NCVES=$(count cves)
@@ -614,16 +633,20 @@ if [ "${NSEC}" -gt 0 ] || [ "${NNOTICES}" -gt 0 ]; then
     sev_line moderate "${N_MODERATE}" "${P_MODERATE}" "${DNF_SEC_MODERATE_COLOR}"
     sev_line low "${N_LOW}" "${P_LOW}" "${DNF_SEC_LOW_COLOR}"
     sev_line unknown "${N_UNKNOWN}" "${P_UNKNOWN}" "${DNF_SEC_UNKNOWN_COLOR}"
-else
+elif [ "${NNOCACHE}" -eq 0 ]; then
     printf '&green No security update pending\n' >> "${OVERVIEW}"
+else
+    printf '&yellow Security update status incomplete: no updates found in the available cache\n' >> "${OVERVIEW}"
 fi
 
 if [ "${NOTHER}" -gt 0 ]; then
     raise "${DNF_UPDATES_COLOR}"
     printf '&%s Other updates pending: %s package(s)\n' \
         "${DNF_UPDATES_COLOR}" "${NOTHER}" >> "${OVERVIEW}"
-else
+elif [ "${NNOCACHE}" -eq 0 ]; then
     printf '&green No other update pending\n' >> "${OVERVIEW}"
+else
+    printf '&yellow Other update status incomplete: no updates found in the available cache\n' >> "${OVERVIEW}"
 fi
 
 REBOOT=no
@@ -645,8 +668,12 @@ else
 fi
 
 # First line of the status (and the subject of an alert mail)
-if [ "${NUPDATES}" -eq 0 ] && [ "${NSEC}" -eq 0 ]; then
-    SUMMARY="packages up to date"
+if [ "${NUPDATES}" -eq 0 ] && [ "${NSEC}" -eq 0 ] && [ "${NNOTICES}" -eq 0 ]; then
+    if [ "${NNOCACHE}" -eq 0 ]; then
+        SUMMARY="packages up to date"
+    else
+        SUMMARY="update status incomplete"
+    fi
 else
     SUMMARY="${NSEC} security update(s)"
     S_DETAIL=""
@@ -656,6 +683,7 @@ else
     fi
     [ -n "${S_DETAIL}" ] && SUMMARY="${SUMMARY} (${S_DETAIL} notice(s))"
     SUMMARY="${SUMMARY}, ${NOTHER} other update(s)"
+    [ "${NNOCACHE}" -gt 0 ] && SUMMARY="${SUMMARY} (partial results)"
 fi
 [ "${REBOOT}" = yes ] && SUMMARY="${SUMMARY}, reboot pending"
 [ "${NREPOPROBLEMS}" -gt 0 ] && SUMMARY="${SUMMARY}, ${NREPOPROBLEMS} repository problem(s)"
@@ -711,9 +739,15 @@ fi
     printf '<!-- ncv_skipend -->\n'
 } > "${STATUS}"
 
+# A skipped repository can hide updates. Keep the status findings, but
+# do not send partial counts to the graphs.
+if [ "${NNOCACHE}" -gt 0 ]; then
+    send_report "${WORST}" "${STATUS}"
+    exit "$?"
+fi
+
 # All values or none: plain NCV creates the RRD file with the datasets
-# of the FIRST message it sees. This point is only reached when every
-# dnf command succeeded, so the set is always complete.
+# of the FIRST message it sees.
 {
     printf 'updates : %s\n' "${NUPDATES}"
     printf 'security : %s\n' "${NSEC}"

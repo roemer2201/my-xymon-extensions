@@ -1701,7 +1701,7 @@ expect "$out" '^cves : 24$'      "data: distinct CVEs"
 expect_not "$(ncv_view "$(dnf_status "$out")")" '.' \
     "no dnf status line outside the skip block reaches the NCV parser"
 calls=$(cat "$FAKEDNF_LOG")
-expect_not "$(printf '%s\n' "$calls" | grep -v '^--version$')" '^[^-]|^-[^C]|^-C[^ ]' \
+expect_not "$(printf '%s\n' "$calls" | grep -v '^-C ')" '.' \
     "every dnf query is cache-only (-C)"
 expect "$calls" '^-C -q updateinfo summary --updates --security$' \
     "dnf updateinfo summary --updates --security is evaluated"
@@ -1741,6 +1741,8 @@ expect "$out" '^status\+30 testhost\.dnf red ' "DNF_REBOOT_COLOR=red is honored"
 out=$(dnf_run updates DNF_COLUMN=pkg DNF_LIFETIME=120)
 expect "$out" '^status\+120 testhost\.pkg red ' "DNF_COLUMN and DNF_LIFETIME are honored"
 expect "$out" '^data testhost\.pkg$' "the data message follows DNF_COLUMN"
+out=$(dnf_run updates DNF_LIFETIME=00)
+expect "$out" '^status\+30 testhost\.dnf ' "a zero DNF_LIFETIME falls back to 30"
 out=$(dnf_run updates DNF_LIFETIME=soon)
 expect "$out" '^status\+30 testhost\.dnf ' "an invalid DNF_LIFETIME falls back to 30"
 
@@ -1782,6 +1784,10 @@ expect "$out" '^status\+30 testhost\.dnf green ' "DNF_MAXAGE=0 disables the age 
 expect "$out" 'age check disabled' "status says that the age check is off"
 out=$(dnf_run clean DNF_MAXAGE=9999999)
 expect "$out" '^status\+30 testhost\.dnf green ' "a larger DNF_MAXAGE accepts the old cache"
+out=$(dnf_run clean DNF_MAXAGE=08)
+expect "$out" '^&yellow Repository baseos: .* \(limit: 8\)' "DNF_MAXAGE with a leading zero is decimal"
+out=$(dnf_run clean DNF_MAXAGE=99999999999999999999)
+expect "$out" '^&yellow Repository baseos: .* \(limit: 72\)' "an out-of-range DNF_MAXAGE falls back to 72"
 # A repository whose URL changed leaves its old cache directory behind;
 # the fresh one counts.
 mkdir -p "$FAKEDNF_CACHE/baseos-fedcba9876543210/repodata"
@@ -1790,15 +1796,21 @@ out=$(dnf_run clean)
 expect "$out" '^status\+30 testhost\.dnf green ' \
     "the freshest cache directory of a repository counts"
 
-# No cache directory at all, but dnf carries on (skip_if_unavailable)
+# Only file lists and repomd.xml remain, but dnf carries on
+# (skip_if_unavailable).
 dnf_cache clean
-rm -rf "$FAKEDNF_CACHE/baseos-0123456789abcdef"
+rm "$FAKEDNF_CACHE/baseos-0123456789abcdef/repodata/primary.xml.gz"
+: > "$FAKEDNF_CACHE/baseos-0123456789abcdef/repodata/filelists.xml.gz"
 out=$(dnf_run clean)
-expect "$out" '^status\+30 testhost\.dnf yellow ' "a repository without cache reports yellow"
+expect "$out" '^status\+30 testhost\.dnf yellow .* - dnf: update status incomplete, 1 repository problem\(s\)$' \
+    "missing primary metadata makes a clean result incomplete"
 expect "$out" '^&yellow Repository baseos: no cached metadata in .* - its updates are unknown$' \
     "overview names the repository without cache"
+expect_not "$out" '^&green No (security|other) update pending$|^data ' \
+    "an incomplete check does not report clean results or send data"
 
 # No cache and dnf refuses to work: status unknown, no values
+rm -rf "$FAKEDNF_CACHE/baseos-0123456789abcdef"
 out=$(dnf_run nocache)
 expect "$out" '^status\+30 testhost\.dnf yellow .* - dnf: update status unknown$' \
     "a failing dnf reports yellow, status unknown"
@@ -1808,6 +1820,13 @@ expect "$out" '^&yellow Repository baseos: no cached metadata' \
     "the failure report names the repository without cache"
 expect_not "$out" '^data ' "no data message when the status is unknown"
 expect_not "$(ncv_view "$out")" '.' "the failure report is hidden from the NCV parser"
+
+dnf_cache updates
+rm -rf "$FAKEDNF_CACHE/crb-0123456789abcdef"
+out=$(dnf_run updates)
+expect "$out" '^status\+30 testhost\.dnf red .*partial results.*1 repository problem\(s\)$' \
+    "an incomplete check still reports known severe updates"
+expect_not "$out" '^data ' "an incomplete check with known updates sends no partial counts"
 
 dnf_cache timeout
 out=$(dnf_run timeout)
@@ -1836,6 +1855,20 @@ expect "$out" '^updates : 4$' \
     "wrapped output: four updates, one listed in both sections counted once"
 expect "$out" '^status\+30 testhost\.dnf yellow ' "updates without advisories report yellow"
 
+mkdir -p "$TMP/dnf-output"
+cp "$TESTDIR/dnf/data/clean/repolist.out" "$TMP/dnf-output/repolist.out"
+dnf_cache clean
+printf '%s\n' 'example.noarch  a1~beta-2.el10  baseos' > "$TMP/dnf-output/check.out"
+printf '%s\n' 100 > "$TMP/dnf-output/check.rc"
+out=$(dnf_run "$TMP/dnf-output")
+expect "$out" '^    example\.noarch a1~beta-2\.el10 \(baseos\)$' \
+    "an RPM version can start with a letter"
+printf '%s\n' 'unexpected update output' > "$TMP/dnf-output/check.out"
+out=$(dnf_run "$TMP/dnf-output")
+expect "$out" '^status\+30 testhost\.dnf yellow .* - dnf: update status unknown$' \
+    "exit 100 without readable package rows is unknown"
+expect_not "$out" '^data ' "unreadable package output sends no zero counts"
+
 # Real dnf 4.20 output, with a security advisory without severity (EPEL)
 dnf_cache unknown
 out=$(dnf_run unknown)
@@ -1852,8 +1885,8 @@ expect "$out" '^security : 8$' "captured output: security packages"
 expect "$out" '^unknown : 1$'  "captured output: unknown notices"
 expect "$out" '^cves : 10$'    "captured output: distinct CVEs"
 
-# An advisory for a package check-update does not offer (excluded,
-# version locked) is still a known security issue.
+# An advisory for a package check-update does not list is still a
+# known security issue.
 dnf_cache locked
 out=$(dnf_run locked)
 expect "$out" '^&red Important +sudo\.x86_64 not offered by check-update - 1 notice\(s\), 1 CVE\(s\): RLSA-2026:75579$' \
@@ -1886,7 +1919,13 @@ fi
 out=$(dnf_run clean FAKEDNF_VERSION="dnf5 version 5.2.6.2")
 expect "$out" '^status\+30 testhost\.dnf clear ' "dnf5 reports clear"
 expect "$out" 'dnf5 is not supported' "dnf5 hint present"
-expect_not "$(cat "$FAKEDNF_LOG")" '^-C' "dnf5 is not queried any further"
+expect_not "$(grep -v '^-C --version$' "$FAKEDNF_LOG")" '.' "dnf5 is not queried any further"
+
+printf '%s\n' 124 > "$TMP/dnf-output/version.rc"
+out=$(dnf_run "$TMP/dnf-output")
+expect "$out" '^&yellow "dnf -C --version" did not finish within 120 second' \
+    "the dnf version probe is also subject to the timeout"
+expect_not "$out" '^data ' "a failed version probe sends no data"
 
 out=$(dnf_run clean DNF_CFG="$TESTDIR/dnf/dnf_test_nodnf.cfg")
 expect "$out" '^status\+30 testhost\.dnf clear ' "missing dnf reports clear, not red"

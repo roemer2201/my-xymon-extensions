@@ -127,8 +127,8 @@ jobs:
         run: |
           set -e
           # "dnf install" above has just filled the system cache; without
-          # a Xymon environment the extension prints its messages.
-          sh /usr/local/xymon/client/ext/dnf.sh > /tmp/dnf.out
+          # a Xymon sender the extension prints its messages.
+          XYMONHOME=/usr/local/xymon/client sh /usr/local/xymon/client/ext/dnf.sh > /tmp/dnf.out
           head -n 40 /tmp/dnf.out
           head -n 1 /tmp/dnf.out | grep -Eq '^status\+30 [^ ]+\.dnf (green|yellow|red) '
           grep -Eq '^data [^ ]+\.dnf$' /tmp/dnf.out
