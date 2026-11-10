@@ -131,8 +131,8 @@ jobs:
           sh /usr/local/xymon/client/ext/dnf.sh > /tmp/dnf.out
           head -n 40 /tmp/dnf.out
           head -n 1 /tmp/dnf.out | grep -Eq '^status\+30 [^ ]+\.dnf (green|yellow|red) '
-          grep -q '^data [^ ]+\.dnf$' /tmp/dnf.out
-          grep -q '^updates : [0-9]+$' /tmp/dnf.out
+          grep -Eq '^data [^ ]+\.dnf$' /tmp/dnf.out
+          grep -Eq '^updates : [0-9]+$' /tmp/dnf.out
 
   opkg:
     name: build .ipk (OpenWrt/TurrisOS)

@@ -7,13 +7,11 @@ what the system already knows and never downloads anything. Reports
 one status column plus eight values for RRD graphs.
 
 - **Column:** `dnf` (override with `DNF_COLUMN`)
-- **Platforms:** hosts with dnf 4. Developed and tested against
-  dnf 4.20 on Rocky Linux 10. The dnf code it relies on (cache-only
-  mode, exit codes, the output of `check-update` and `updateinfo`)
-  reads the same in dnf 4.14, the version of EL9, but it was not run
-  there; EL8 is untested. dnf5 (Fedora 41 and later) is detected and
-  reports `clear`, as do hosts without dnf (Debian/Ubuntu, FreeBSD,
-  OpenWrt).
+- **Platforms:** hosts with dnf 4. Developed against dnf 4.20 on
+  Rocky Linux 10; CI runs it against the real dnf and repositories of
+  Rocky Linux 9 and 10. EL8 is untested. dnf5 (Fedora 41 and later) is
+  detected and reports `clear`, as do hosts without dnf (Debian/Ubuntu,
+  FreeBSD, OpenWrt).
 - **Requires:** nothing beyond dnf itself — no root rights, no sudo
   rule, no network access. Root has to keep dnf's system cache
   current, which `dnf-makecache.timer` does on a stock EL host.
