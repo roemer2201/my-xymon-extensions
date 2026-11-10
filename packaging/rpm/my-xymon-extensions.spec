@@ -6,6 +6,14 @@
 #   rpmbuild ... --define 'xymonhome /usr/share/xymon-client'
 %{!?xymonhome: %global xymonhome /usr/lib64/xymon/client}
 
+# The package requires the Xymon client package by default. A Xymon
+# client compiled and installed by hand is in no rpm database, so that
+# dependency could never be satisfied there:
+#   rpmbuild ... --define 'xymonhome /usr/local/xymon/client' --without clientdep
+# builds a package without it. packaging/rpm/build.sh takes both
+# through RPM_XYMONHOME and RPM_CLIENTDEP=no.
+%bcond_without clientdep
+
 Name:           my-xymon-extensions
 Version:        %{?pkgver}%{!?pkgver:0.0.0}
 Release:        1%{?dist}
@@ -19,7 +27,9 @@ Recommends:     curl
 # "xymon-client" matches the Terabithia and EPEL package names;
 # rebuild with --define 'xymonclientpkg <name>' for other builds.
 %{!?xymonclientpkg: %global xymonclientpkg xymon-client}
+%if %{with clientdep}
 Requires:       %{xymonclientpkg}
+%endif
 
 %description
 Custom monitoring tests (extensions) for the Xymon systems monitor.
@@ -61,6 +71,13 @@ Included extensions:
   analysis.cfg build the standard "procs" column; optionally checks
   PROC-style rules on the host itself (task disabled by default: the
   Xymon client already covers this on full clients).
+* dnf - pending package updates, the dnf counterpart of the "apt"
+  check from Debian's hobbit-plugins: security advisories by severity
+  (dnf updateinfo), other updates, no enabled repository, repository
+  metadata nobody refreshes any more and a pending kernel reboot, with
+  an overview at the top of the status and RRD graphs. Reads dnf's
+  system cache only (dnf -C): no downloads, no root rights. Active out
+  of the box in this package.
 * xymonext - what the extensions above cost this host: wall clock
   time, CPU time and the number of bytes each test sends to the
   Xymon server, measured on every run and reported in one
@@ -77,6 +94,21 @@ sh packaging/common/stage.sh "%{buildroot}" \
     "%{xymonhome}/etc" \
     "%{xymonhome}/etc/clientlaunch.d" \
     "%{_docdir}/%{name}"
+
+# The shared launch snippet of the dnf extension ships disabled: the
+# deb and FreeBSD packages install it on hosts without dnf. Every host
+# this package is installed on has dnf, so the task is enabled here.
+# (No "sed -i": this spec keeps to what the other package builds may
+# use, see CLAUDE.md.)
+dnfsnippet="%{buildroot}%{xymonhome}/etc/clientlaunch.d/dnf.cfg"
+grep -v '^[[:space:]]*DISABLED[[:space:]]*$' "$dnfsnippet" > "$dnfsnippet.new"
+if cmp -s "$dnfsnippet" "$dnfsnippet.new" ||
+   ! grep -q '^\[dnf\]$' "$dnfsnippet.new"; then
+    echo "clientlaunch.d/dnf.cfg: no DISABLED line to remove, or no [dnf] task" >&2
+    exit 1
+fi
+mv "$dnfsnippet.new" "$dnfsnippet"
+chmod 0644 "$dnfsnippet"
 
 %files
 %{xymonhome}/ext/smart.sh
@@ -123,6 +155,9 @@ sh packaging/common/stage.sh "%{buildroot}" \
 %{xymonhome}/ext/procs.sh
 %config(noreplace) %{xymonhome}/etc/my-xymon-extensions/procs.cfg
 %config(noreplace) %{xymonhome}/etc/clientlaunch.d/procs.cfg
+%{xymonhome}/ext/dnf.sh
+%config(noreplace) %{xymonhome}/etc/my-xymon-extensions/dnf.cfg
+%config(noreplace) %{xymonhome}/etc/clientlaunch.d/dnf.cfg
 %{xymonhome}/ext/xymonext.sh
 %{xymonhome}/ext/xymonext-send.sh
 %config(noreplace) %{xymonhome}/etc/my-xymon-extensions/xymonext.cfg
@@ -148,7 +183,7 @@ if [ "$1" -ge 2 ]; then
     verify=$(rpm -V --nodeps %{name} 2>/dev/null)
 fi
 for cfg in smart temp la memory disk opkg wifi \
-    if_link lxc claude systemd bcache btrfs procs xymonext; do
+    if_link lxc claude systemd bcache btrfs procs dnf xymonext; do
     if [ ! -e "$new/$cfg.cfg" ]; then
         echo "$cfg" >> "$state/replaceable"
     elif [ "$1" -ge 2 ] && ! echo "$verify" | grep -q " $new/$cfg.cfg\$"; then
@@ -168,7 +203,7 @@ state=%{_localstatedir}/lib/rpm-state/%{name}
 old=%{xymonhome}/etc
 new=%{xymonhome}/etc/my-xymon-extensions
 for cfg in smart temp la memory disk opkg wifi \
-    if_link lxc claude systemd bcache btrfs procs xymonext; do
+    if_link lxc claude systemd bcache btrfs procs dnf xymonext; do
     if [ -f "$old/$cfg.cfg.rpmsave" ]; then
         src="$old/$cfg.cfg.rpmsave"
     elif [ -f "$old/$cfg.cfg" ]; then
@@ -242,6 +277,15 @@ The "btrfs" extension is active out of the box and adds a "btrfs"
  btrfs, so the column is clear unless a btrfs-enabled kernel is used;
  set BTRFS_ENABLE="no" in %{xymonhome}/etc/my-xymon-extensions/btrfs.cfg
  to silence it.
+The "dnf" extension is active out of the box and adds a "dnf" column:
+ pending security updates by severity (red: critical and important),
+ other updates, repositories without current metadata and a pending
+ kernel reboot. It calls dnf with -C only, i.e. it reads the system
+ cache in /var/cache/dnf and downloads nothing; root keeps that cache
+ current, normally through dnf-makecache.timer:
+   systemctl is-enabled dnf-makecache.timer
+ Colors and the age limit (DNF_MAXAGE, 72 hours) are set in
+ %{xymonhome}/etc/my-xymon-extensions/dnf.cfg.
 The "lxc" extension ships disabled: on an LXC host, remove the
  DISABLED line from %{xymonhome}/etc/clientlaunch.d/lxc.cfg. Which
  containers are supposed to run is detected automatically
@@ -265,8 +309,59 @@ RRD graphs need a one-time setup on the Xymon SERVER (not here):
  %{_docdir}/%{name}/<extension>/server/ - copy them over and restart
  Xymon there; see the README.md next to them.
 EOF
+# None of the snippets is read unless clientlaunch.cfg includes the
+# drop-in directory, and a Xymon client built from the sources does
+# not. That file is not ours to edit (it belongs to the xymon-client
+# package or to the admin), so say exactly what is missing.
+launchcfg=%{xymonhome}/etc/clientlaunch.cfg
+if [ -f "$launchcfg" ] &&
+   ! grep -Eq '^[[:space:]]*(optional[[:space:]]+)?directory[[:space:]]+[^[:space:]]*clientlaunch\.d' "$launchcfg"; then
+    cat <<'EOF'
+ TODO: clientlaunch.cfg does not read the drop-in directory yet, so
+ NONE of these extensions is started. Add this line at the end of
+   %{xymonhome}/etc/clientlaunch.cfg
+ and restart the Xymon client:
+   directory %{xymonhome}/etc/clientlaunch.d
+EOF
+fi
+exit 0
 
 %changelog
+* Tue Nov 10 2026 roemer2201 <r.oliver@web.de> - 0.34.0-1
+- new extension "dnf" (column "dnf", active out of the box in this
+  package): pending package updates on dnf-based systems, the
+  counterpart of the "apt" check from Debian's hobbit-plugins. It
+  reports security updates by the severity of their advisories
+  (critical and important red, moderate, low and unknown yellow), other
+  updates (yellow), a host without any enabled repository (yellow),
+  repository metadata that is missing or older than DNF_MAXAGE hours
+  (72, yellow) and a running kernel that is older than an installed
+  kernel security update (yellow, DNF_REBOOT_COLOR="off" removes the
+  check). Evaluated are "dnf check-update", "dnf updateinfo summary
+  --updates --security" and "dnf updateinfo list --updates --security
+  [--with-cve]", joined per package: target version, worst severity,
+  advisory ids and the number of distinct CVEs. The status starts with
+  an overview of all findings, so an alert mail shows them in its first
+  lines. Every dnf call uses -C: the extension reads the system cache
+  in /var/cache/dnf and downloads nothing, so it needs no root rights
+  and no network access - root keeps the cache current
+  (dnf-makecache.timer), and the age check is what notices when that
+  stops. An enabled repository without cached primary metadata makes
+  the result incomplete: what is known is still reported, but marked
+  as partial. Eight values go to the server for two RRD graphs (drop-in
+  files in the documentation directory), none while the result is
+  unknown or incomplete. The task is shipped disabled in the other
+  packages and enabled at build time in this one
+- packaging: the dependency on the xymon-client rpm can be left out for
+  a Xymon client compiled by hand, which no rpm database knows:
+  "--without clientdep", or RPM_CLIENTDEP=no for build.sh and
+  "make rpm"; RPM_XYMONHOME sets the client directory, e.g.
+  RPM_XYMONHOME=/usr/local/xymon/client RPM_CLIENTDEP=no make rpm
+- the post-install checks whether clientlaunch.cfg reads the
+  clientlaunch.d drop-in directory and prints the line to add if it
+  does not (a client built from the sources ships without it); up to
+  now it only described the step
+
 * Mon Nov 09 2026 roemer2201 <r.oliver@web.de> - 0.33.0-1
 - smart accepts a known value per disk: "diskaccept <serial> <metric>
   <value>" in smart.cfg keeps that metric green on the disk with this

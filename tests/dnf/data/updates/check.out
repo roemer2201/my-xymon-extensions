@@ -1,0 +1,23 @@
+
+NetworkManager.x86_64                            1:1.56.0-3.el10_2                           baseos   
+PackageKit.x86_64                                1.2.8-8.el10_2                              appstream
+apr-util.x86_64                                  1.6.3-23.el10_2.1                           appstream
+buildah.x86_64                                   2:1.43.1-7.el10_2                           appstream
+ca-certificates.noarch                           2026.2.92_v9.0.319-100.3.el10_2             baseos   
+curl.x86_64                                      8.12.1-4.el10_2.8                           baseos   
+distribution-gpg-keys.noarch                     1.123-1.el10_2                              epel     
+emacs-filesystem.noarch                          1:29.4-14.el10_2.4                          baseos   
+expat.x86_64                                     2.7.3-1.el10_2.7                            baseos   
+httpd-filesystem.noarch                          2.4.63-13.el10_2.8                          appstream
+kernel-core.x86_64                               6.12.0-211.74.1.el10_2                      baseos   
+libcurl.x86_64                                   8.12.1-4.el10_2.8                           baseos   
+libcurl-devel.x86_64                             8.12.1-4.el10_2.8                           appstream
+linux-firmware.noarch                            20261026-23.5.el10_2                        baseos   
+passt.x86_64                                     0^20251210.gd04c480-7.el10_2                appstream
+perl-Locale-Maketext-Simple.noarch               1:0.21-515.el10_2                           appstream
+site-motd.noarch                                 1.5.0-1.el10                                site     
+sudo.x86_64                                      1.9.17-10.p2.el10_2.7                       baseos   
+tzdata.noarch                                    2026f-1.el10_2                              baseos   
+xz-libs.x86_64                                   1:5.6.2-4.el10_2.1                          baseos   
+Security: kernel-core-6.12.0-211.68.1.el10_2.x86_64 is an installed security update
+Security: kernel-core-6.12.0-211.18.1.el10_2.x86_64 is the currently running version

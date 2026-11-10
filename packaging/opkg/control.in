@@ -38,7 +38,10 @@ Description: Portable Xymon client extensions with standalone runner
  list goes to the Xymon server as a client message, whose
  analysis.cfg PROC rules build the standard "procs" column (BusyBox
  ps is reformatted for it), or PROC-style rules are checked on the
- router (PROCS_MODE="local"); xymonext - what the
+ router (PROCS_MODE="local"); dnf - pending package updates on
+ dnf-based systems (installed for completeness only: OpenWrt has no
+ dnf, so it is not in the default test list and reports clear);
+ xymonext - what the
  tests above cost the router: wall clock time, CPU time and bytes
  sent per test, graphed per extension (the runner calls the
  extensions through its wrapper; switch it off with

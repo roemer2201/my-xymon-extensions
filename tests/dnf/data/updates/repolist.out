@@ -1,0 +1,8 @@
+repo id                    repo name
+appstream                  Rocky Linux 10 - AppStream
+baseos                     Rocky Linux 10 - BaseOS
+crb                        Rocky Linux 10 - CRB
+epel                       Extra Packages for Enterprise Linux 10 - x86_64
+extras                     Rocky Linux 10 - Extras
+install_repos_site_el10    created by dnf config-manager from file:///install/repos/site/el10
+site                       site local RPMs (el10 x86_64)

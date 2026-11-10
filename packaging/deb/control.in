@@ -67,6 +67,11 @@ Description: Portable Xymon client extensions
     standard "procs" column; optionally checks PROC-style rules on
     the host itself (task disabled by default: the Xymon client
     already covers this on full clients).
+  * dnf - pending package updates on dnf-based systems (Rocky Linux,
+    RHEL, AlmaLinux): security advisories by severity, other updates,
+    stale repository metadata and a pending kernel reboot, read from
+    dnf's system cache without downloading anything (task disabled by
+    default: Debian/Ubuntu hosts have no dnf).
   * xymonext - what the extensions above cost this host: wall clock
     time, CPU time and bytes sent to the server, measured on every
     run and reported in one "xymonext" column with RRD graphs per

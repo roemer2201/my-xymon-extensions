@@ -45,6 +45,9 @@ Included extensions:
 * procs - process checks for clientless hosts, with the FreeBSD
   client's ps command; ships disabled (the Xymon client already sends
   the process list on full clients).
+* dnf - pending package updates on dnf-based Linux systems (Rocky
+  Linux, RHEL). FreeBSD has no dnf, so the column would report a clear
+  status; ships disabled.
 
 Requires net-mgmt/xymon-client and sysutils/smartmontools (>= 7.0).
 Activation steps (sudoers rule, clientlaunch.d include, server-side
