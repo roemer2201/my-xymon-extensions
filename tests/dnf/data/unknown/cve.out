@@ -1,0 +1,12 @@
+CVE-2026-114406 Critical/Sec.  ca-certificates-2026.2.92_v9.0.319-100.3.el10_2.noarch
+CVE-2026-10536  Moderate/Sec.  curl-8.12.1-4.el10_2.7.x86_64
+CVE-2026-5545   Moderate/Sec.  curl-8.12.1-4.el10_2.7.x86_64
+CVE-2026-7168   Important/Sec. curl-8.12.1-4.el10_2.8.x86_64
+CVE-2026-19499  Moderate/Sec.  glibc-2.39-142.el10_2.x86_64
+CVE-2026-19542  Moderate/Sec.  glibc-2.39-142.el10_2.x86_64
+CVE-2026-19499  Moderate/Sec.  glibc-common-2.39-142.el10_2.x86_64
+CVE-2026-19542  Moderate/Sec.  glibc-common-2.39-142.el10_2.x86_64
+CVE-2026-84782  Important/Sec. openssl-libs-1:3.5.8-2.el10_2.x86_64
+CVE-2026-19445  Important/Sec. python3-libs-3.12.15-1.el10_2.with.a.very.long.release.tag.that.forces.wrapping.x86_64
+CVE-2026-19553  Important/Sec. python3-libs-3.12.15-1.el10_2.with.a.very.long.release.tag.that.forces.wrapping.x86_64
+CVE-2026-34743  Low/Sec.       xz-libs-1:5.6.2-4.el10_2.1.x86_64

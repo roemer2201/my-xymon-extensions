@@ -11,6 +11,7 @@
 /etc/xymon/xymonserver.d/systemd.cfg
 /etc/xymon/xymonserver.d/bcache.cfg
 /etc/xymon/xymonserver.d/btrfs.cfg
+/etc/xymon/xymonserver.d/dnf.cfg
 /etc/xymon/xymonserver.d/xymonext.cfg
 /etc/xymon/graphs.d/smart.cfg
 /etc/xymon/graphs.d/la.cfg
@@ -25,6 +26,7 @@
 /etc/xymon/graphs.d/systemd.cfg
 /etc/xymon/graphs.d/bcache.cfg
 /etc/xymon/graphs.d/btrfs.cfg
+/etc/xymon/graphs.d/dnf.cfg
 /etc/xymon/graphs.d/xymonext.cfg
 /etc/xymon/rrddefinitions.d/if_link.cfg
 /etc/xymon/rrddefinitions.d/systemd.cfg

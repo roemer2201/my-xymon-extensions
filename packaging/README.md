@@ -44,6 +44,48 @@ with:
 sh packaging/rpm/build.sh --define 'xymonhome /usr/share/xymon-client'
 ```
 
+### rpm for a Xymon client compiled by hand
+
+A Xymon client that was built from the sources is in no rpm database,
+so the default package fits it in two ways not: its files would land in
+the wrong directory, and its dependency on the `xymon-client` rpm could
+never be satisfied. Two environment variables, read by
+`packaging/rpm/build.sh` and therefore also usable with `make rpm`,
+take care of both:
+
+| Variable | Meaning |
+|---|---|
+| `RPM_XYMONHOME` | the client directory - the one that holds `bin/`, `etc/` and `ext/` (the client's `$XYMONCLIENTHOME`) |
+| `RPM_CLIENTDEP=no` | build without `Requires: xymon-client` (spec: `--without clientdep`) |
+
+```sh
+dnf install rpm-build make
+RPM_XYMONHOME=/usr/local/xymon/client RPM_CLIENTDEP=no make rpm
+dnf install build/rpm/RPMS/noarch/my-xymon-extensions-*.noarch.rpm
+```
+
+`smartmontools` stays a dependency. The package name and version are
+the same for every layout, so do not mix packages built for different
+client directories in one repository.
+
+A client built from the sources ships a `clientlaunch.cfg` that reads
+no drop-in directory. The package creates
+`$RPM_XYMONHOME/etc/clientlaunch.d`, but it does not edit
+`clientlaunch.cfg`; its post-install checks the file and prints the
+line to add:
+
+```
+directory /usr/local/xymon/client/etc/clientlaunch.d
+```
+
+The path has to be written out: xymonlaunch does not expand
+`$XYMONCLIENTHOME` in a `directory` line. Then restart the client.
+
+Built on Rocky Linux the package carries that release's dist tag
+(`.el10`); it is `noarch` and installs on every EL release. The
+installation was tested on Rocky Linux 10 (in a container, with a
+client tree laid out like a source build).
+
 ## Activation after installation
 
 The packages deliberately do **not** edit `clientlaunch.cfg` (it is

@@ -79,10 +79,20 @@ jobs:
           path: build/my-xymon-extensions-server_*.deb
 
   rpm:
-    name: build .rpm (Rocky Linux)
+    name: build .rpm (${{ matrix.name }})
     runs-on: ubuntu-latest
     needs: test
-    container: rockylinux:9
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Rocky Linux 9
+            image: rockylinux:9
+            artifact: rpm-package
+          - name: Rocky Linux 10
+            image: rockylinux/rockylinux:10
+            artifact: rpm-package-el10
+    container: ${{ matrix.image }}
     steps:
       - uses: actions/checkout@v4
       - name: Install build tools
@@ -92,8 +102,37 @@ jobs:
         run: rpm -qlp build/rpm/RPMS/noarch/*.rpm
       - uses: actions/upload-artifact@v4
         with:
-          name: rpm-package
+          name: ${{ matrix.artifact }}
           path: build/rpm/RPMS/noarch/*.rpm
+      # A Xymon client compiled by hand: other directory, no
+      # xymon-client rpm to depend on. Installed for real here, so the
+      # dependency list, the scriptlets and the dnf extension run
+      # against this release's own rpm and dnf.
+      - name: Build for a hand-compiled Xymon client and install it
+        run: |
+          set -e
+          RPM_XYMONHOME=/usr/local/xymon/client RPM_CLIENTDEP=no make rpm
+          rpm -qp --requires build/rpm/RPMS/noarch/*.rpm | grep -v '^rpmlib' | sort -u
+          if rpm -qp --requires build/rpm/RPMS/noarch/*.rpm | grep -q '^xymon-client'; then
+            echo "the package still requires xymon-client"; exit 1
+          fi
+          mkdir -p /usr/local/xymon/client/etc
+          dnf install -y build/rpm/RPMS/noarch/*.rpm
+          test -x /usr/local/xymon/client/ext/dnf.sh
+          grep -q '^\[dnf\]$' /usr/local/xymon/client/etc/clientlaunch.d/dnf.cfg
+          if grep -q 'DISABLED$' /usr/local/xymon/client/etc/clientlaunch.d/dnf.cfg; then
+            echo "the dnf task is not enabled in the rpm"; exit 1
+          fi
+      - name: Run the dnf extension against the real dnf
+        run: |
+          set -e
+          # "dnf install" above has just filled the system cache; without
+          # a Xymon environment the extension prints its messages.
+          sh /usr/local/xymon/client/ext/dnf.sh > /tmp/dnf.out
+          head -n 40 /tmp/dnf.out
+          head -n 1 /tmp/dnf.out | grep -Eq '^status\+30 [^ ]+\.dnf (green|yellow|red) '
+          grep -q '^data [^ ]+\.dnf$' /tmp/dnf.out
+          grep -q '^updates : [0-9]+$' /tmp/dnf.out
 
   opkg:
     name: build .ipk (OpenWrt/TurrisOS)

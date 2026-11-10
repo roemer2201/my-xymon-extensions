@@ -1560,6 +1560,350 @@ expect "$out" 'opkg not found' "missing opkg hint present"
 unset OPKG_CFG FAKEOPKG_LOG
 
 # ----------------------------------------------------------------------
+echo "--- dnf ---"
+# Fixtures: "updates" is trimmed from a Rocky Linux 10 host that was
+# months behind (dnf 4.20), "unknown" was captured from dnf 4.20 against
+# a hand-made repository; the others are the same formats cut down to
+# one case each. fakednf refuses every call without -C, so a passing
+# test also proves that nothing would have been downloaded.
+export FAKEDNF="$TESTDIR/dnf/fakednf"
+export FAKEDNF_CACHE="$TMP/dnf-cache"
+export FAKEDNF_LOG="$TMP/dnf-calls"
+export FAKEDNF_OSRELEASE="$TESTDIR/dnf/os-release"
+export DNF_CFG="$TESTDIR/dnf/dnf_test.cfg"
+unset DNF_COLUMN DNF_MAXAGE DNF_TIMEOUT DNF_LIFETIME DNF_UPDATES_COLOR \
+    DNF_SEC_CRITICAL_COLOR DNF_SEC_IMPORTANT_COLOR DNF_SEC_MODERATE_COLOR \
+    DNF_SEC_LOW_COLOR DNF_SEC_UNKNOWN_COLOR DNF_REBOOT_COLOR DNF_SHOW_CVES \
+    FAKEDNF_VERSION 2>/dev/null || true
+
+# dnf_cache <scenario> -- a fresh fake system cache: one directory per
+# repository of the scenario, named like libdnf names them
+dnf_cache() {
+    rm -rf "$FAKEDNF_CACHE"
+    mkdir -p "$FAKEDNF_CACHE"
+    awk 'NR > 1 { print $1 }' "$TESTDIR/dnf/data/$1/repolist.out" > "$TMP/dnf-repoids"
+    while read -r dc_id; do
+        mkdir -p "$FAKEDNF_CACHE/$dc_id-0123456789abcdef/repodata"
+        : > "$FAKEDNF_CACHE/$dc_id-0123456789abcdef/repodata/repomd.xml"
+        : > "$FAKEDNF_CACHE/$dc_id-0123456789abcdef/repodata/primary.xml.gz"
+    done < "$TMP/dnf-repoids"
+}
+# dnf_run <scenario> [VAR=value ...] -- run dnf.sh against a scenario
+dnf_run() {
+    dr_data="$TESTDIR/dnf/data/$1"
+    [ -d "$1" ] && dr_data=$1
+    shift
+    : > "$FAKEDNF_LOG"
+    # shellcheck disable=SC2086  # TESTSH may be multi-word ("busybox sh")
+    env FAKEDNF_DATA="$dr_data" "$@" $TESTSH "$REPO/extensions/dnf/dnf.sh"
+}
+# dnf_status <output> -> the status message only, without the "data"
+# message that follows it
+dnf_status() {
+    printf '%s\n' "$1" | awk '/^data / { exit } { print }'
+}
+# dnf_line <output> <ERE> -> number of the first line matching
+dnf_line() {
+    printf '%s\n' "$1" | grep -En "$2" | head -n 1 | cut -d: -f1
+}
+
+# --- a host with security and other updates pending --------------------
+dnf_cache updates
+out=$(dnf_run updates)
+rc=$?
+if [ "$rc" -ne 0 ]; then
+    echo "FAIL: dnf.sh exited with $rc"
+    printf '%s\n' "$out"
+    exit 1
+fi
+expect "$out" '^status\+30 testhost\.dnf red .* - dnf: 12 security update\(s\) \(1 critical, 11 important notice\(s\)\), 8 other update\(s\), reboot pending$' \
+    "critical/important security updates report red, summary names them"
+expect "$out" '^Rocky Linux 10\.2 \(Red Quartz\)$' "status names the OS release"
+expect "$out" '^Security updates pending: 12 package\(s\), 19 notice\(s\), 24 CVE\(s\)$' \
+    "overview counts security packages, notices and distinct CVEs"
+expect "$out" '^&red +1 critical security notice\(s\) - 1 package\(s\)$' \
+    "overview: critical notices are red"
+expect "$out" '^&red +11 important security notice\(s\) - 6 package\(s\)$' \
+    "overview: important notices are red"
+expect "$out" '^&yellow +6 moderate security notice\(s\) - 5 package\(s\)$' \
+    "overview: moderate notices are yellow"
+expect "$out" '^&yellow +1 low security notice\(s\) - 0 package\(s\)$' \
+    "overview: a low notice on a package with a worse one still shows"
+expect_not "$out" 'unknown security notice' \
+    "overview: a severity without notices is left out"
+expect "$out" '^&yellow Other updates pending: 8 package\(s\)$' \
+    "overview: other updates are yellow"
+expect "$out" '^&yellow Reboot pending: the running kernel is older' \
+    "overview: dnf's running-kernel check reports a pending reboot"
+expect "$out" '^&green Repository metadata current: 7 enabled, 0\.0 to 0\.0 hour\(s\) old \(limit: 72\)$' \
+    "overview: fresh metadata of all repositories is green"
+
+# The overview has to come first: an alert mail shows the top of the status.
+l_over=$(dnf_line "$out" '^&yellow Reboot pending')
+l_list=$(dnf_line "$out" '^Security updates \(12 package')
+l_repos=$(dnf_line "$out" '^Repositories \(7 enabled\)')
+if [ -n "$l_over" ] && [ -n "$l_list" ] && [ -n "$l_repos" ] &&
+   [ "$l_over" -le 15 ] && [ "$l_over" -lt "$l_list" ] && [ "$l_list" -lt "$l_repos" ]; then
+    echo "ok:   the overview is in the first lines, the package lists follow"
+else
+    echo "FAIL: overview not at the top (overview line ${l_over:-?}, list ${l_list:-?}, repositories ${l_repos:-?})"
+    FAIL=1
+fi
+
+expect "$out" '^&red Critical +ca-certificates\.noarch 2026\.2\.92_v9\.0\.319-100\.3\.el10_2 \(baseos\) - 1 notice\(s\), 1 CVE\(s\): RLSA-2026:88455$' \
+    "security list: package, target version, repository, notices and CVEs"
+expect "$out" '^&red Important +buildah\.x86_64 2:1\.43\.1-7\.el10_2 \(appstream\) - 3 notice\(s\), 4 CVE\(s\): RLSA-2026:63332 RLSA-2026:64777 RLSA-2026:88262$' \
+    "security list: three advisories of one package are joined, CVEs counted once"
+expect "$out" '^&red Important +httpd-filesystem\.noarch 2\.4\.63-13\.el10_2\.8 \(appstream\) - 2 notice\(s\), 3 CVE\(s\): ' \
+    "security list: the worst severity of a package's advisories counts"
+expect "$out" '^&yellow Moderate +perl-Locale-Maketext-Simple\.noarch 1:0\.21-515\.el10_2 \(appstream\) - 1 notice\(s\), 1 CVE\(s\): RLSA-2026:67156$' \
+    "security list: name with dashes and an epoch is split correctly"
+expect "$out" '^&red Important +sudo\.x86_64 1\.9\.17-10\.p2\.el10_2\.7 \(baseos\) - 2 notice' \
+    "security list: a release with dots and letters is split correctly"
+expect "$out" '^&red Important +kernel-core\.x86_64 6\.12\.0-211\.74\.1\.el10_2 \(baseos\) - 2 notice\(s\), 3 CVE' \
+    "security list: kernel-core"
+l_crit=$(dnf_line "$out" '^&red Critical ')
+l_imp=$(dnf_line "$out" '^&red Important ')
+l_mod=$(dnf_line "$out" '^&yellow Moderate ')
+if [ -n "$l_crit" ] && [ -n "$l_imp" ] && [ -n "$l_mod" ] &&
+   [ "$l_crit" -lt "$l_imp" ] && [ "$l_imp" -lt "$l_mod" ]; then
+    echo "ok:   security list is sorted most severe first"
+else
+    echo "FAIL: security list is not sorted by severity"
+    FAIL=1
+fi
+expect "$out" '^    passt\.x86_64 0\^20251210\.gd04c480-7\.el10_2 \(appstream\)$' \
+    "other updates: package, version and repository"
+expect "$out" '^    site-motd\.noarch 1\.5\.0-1\.el10 \(site\)$' \
+    "other updates: package from a local repository without advisories"
+expect "$out" '^    libcurl-devel\.x86_64 ' \
+    "other updates: a subpackage no advisory names is not a security update"
+expect_not "$out" '^    (curl|libcurl|sudo)\.x86_64 ' \
+    "a security update is not repeated among the other updates"
+expect "$out" '^    kernel-core-6\.12\.0-211\.18\.1\.el10_2\.x86_64 is the currently running version$' \
+    "reboot section quotes dnf's kernel lines"
+expect_not "$out" 'CC-BY|RHSA-' \
+    "non-CVE references of the --with-cve list are ignored"
+expect_not "$out" 'CVE-2026-114406' "CVE ids are only counted by default"
+expect "$out" '^&green baseos \(Rocky Linux 10 - BaseOS\): metadata 0\.0 hour\(s\) old$' \
+    "repository list: id, name and metadata age"
+expect "$out" '^&green install_repos_site_el10 \(created by dnf config-manager from file:///install/repos/site/el10\): ' \
+    "repository list: a name with spaces and a URL survives"
+expect "$out" '^data testhost\.dnf$' "data message for the graphs follows"
+expect "$out" '^updates : 20$'   "data: all pending updates"
+expect "$out" '^security : 12$'  "data: packages with security updates"
+expect "$out" '^critical : 1$'   "data: critical notices"
+expect "$out" '^important : 11$' "data: important notices"
+expect "$out" '^moderate : 6$'   "data: moderate notices"
+expect "$out" '^low : 1$'        "data: low notices"
+expect "$out" '^unknown : 0$'    "data: notices without severity"
+expect "$out" '^cves : 24$'      "data: distinct CVEs"
+expect_not "$(ncv_view "$(dnf_status "$out")")" '.' \
+    "no dnf status line outside the skip block reaches the NCV parser"
+calls=$(cat "$FAKEDNF_LOG")
+expect_not "$(printf '%s\n' "$calls" | grep -v '^--version$')" '^[^-]|^-[^C]|^-C[^ ]' \
+    "every dnf query is cache-only (-C)"
+expect "$calls" '^-C -q updateinfo summary --updates --security$' \
+    "dnf updateinfo summary --updates --security is evaluated"
+expect "$calls" '^-C -q updateinfo list --updates --security --with-cve$' \
+    "dnf updateinfo list --updates --security --with-cve is evaluated"
+expect_not "$calls" 'refresh|makecache|upgrade|install' \
+    "nothing is refreshed, downloaded or installed"
+
+# DNF_SHOW_CVES lists the ids below each package
+out=$(dnf_run updates DNF_SHOW_CVES=yes)
+expect "$out" '^        CVE-2026-33810 CVE-2026-33818 CVE-2026-56853 CVE-2025-11395$' \
+    "DNF_SHOW_CVES=yes lists a package's distinct CVE ids"
+
+# Colors are configurable; green keeps a finding without coloring
+out=$(dnf_run updates DNF_SEC_CRITICAL_COLOR=yellow DNF_SEC_IMPORTANT_COLOR=yellow)
+expect "$out" '^status\+30 testhost\.dnf yellow ' \
+    "security severities downgraded to yellow report yellow"
+expect "$out" '^&yellow Critical +ca-certificates' "the package line follows its severity color"
+out=$(dnf_run updates DNF_SEC_CRITICAL_COLOR=green DNF_SEC_IMPORTANT_COLOR=green \
+    DNF_SEC_MODERATE_COLOR=green DNF_SEC_LOW_COLOR=green DNF_UPDATES_COLOR=green \
+    DNF_REBOOT_COLOR=green)
+expect "$out" '^status\+30 testhost\.dnf green ' \
+    "all findings set to green: the column stays green"
+expect "$out" '^&green Reboot pending' "a green finding is still reported"
+out=$(dnf_run updates DNF_SEC_CRITICAL_COLOR=purple DNF_SEC_IMPORTANT_COLOR=yellow)
+expect "$out" '^status\+30 testhost\.dnf red ' \
+    "an invalid color falls back to the default"
+
+# The reboot check can be switched off
+out=$(dnf_run updates DNF_REBOOT_COLOR=off)
+expect_not "$out" '[Rr]eboot' "DNF_REBOOT_COLOR=off drops the reboot check"
+out=$(dnf_run updates DNF_REBOOT_COLOR=red DNF_SEC_CRITICAL_COLOR=yellow \
+    DNF_SEC_IMPORTANT_COLOR=yellow)
+expect "$out" '^status\+30 testhost\.dnf red ' "DNF_REBOOT_COLOR=red is honored"
+
+# Column name and status lifetime
+out=$(dnf_run updates DNF_COLUMN=pkg DNF_LIFETIME=120)
+expect "$out" '^status\+120 testhost\.pkg red ' "DNF_COLUMN and DNF_LIFETIME are honored"
+expect "$out" '^data testhost\.pkg$' "the data message follows DNF_COLUMN"
+out=$(dnf_run updates DNF_LIFETIME=soon)
+expect "$out" '^status\+30 testhost\.dnf ' "an invalid DNF_LIFETIME falls back to 30"
+
+# --- nothing pending ---------------------------------------------------
+dnf_cache clean
+out=$(dnf_run clean)
+expect "$out" '^status\+30 testhost\.dnf green .* - dnf: packages up to date$' \
+    "no pending update reports green"
+expect "$out" '^&green No security update pending$' "green overview line for security"
+expect "$out" '^&green No other update pending$' "green overview line for other updates"
+expect "$out" '^updates : 0$' "data: zero updates are still reported"
+expect "$out" '^cves : 0$' "data: the set of values is complete without updates"
+expect_not "$(cat "$FAKEDNF_LOG")" 'updateinfo' \
+    "without updates the advisory queries are skipped"
+
+# --- stale and missing metadata ---------------------------------------
+# An old cache: nobody refreshes the metadata any more.
+touch -t 202001010000 "$FAKEDNF_CACHE"/baseos-0123456789abcdef/repodata/*
+# A fresh cache of ANOTHER repository whose id starts the same way must
+# not be mistaken for it.
+mkdir -p "$FAKEDNF_CACHE/baseos-debuginfo-0123456789abcdef/repodata"
+: > "$FAKEDNF_CACHE/baseos-debuginfo-0123456789abcdef/repodata/primary.xml.gz"
+out=$(dnf_run clean)
+expect "$out" '^status\+30 testhost\.dnf yellow .* - dnf: packages up to date, 1 repository problem\(s\)$' \
+    "stale repository metadata reports yellow"
+expect "$out" '^&yellow Repository baseos: metadata is [0-9]+\.[0-9] hour\(s\) old \(limit: 72\) - newer updates are not seen$' \
+    "overview names the stale repository and its age"
+expect "$out" '^&green appstream \(Rocky Linux 10 - AppStream\): metadata 0\.0 hour' \
+    "the other repository stays green"
+expect "$out" '^updates : 0$' "stale metadata still delivers the values"
+# Only the primary metadata tells when a repository was refreshed: the
+# file lists are downloaded on demand, long after the last refresh.
+: > "$FAKEDNF_CACHE/baseos-0123456789abcdef/repodata/filelists.xml.gz"
+out=$(dnf_run clean)
+expect "$out" '^&yellow Repository baseos: metadata is [0-9]+\.[0-9] hour' \
+    "a file downloaded on demand does not make a stale repository fresh"
+out=$(dnf_run clean DNF_MAXAGE=0)
+expect "$out" '^status\+30 testhost\.dnf green ' "DNF_MAXAGE=0 disables the age check"
+expect "$out" 'age check disabled' "status says that the age check is off"
+out=$(dnf_run clean DNF_MAXAGE=9999999)
+expect "$out" '^status\+30 testhost\.dnf green ' "a larger DNF_MAXAGE accepts the old cache"
+# A repository whose URL changed leaves its old cache directory behind;
+# the fresh one counts.
+mkdir -p "$FAKEDNF_CACHE/baseos-fedcba9876543210/repodata"
+: > "$FAKEDNF_CACHE/baseos-fedcba9876543210/repodata/primary.xml.gz"
+out=$(dnf_run clean)
+expect "$out" '^status\+30 testhost\.dnf green ' \
+    "the freshest cache directory of a repository counts"
+
+# No cache directory at all, but dnf carries on (skip_if_unavailable)
+dnf_cache clean
+rm -rf "$FAKEDNF_CACHE/baseos-0123456789abcdef"
+out=$(dnf_run clean)
+expect "$out" '^status\+30 testhost\.dnf yellow ' "a repository without cache reports yellow"
+expect "$out" '^&yellow Repository baseos: no cached metadata in .* - its updates are unknown$' \
+    "overview names the repository without cache"
+
+# No cache and dnf refuses to work: status unknown, no values
+out=$(dnf_run nocache)
+expect "$out" '^status\+30 testhost\.dnf yellow .* - dnf: update status unknown$' \
+    "a failing dnf reports yellow, status unknown"
+expect "$out" "Cache-only enabled but no cache for 'baseos'" "dnf's own error message is shown"
+expect "$out" 'dnf makecache' "the hint names the fix"
+expect "$out" '^&yellow Repository baseos: no cached metadata' \
+    "the failure report names the repository without cache"
+expect_not "$out" '^data ' "no data message when the status is unknown"
+expect_not "$(ncv_view "$out")" '.' "the failure report is hidden from the NCV parser"
+
+dnf_cache timeout
+out=$(dnf_run timeout)
+expect "$out" 'did not finish within 120 second' "a dnf call killed by timeout(1) is reported as such"
+
+# --- no enabled repository ---------------------------------------------
+out=$(dnf_run norepos)
+expect "$out" '^status\+30 testhost\.dnf yellow .* - dnf: no enabled package repository$' \
+    "no enabled repository reports yellow"
+expect "$out" '^&yellow No package repository is enabled' "the status explains it"
+expect_not "$out" '^data ' "no data message without repositories"
+expect_not "$(cat "$FAKEDNF_LOG")" 'check-update' "without repositories nothing else is queried"
+
+# --- output formats ----------------------------------------------------
+# Old dnf versions wrap long lines. "Obsoleting Packages" lists pairs:
+# the replacing package is an update, the installed one it replaces is not.
+dnf_cache wrapped
+out=$(dnf_run wrapped)
+expect "$out" '^    python3-a-very-long-package-name-that-does-not-fit\.noarch 3\.12\.15-1\.el10_2\.with\.a\.very\.long\.release\.tag \(appstream\)$' \
+    "a wrapped check-update line is put together again"
+expect "$out" '^    grub2-tools-minimal\.x86_64 1:2\.12-30\.el10_2 \(baseos\)$' \
+    "a package that obsoletes an installed one is an update"
+expect_not "$out" '@System|tzdata-java|grub2-tools\.x86_64' \
+    "the installed package it replaces is not listed"
+expect "$out" '^updates : 4$' \
+    "wrapped output: four updates, one listed in both sections counted once"
+expect "$out" '^status\+30 testhost\.dnf yellow ' "updates without advisories report yellow"
+
+# Real dnf 4.20 output, with a security advisory without severity (EPEL)
+dnf_cache unknown
+out=$(dnf_run unknown)
+expect "$out" '^status\+30 testhost\.dnf red ' "captured dnf 4.20 output: red"
+expect "$out" '^&yellow +1 unknown security notice\(s\) - 1 package\(s\)$' \
+    "an advisory without severity is counted as unknown"
+expect "$out" '^&yellow Unknown +gawk\.x86_64 5\.3\.0-6\.el10_2\.1 \(baseos\) - 1 notice\(s\), 0 CVE\(s\): FEDORA-EPEL-2026-0a1b2c3d4e$' \
+    "an advisory id of another length and without CVE is listed"
+expect "$out" '^&red Important +python3-libs\.x86_64 3\.12\.15-1\.el10_2\.with\.a\.very\.long\.release\.tag\.that\.forces\.wrapping \(baseos\) - 1 notice\(s\), 2 CVE' \
+    "a very long release tag is split correctly"
+expect "$out" '^    sed\.x86_64 4\.9-6\.el10_2 \(baseos\)$' \
+    "a bugfix advisory does not make a security update"
+expect "$out" '^security : 8$' "captured output: security packages"
+expect "$out" '^unknown : 1$'  "captured output: unknown notices"
+expect "$out" '^cves : 10$'    "captured output: distinct CVEs"
+
+# An advisory for a package check-update does not offer (excluded,
+# version locked) is still a known security issue.
+dnf_cache locked
+out=$(dnf_run locked)
+expect "$out" '^&red Important +sudo\.x86_64 not offered by check-update - 1 notice\(s\), 1 CVE\(s\): RLSA-2026:75579$' \
+    "a security advisory for a package without offered update is listed"
+expect "$out" '^security : 1$' "it counts as a security update"
+expect "$out" '^updates : 1$' "it is not counted among the offered updates"
+
+# A host that is very far behind: the report is cut, the overview stays,
+# and the status fits into one command line argument (128 KiB on Linux).
+mkdir -p "$TMP/dnf-huge"
+cp "$TESTDIR/dnf/data/clean/repolist.out" "$TMP/dnf-huge/repolist.out"
+awk 'BEGIN { for (i = 1; i <= 3000; i++)
+    printf "package-with-a-rather-long-name-%04d.x86_64  1.0-%d.el10_2  baseos\n", i, i }' \
+    > "$TMP/dnf-huge/check.out"
+echo 100 > "$TMP/dnf-huge/check.rc"
+dnf_cache clean
+out=$(dnf_run "$TMP/dnf-huge")
+expect "$out" '^&yellow Other updates pending: 3000 package\(s\)$' "3000 updates: overview is complete"
+expect "$out" '^\[report cut here: it exceeds 100000 bytes' "3000 updates: the list is cut"
+expect "$out" '^updates : 3000$' "3000 updates: the values are complete"
+dnf_bytes=$(dnf_status "$out" | wc -c | tr -d ' ')
+if [ "$dnf_bytes" -lt 131072 ]; then
+    echo "ok:   the cut status fits into one argument ($dnf_bytes bytes)"
+else
+    echo "FAIL: status is $dnf_bytes bytes, more than one argument may hold"
+    FAIL=1
+fi
+
+# --- not applicable ----------------------------------------------------
+out=$(dnf_run clean FAKEDNF_VERSION="dnf5 version 5.2.6.2")
+expect "$out" '^status\+30 testhost\.dnf clear ' "dnf5 reports clear"
+expect "$out" 'dnf5 is not supported' "dnf5 hint present"
+expect_not "$(cat "$FAKEDNF_LOG")" '^-C' "dnf5 is not queried any further"
+
+out=$(dnf_run clean DNF_CFG="$TESTDIR/dnf/dnf_test_nodnf.cfg")
+expect "$out" '^status\+30 testhost\.dnf clear ' "missing dnf reports clear, not red"
+expect "$out" 'dnf not found' "missing dnf hint present"
+
+dnf_left=""
+for dnf_dir in "$TMP"/dnf.??????; do
+    [ -e "$dnf_dir" ] && dnf_left="$dnf_left $dnf_dir"
+done
+if [ -z "$dnf_left" ]; then
+    echo "ok:   dnf.sh cleans up its work directory"
+else
+    echo "FAIL: dnf.sh left a work directory behind in XYMONTMP:$dnf_left"
+    FAIL=1
+fi
+
+# ----------------------------------------------------------------------
 echo "--- wifi ---"
 export FAKEIW="$TESTDIR/wifi/fakeiw"
 export FAKEUBUS="$TESTDIR/wifi/fakeubus"
@@ -4449,7 +4793,7 @@ fi
 # list too), so a snippet there runs twice on a combined host - that is
 # what this guards against.
 # temp is missing on purpose - see the collision check further down.
-for snippet in smart la memory disk opkg wifi if_link lxc claude systemd bcache btrfs procs; do
+for snippet in smart la memory disk opkg wifi if_link lxc claude systemd bcache btrfs procs dnf; do
     grep -qx "/etc/xymon/clientlaunch.d/$snippet.cfg" "$TMP/client-paths" || {
         echo "FAIL: $snippet snippet is not staged into clientlaunch.d"
         FAIL=1
@@ -4805,6 +5149,94 @@ out=$(rpm_upgrade)
 expect "$out" 'WARNING: .*la\.cfg' "rpm: both files edited is reported"
 [ "$(cat "$RE/my-xymon-extensions/la.cfg")" = mine ] || {
     echo "FAIL: rpm: edited new config overwritten"; FAIL=1; }
+
+# rpm post: the launch snippets are dead weight until clientlaunch.cfg
+# reads the drop-in directory - and a Xymon client compiled by hand
+# ships a clientlaunch.cfg without that line. The scriptlet must say so
+# (it never edits the file) and stay quiet once the line is there.
+scriptlet post "$TMP/rpm-post"
+rm -rf "$RPMROOT"; mkdir -p "$RE"
+# shellcheck disable=SC2016  # the literal text of a clientlaunch.cfg
+printf '[client]\n\tCMD $XYMONCLIENTHOME/bin/xymonclient.sh\n\tINTERVAL 5m\n' \
+    > "$RE/clientlaunch.cfg"
+cp "$RE/clientlaunch.cfg" "$TMP/clientlaunch.before"
+out=$($TESTSH "$TMP/rpm-post" 1)
+expect "$out" '^ TODO: clientlaunch\.cfg does not read the drop-in directory' \
+    "rpm post: a clientlaunch.cfg without the directory line is reported"
+expect "$out" "^   directory $RE/clientlaunch\\.d\$" \
+    "rpm post: prints the line to add, with the real path"
+if cmp -s "$RE/clientlaunch.cfg" "$TMP/clientlaunch.before"; then
+    echo "ok:   rpm post: clientlaunch.cfg itself is left alone"
+else
+    echo "FAIL: rpm post edited clientlaunch.cfg"
+    FAIL=1
+fi
+echo "directory $RE/clientlaunch.d" >> "$RE/clientlaunch.cfg"
+out=$($TESTSH "$TMP/rpm-post" 1)
+expect_not "$out" 'TODO' "rpm post: quiet once clientlaunch.cfg reads the directory"
+expect "$out" 'The "dnf" extension is active out of the box' \
+    "rpm post: announces the dnf extension"
+rm -f "$RE/clientlaunch.cfg"
+out=$($TESTSH "$TMP/rpm-post" 1)
+expect_not "$out" 'TODO' "rpm post: no claim about a clientlaunch.cfg that does not exist"
+
+# dnf: the shared snippet ships disabled (deb and FreeBSD hosts have no
+# dnf), and the rpm - the one package whose hosts all have dnf - enables
+# it at build time. Run that step of the spec against the staged file.
+DNFSNIPPET="$REPO/packaging/common/clientlaunch.d/dnf.cfg"
+if grep -q '^    DISABLED$' "$DNFSNIPPET"; then
+    echo "ok:   the shared dnf snippet ships disabled"
+else
+    echo "FAIL: packaging/common/clientlaunch.d/dnf.cfg is not disabled"
+    FAIL=1
+fi
+mkdir -p "$TMP/rpm-buildroot$RPMROOT/client/etc/clientlaunch.d"
+cp "$DNFSNIPPET" "$TMP/rpm-buildroot$RPMROOT/client/etc/clientlaunch.d/dnf.cfg"
+awk '/^%install/ { on = 1; next } /^%/ { on = 0 } on && /^dnfsnippet=/ { take = 1 } on && take' \
+    "$SPEC_FILE" | sed -e "s|%{buildroot}|$TMP/rpm-buildroot|g" \
+        -e "s|%{xymonhome}|$RPMROOT/client|g" > "$TMP/rpm-install-dnf"
+if $TESTSH -e "$TMP/rpm-install-dnf" &&
+   grep -q '^\[dnf\]$' "$TMP/rpm-buildroot$RPMROOT/client/etc/clientlaunch.d/dnf.cfg" &&
+   ! grep -q 'DISABLED$' "$TMP/rpm-buildroot$RPMROOT/client/etc/clientlaunch.d/dnf.cfg"; then
+    echo "ok:   the rpm build enables the dnf task"
+else
+    echo "FAIL: the rpm build does not enable the dnf task"
+    FAIL=1
+fi
+# A second run finds no DISABLED line and has to fail the build rather
+# than ship whatever is there.
+if $TESTSH -e "$TMP/rpm-install-dnf" 2>/dev/null; then
+    echo "FAIL: the rpm build step accepts a snippet without DISABLED line"
+    FAIL=1
+else
+    echo "ok:   the rpm build fails if the snippet has no DISABLED line"
+fi
+
+# A Xymon client compiled by hand is in no rpm database: the dependency
+# on the client package must be optional, and build.sh must reject a
+# value it does not understand before it builds anything.
+if awk '/^%if %\{with clientdep\}/ { guarded = 1; next }
+        /^%endif/ { guarded = 0 }
+        /^Requires:.*xymonclientpkg/ && !guarded { bad = 1 }
+        END { exit bad }' "$SPEC_FILE" &&
+   grep -q '^%bcond_without clientdep$' "$SPEC_FILE"; then
+    echo "ok:   rpm: the xymon-client dependency can be built out"
+else
+    echo "FAIL: rpm: Requires on the client package is not guarded by clientdep"
+    FAIL=1
+fi
+out=$(RPM_CLIENTDEP=maybe $TESTSH "$REPO/packaging/rpm/build.sh" 2>&1)
+rc=$?
+expect "$out" 'RPM_CLIENTDEP must be yes or no' "rpm build: an invalid RPM_CLIENTDEP is rejected"
+out2=$(RPM_XYMONHOME=usr/local/xymon $TESTSH "$REPO/packaging/rpm/build.sh" 2>&1)
+rc2=$?
+expect "$out2" 'RPM_XYMONHOME must be an absolute path' "rpm build: a relative RPM_XYMONHOME is rejected"
+if [ "$rc" -ne 0 ] && [ "$rc2" -ne 0 ]; then
+    echo "ok:   rpm build: both stop with an error"
+else
+    echo "FAIL: rpm build: invalid options did not stop the build"
+    FAIL=1
+fi
 
 # dpkg-maintscript-helper needs its calls in preinst, postinst AND postrm;
 # a script left out of the build silently skips half of every migration.

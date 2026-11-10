@@ -1,0 +1,58 @@
+#!/bin/sh
+# fakednf - dnf stand-in for the unit tests (tests/run.sh).
+#
+# Controlled through the environment:
+#   FAKEDNF_DATA     directory with the canned output of one scenario
+#                    (tests/dnf/data/<scenario>). Per command <name>:
+#                      <name>.out  stdout (missing: no output)
+#                      <name>.err  stderr (missing: no output)
+#                      <name>.rc   exit code (missing: 0)
+#                    with <name> one of
+#                      repolist  repolist --enabled
+#                      check     check-update
+#                      summary   updateinfo summary --updates --security
+#                      list      updateinfo list --updates --security
+#                      cve       updateinfo list --updates --security --with-cve
+#   FAKEDNF_LOG      append each command line to this file (lets the
+#                    tests assert which commands were run)
+#   FAKEDNF_VERSION  first line of "dnf --version" (default 4.20.0)
+#
+# Every command except --version must be called with -C: the extension
+# promises never to download anything, and a call without -C would do
+# exactly that on a real host. Such a call fails loudly here.
+set -u
+
+if [ -n "${FAKEDNF_LOG:-}" ]; then
+    printf '%s\n' "$*" >> "$FAKEDNF_LOG"
+fi
+
+if [ "${1:-}" = "--version" ]; then
+    printf '%s\n' "${FAKEDNF_VERSION:-4.20.0}"
+    exit 0
+fi
+
+if [ "${1:-}" != "-C" ]; then
+    echo "fakednf: called without -C (would download metadata): $*" >&2
+    exit 98
+fi
+shift
+[ "${1:-}" = "-q" ] && shift
+
+case "$*" in
+    "repolist --enabled") name=repolist ;;
+    "check-update") name=check ;;
+    "updateinfo summary --updates --security") name=summary ;;
+    "updateinfo list --updates --security") name=list ;;
+    "updateinfo list --updates --security --with-cve") name=cve ;;
+    *)
+        echo "fakednf: unexpected invocation: $*" >&2
+        exit 99
+        ;;
+esac
+
+data="${FAKEDNF_DATA:?FAKEDNF_DATA must be exported by the test runner}"
+[ -f "$data/$name.err" ] && cat "$data/$name.err" >&2
+[ -f "$data/$name.out" ] && cat "$data/$name.out"
+rc=0
+[ -f "$data/$name.rc" ] && rc=$(cat "$data/$name.rc")
+exit "$rc"

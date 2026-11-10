@@ -42,6 +42,13 @@ hosts.cfg). The server cuts the command out of every ps line at the
 offset of "CMD" (FreeBSD: "COMMAND") in the first line, so BusyBox ps
 is rewritten into fixed columns; PROCS_MODE="local" mirrors
 unix_procs_report() and reports a normal status.
+dnf is the one client extension whose launch snippet differs per
+package: the shared snippet carries a DISABLED line (deb and FreeBSD
+hosts have no dnf) and the rpm spec removes it in %install (pinned).
+Every dnf call uses -C, so the extension reads root's system cache and
+never downloads metadata; tests/dnf/fakednf refuses any other call. The
+column is not called yum because hobbit-plugins owns
+clientlaunch.d/yum.cfg.
 
 ## Hard portability rules
 

@@ -63,6 +63,7 @@ my-xymon-extensions/
 | [systemd](extensions/systemd/) | `systemd` | Health of the systemd service manager: system state, every failed unit of any type, optional required units, and automatic service restarts read from the `NRestarts` counter — a crash-looping service is "active" most of the time and never "failed" without a start limit, so the counter is the only place it shows; a restart keeps the column yellow for 30 minutes (configurable), RRD graph of failed units and restarts; active by default, no root rights needed, `clear` on hosts not booted with systemd |
 | [bcache](extensions/bcache/) | `bcache` | Linux bcache from sysfs: every cache set, cache device and backing device — red when a backing device is inconsistent, not running or has lost its cache device (found through the backing devices themselves, since such a device never gets a `/dev/bcacheN`), when a device seen before has vanished, or when the normal writeback cutoff is exceeded; RRD graphs of hit ratio, requests, dirty data, cache usage and throughput named after the device UUIDs, because `bcacheN` and `sdX` change between boots; no root rights, ships disabled |
 | [btrfs](extensions/btrfs/) | `btrfs` | Every mounted btrfs filesystem from sysfs: missing or read-only devices, degraded mounts, the device error counters (yellow while above zero, red when they grow), unallocated space and metadata usage once no new metadata chunk fits — the btrfs ENOSPC that `df` does not show, with a `balance` hint — and the age of the last scrub; its result as root (standalone runner) or via a sudo rule. Throughput, IOPS, busiest device and transaction commits are graphed per filesystem; active by default, no root rights needed, `clear` without btrfs |
+| [dnf](extensions/dnf/) | `dnf` | Pending package updates on dnf-based systems (Rocky Linux, RHEL, AlmaLinux; dnf 4) - the counterpart of the `apt` check from hobbit-plugins: security updates by the severity of their advisories (`dnf updateinfo`: critical/important red, the rest yellow), other updates, no enabled repository, repository metadata nobody refreshes any more and a pending kernel reboot; the status starts with an overview for alert mails, and two RRD graphs show pending updates and advisories. Reads dnf's system cache only (`dnf -C`): no downloads, no root rights; enabled in the rpm package, disabled elsewhere |
 | [xymonext](extensions/xymonext/) | `xymonext` | What the extensions above cost this host: wall clock time, CPU time of the whole process tree and bytes sent to the server, measured on every run and graphed per test — thresholds on the runtime catch a hanging test; wraps the other extensions instead of being scheduled itself |
 
 ## Server-side setup: drop-in directories
@@ -248,6 +249,15 @@ make test       # Run shellcheck + unit tests
 Each package installs the extension scripts into the platform's Xymon
 client `ext/` directory and drops a matching `clientlaunch.d` snippet, so an
 extension is active after installation without manual editing.
+
+For a Xymon client that was compiled by hand on Rocky/EL (no
+`xymon-client` rpm, e.g. below `/usr/local/xymon/client`):
+
+```sh
+RPM_XYMONHOME=/usr/local/xymon/client RPM_CLIENTDEP=no make rpm
+```
+
+See [packaging/README.md](packaging/README.md) for the details.
 
 ## Testing
 
