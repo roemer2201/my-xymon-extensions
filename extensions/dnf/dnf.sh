@@ -24,8 +24,9 @@
 #   2. dnf -C --version               -> dnf5 is not supported: clear
 #   3. dnf -C repolist --enabled      -> enabled repositories
 #      (none: report yellow)
-#   4. mtime of the cached metadata per repository, straight from the
-#      cache directory -> age, compared with DNF_MAXAGE
+#   4. mtime of the cached primary metadata per repository, straight
+#      from the cache directory -> age, compared with DNF_MAXAGE; a
+#      repository without it makes the result incomplete
 #   5. dnf -C check-update            -> packages with updates, and
 #      dnf's own "Security: kernel ..." lines (reboot pending)
 #   6. only if there are updates:
@@ -52,10 +53,9 @@
 # the mtime of its cached primary metadata and touches that file - and
 # only that one - on every successful refresh, also when the metadata
 # did not change (verified with dnf 4.20 on Rocky Linux 10). That is
-# the value behind
-# dnf's "Last metadata expiration check" line - which only reports the
-# freshest repository, so a single repository that stopped refreshing
-# would stay hidden behind it.
+# the value behind dnf's "Last metadata expiration check" line - which
+# only reports the freshest repository, so a single repository that
+# stopped refreshing would stay hidden behind it.
 #
 # Hosts without dnf (Debian/Ubuntu, FreeBSD, OpenWrt) report "clear".
 #

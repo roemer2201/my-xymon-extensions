@@ -346,9 +346,12 @@ exit 0
   in /var/cache/dnf and downloads nothing, so it needs no root rights
   and no network access - root keeps the cache current
   (dnf-makecache.timer), and the age check is what notices when that
-  stops. Eight values go to the server for two RRD graphs (drop-in
-  files in the documentation directory). The task is shipped disabled
-  in the other packages and enabled at build time in this one
+  stops. An enabled repository without cached primary metadata makes
+  the result incomplete: what is known is still reported, but marked
+  as partial. Eight values go to the server for two RRD graphs (drop-in
+  files in the documentation directory), none while the result is
+  unknown or incomplete. The task is shipped disabled in the other
+  packages and enabled at build time in this one
 - packaging: the dependency on the xymon-client rpm can be left out for
   a Xymon client compiled by hand, which no rpm database knows:
   "--without clientdep", or RPM_CLIENTDEP=no for build.sh and

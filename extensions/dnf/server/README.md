@@ -66,9 +66,12 @@ next report, check that the RRD file appears:
 ls $XYMONVAR/rrd/<host>/dnf.rrd
 ```
 
-The client sends all eight values in every message, or none at all
-while the update status is unknown: plain NCV creates the RRD file
-with the datasets of the first message it sees.
+The client sends all eight values in every message, or none at all:
+plain NCV creates the RRD file with the datasets of the first message
+it sees. It sends none while the update status is unknown or
+incomplete (a dnf command failed, or an enabled repository has no
+cached primary metadata), so a gap in the graphs means "not known",
+not "zero".
 
 The graphs need a value at least every 10 minutes (Xymon's RRD
 heartbeat is 600 seconds); the client task therefore runs every 5

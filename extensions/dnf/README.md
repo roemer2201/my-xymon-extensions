@@ -23,19 +23,22 @@ one status column plus eight values for RRD graphs.
 | Check | Source | Default color |
 |-------|--------|---------------|
 | no enabled package repository | `dnf -C repolist --enabled` | `yellow` |
-| repository metadata missing or older than `DNF_MAXAGE` hours | mtime of the files in `/var/cache/dnf/<repo>-<hash>/repodata/` | `yellow` |
+| repository metadata missing or older than `DNF_MAXAGE` hours | mtime of the cached primary metadata in `/var/cache/dnf/<repo>-<hash>/repodata/` | `yellow`; missing: results marked incomplete |
 | security updates | `dnf -C updateinfo summary --updates --security`, `dnf -C updateinfo list --updates --security [--with-cve]` | critical, important: `red`; moderate, low, unknown: `yellow` |
 | other updates | `dnf -C check-update`, minus the packages above | `yellow` |
 | reboot pending | dnf's own `Security: kernel-core-… is the currently running version` lines | `yellow` |
-| a dnf command fails or times out | exit code | `yellow`, "update status unknown" |
+| a dnf command fails or times out, or its output cannot be read | exit code, package rows | `yellow`, "update status unknown" |
 | dnf not installed, or dnf5 | — | `clear` |
 
 Every color can be changed in [dnf.cfg](dnf.cfg); `green` keeps a
 finding in the report without coloring the column, and
 `DNF_REBOOT_COLOR="off"` removes the reboot check altogether.
 
-If DNF returns a security advisory for a package that `check-update`
-did not list, the advisory still appears, marked "not offered by
+A package excluded in `dnf.conf` (`excludepkgs`) is invisible here:
+dnf then lists neither its update nor its security advisories
+(observed with dnf 4.20), so nothing about it is pending. If DNF
+returns a security advisory for a package that `check-update` did not
+list, the advisory still appears, marked "not offered by
 check-update". An update listed by `check-update` is a candidate;
 DNF can still rule it out when resolving an upgrade transaction.
 
@@ -165,7 +168,10 @@ test actually costs on a host.
 ## Graphing (Xymon server setup)
 
 Together with the status, the extension sends a `data` message with
-eight values (none when the update status is unknown):
+eight values. It sends none while the update status is unknown or
+incomplete - a dnf command failed, or an enabled repository has no
+cached primary metadata - so the graphs show a gap instead of counts
+that leave a repository out:
 
 ```
 updates : 20
