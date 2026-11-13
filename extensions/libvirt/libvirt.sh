@@ -1,14 +1,15 @@
 #!/bin/sh
 #
-# Report QEMU/KVM guest states in the Xymon libvirt column.
+# Report QEMU/KVM guest states and performance metrics to Xymon.
 #
 # Program flow:
 #   1. Load the list of guests that must be running and the query timeout.
 #   2. Read the numeric states of all guests over a read-only connection.
-#   3. Compare the states with the required guest list and send one status.
+#   3. Compare states with the required guest list and send one status.
+#   4. Compare counters with the last snapshot and send RRD updates.
 #
 # Usage: libvirt.sh [-h|--help]
-# Version: 1.0.0 (2026-11-13)
+# Version: 1.1.0 (2026-11-13)
 
 set -u
 
@@ -22,7 +23,8 @@ case "${1:-}" in
 Usage: libvirt.sh [-h|--help]
 
 Check local QEMU/KVM guests through the read-only libvirt system socket.
-Print the status to stdout when the Xymon sender is unset.
+Report CPU, QEMU RSS, network and disk I/O for running guests.
+Print the status and any RRD updates to stdout when the Xymon sender is unset.
 
   LIBVIRT_CFG       Config file (default: $XYMONHOME/etc/my-xymon-extensions/libvirt.cfg)
   LIBVIRT_REQUIRED  Space-separated guest names that must be running (default: empty)
@@ -46,7 +48,16 @@ XYMONHOME="${XYMONHOME:-${XYMONCLIENTHOME:-}}"
 XYMONTMP="${XYMONTMP:-${TMPDIR:-/tmp}}"
 MACHINE="${MACHINE:-$(uname -n | tr '.' ',')}"
 
-# send_report COLOR SUMMARY [FILE] uses stdin for potentially long VM lists.
+# Send a complete message via stdin, including large VM lists.
+send_message() {
+    if [ -n "${XYMON:-}" ] && [ -n "${XYMSRV:-}" ]; then
+        "${XYMON}" "${XYMSRV}" @ < "$1"
+    else
+        cat "$1"
+    fi
+}
+
+# send_report COLOR SUMMARY [FILE] formats the libvirt status message.
 send_report() {
     {
         printf 'status %s.libvirt %s %s - %s\n' "${MACHINE}" "$1" "$(date)" "$2"
@@ -55,11 +66,7 @@ send_report() {
             cat "$3"
         fi
     } > "${WORKDIR}/message" || return 1
-    if [ -n "${XYMON:-}" ] && [ -n "${XYMSRV:-}" ]; then
-        "${XYMON}" "${XYMSRV}" @ < "${WORKDIR}/message"
-    else
-        cat "${WORKDIR}/message"
-    fi
+    send_message "${WORKDIR}/message"
 }
 
 # Keep query errors separate from successful output, even on a partial failure.
@@ -112,7 +119,8 @@ if [ "${valid_timeout}" = no ] || ! [ "${LIBVIRT_TIMEOUT}" -gt 0 ] 2>/dev/null; 
 fi
 
 if timeout -k 2 "${LIBVIRT_TIMEOUT}" virsh --readonly --connect qemu:///system \
-        domstats --state --raw </dev/null >"${WORKDIR}/stats" 2>"${WORKDIR}/error"; then
+        domstats --state --raw --cpu-total --balloon --interface --block \
+        </dev/null >"${WORKDIR}/stats" 2>"${WORKDIR}/error"; then
     :
 else
     rc=$?
@@ -159,6 +167,7 @@ if awk '
         next
     }
     /^[[:space:]]+state\.reason=[0-9]+$/ && name != "" { next }
+    /^  (cpu|balloon|net|block)\.[[:alnum:]_.-]+=/ && name != "" { next }
     { invalid = 1 }
     END {
         if (invalid) exit 1
@@ -185,7 +194,131 @@ if awk '
     }' "${WORKDIR}/stats" > "${WORKDIR}/report"; then
     IFS= read -r report < "${WORKDIR}/report" || exit 1
     sed '1d' "${WORKDIR}/report" > "${WORKDIR}/details" || exit 1
-    send_report "${report%% *}" "${report#* }" "${WORKDIR}/details"
+    send_report "${report%% *}" "${report#* }" "${WORKDIR}/details" || exit 1
 else
     send_report red "Unexpected output from virsh domstats"
+    exit "$?"
 fi
+
+# Use an atomic, private snapshot in Xymon's temporary directory. The Linux
+# boot ID prevents rate calculation across a hypervisor reboot.
+state_file="${XYMONTMP}/libvirt.${MACHINE}.state"
+previous="${state_file}"
+[ -r "${previous}" ] || previous=/dev/null
+boot_id=unknown
+if [ -r /proc/sys/kernel/random/boot_id ]; then
+    IFS= read -r boot_id < /proc/sys/kernel/random/boot_id || boot_id=unknown
+fi
+now=$(date +%s) || exit 1
+(
+    umask 077
+    {
+        printf '%s %s\n' "${now}" "${boot_id}"
+        cat "${WORKDIR}/stats"
+    } > "${WORKDIR}/snapshot"
+) || exit 1
+
+# Read only the fields needed for graphs. Derive rates per device before
+# summing, so a reset or topology change cannot appear as a traffic spike.
+if ! awk '
+    BEGIN {
+        for (i = 1; i < 256; i++) byte[sprintf("%c", i)] = i
+    }
+    FNR == 1 {
+        poll = FILENAME == ARGV[1] ? "old" : "new"
+        stamp[poll] = $1
+        boot[poll] = $2
+        next
+    }
+    /^Domain: / {
+        name = substr($0, 10, length($0) - 10)
+        guests[name] = 1
+        next
+    }
+    /^  (state\.state|cpu\.time|balloon\.rss|net\.count|block\.count|net\.[0-9]+\.(name|rx\.bytes|tx\.bytes)|block\.[0-9]+\.(name|path|rd\.bytes|wr\.bytes))=/ {
+        separator = index($0, "=")
+        values[poll, name, substr($0, 3, separator - 3)] = substr($0, separator + 1)
+    }
+    # Keep familiar VM names in the legend and encode other bytes injectively.
+    function graph_id(name,    result, pos, ch) {
+        for (pos = 1; pos <= length(name); pos++) {
+            ch = substr(name, pos, 1)
+            result = result (ch ~ /^[A-Za-z0-9-]$/ ? ch : sprintf("_%02x", byte[ch]))
+        }
+        return result
+    }
+    function number(poll, name, key) {
+        return ((poll, name, key) in values) && values[poll, name, key] ~ /^[0-9]+$/
+    }
+    function running(poll, name) {
+        return ((poll, name, "state.state") in values) && values[poll, name, "state.state"] == 1
+    }
+    function gauge(poll, name, key) {
+        if (!running(poll, name) || !number(poll, name, key)) return "U"
+        return values[poll, name, key]
+    }
+    function devices(poll, name, group, field,    count, n, key) {
+        if (!running(poll, name) || !number(poll, name, group ".count")) return 0
+        count = values[poll, name, group ".count"] + 0
+        for (n = 0; n < count; n++) {
+            key = group "." n
+            if (!number(poll, name, key "." field) || values[poll, name, key ".name"] == "") return 0
+        }
+        return count
+    }
+    function device_rate(name, id, metric, group, field, scale,    count, old_count, i, key, delta, total) {
+        count = devices("new", name, group, field)
+        old_count = devices("old", name, group, field)
+        if (!count && !old_count) return
+        if (!interval_ok || !count || count != old_count) { emit(id, metric, "U"); return }
+        for (i = 0; i < count; i++) {
+            key = group "." i
+            delta = values["new", name, key "." field] - values["old", name, key "." field]
+            if (delta < 0 || values["new", name, key ".name"] != values["old", name, key ".name"] ||
+                (group == "block" && values["new", name, key ".path"] != values["old", name, key ".path"])) {
+                emit(id, metric, "U")
+                return
+            }
+            total += delta
+        }
+        emit(id, metric, sprintf("%.3f", total * scale / elapsed))
+    }
+    function emit(id, metric, value) {
+        printf "[libvirt,%s_%s.rrd]\nDS:lambda:GAUGE:600:0:U %s\n", id, metric, value
+    }
+    END {
+        elapsed = stamp["new"] - stamp["old"]
+        interval_ok = boot["new"] == boot["old"] && elapsed > 0 && elapsed < 600
+        for (name in guests) {
+            id = graph_id(name)
+            if (length(id) > 200) continue
+            current = gauge("new", name, "balloon.rss")
+            previous = gauge("old", name, "balloon.rss")
+            if (current != "U" || previous != "U")
+                emit(id, "rss", current == "U" ? "U" : sprintf("%.3f", current / 1024))
+            current = gauge("new", name, "cpu.time")
+            previous = gauge("old", name, "cpu.time")
+            if (current != "U" || previous != "U") {
+                rate = "U"
+                if (interval_ok && current != "U" && previous != "U" && current + 0 >= previous + 0)
+                    rate = sprintf("%.3f", (current - previous) / elapsed / 10000000)
+                emit(id, "cpu", rate)
+            }
+            device_rate(name, id, "rx", "net", "rx.bytes", 0.008)
+            device_rate(name, id, "tx", "net", "tx.bytes", 0.008)
+            device_rate(name, id, "read", "block", "rd.bytes", 1 / 1048576)
+            device_rate(name, id, "write", "block", "wr.bytes", 1 / 1048576)
+        }
+    }' "${previous}" "${WORKDIR}/snapshot" > "${WORKDIR}/metrics"; then
+    printf '%s\n' 'Cannot calculate libvirt metrics' >&2
+    exit 1
+fi
+
+if [ -s "${WORKDIR}/metrics" ]; then
+    {
+        printf 'data %s.trends\n' "${MACHINE}"
+        cat "${WORKDIR}/metrics"
+    } > "${WORKDIR}/message" || exit 1
+    send_message "${WORKDIR}/message" || exit 1
+fi
+mv -f "${WORKDIR}/snapshot" "${state_file}"

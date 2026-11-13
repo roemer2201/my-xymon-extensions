@@ -5368,6 +5368,63 @@ output=$(LIBVIRT_TIMEOUT=1 libvirt_report timeout)
 expect "${output}" '^status testhost\.libvirt red .*timed out after 1s' 'libvirt: timed-out query is red'
 expect "$(cat "${PKGSTAGE}/etc/clientlaunch.d/libvirt.cfg")" '^[[:space:]]+DISABLED$' 'libvirt: client launch task ships disabled'
 
+# Use two samples one minute apart, then simulate a counter reset and a stop.
+VIRSH_METRICS="${TMP}/libvirt.metrics"
+export VIRSH_METRICS
+cat > "${VIRSH_METRICS}" <<'EOF'
+Domain: 'vm-running'
+  state.state=1
+  cpu.time=60000000000
+  balloon.rss=2048
+  net.count=2
+  net.0.name=vnet1
+  net.0.rx.bytes=1000
+  net.0.tx.bytes=2000
+  net.1.name=vnet2
+  net.1.rx.bytes=3000
+  net.1.tx.bytes=4000
+  block.count=1
+  block.0.name=vda
+  block.0.path=/disk image
+  block.0.rd.bytes=100
+  block.0.wr.bytes=200
+
+Domain: 'vm-diskless'
+  state.state=1
+  balloon.rss=1024
+  block.count=0
+EOF
+output=$(libvirt_report metrics)
+expect "${output}" '^data testhost\.trends$' 'libvirt: metrics go to the native Xymon trends handler'
+libvirt_metric() {
+    printf '%s\n' "$1" | awk -v section="[libvirt,$2.rrd]" '$0 == section { getline; print $2 }'
+}
+expect "$(libvirt_metric "${output}" vm-running_rss)" '^2\.000$' 'libvirt: QEMU RSS is in MiB on the first poll'
+expect "$(libvirt_metric "${output}" vm-running_cpu)" '^U$' 'libvirt: CPU rate is unknown on the first poll'
+expect_not "${output}" '^\[libvirt,vm-diskless_(read|write)\.rrd\]' 'libvirt: no disk series for a VM reporting no block devices'
+{
+    read -r metric_time metric_boot
+    printf '%s %s\n' "$((metric_time - 60))" "${metric_boot}"
+    cat
+} < "${TMP}/libvirt.testhost.state" > "${TMP}/libvirt-older"
+mv "${TMP}/libvirt-older" "${TMP}/libvirt.testhost.state"
+sed -e 's/cpu.time=60000000000/cpu.time=120000000000/' \
+    -e 's/rx.bytes=1000/rx.bytes=601000/' -e 's/rx.bytes=3000/rx.bytes=153000/' \
+    -e 's/tx.bytes=2000/tx.bytes=200/' -e 's/tx.bytes=4000/tx.bytes=604000/' \
+    -e 's/rd.bytes=100/rd.bytes=62914660/' -e 's/wr.bytes=200/wr.bytes=125829320/' \
+    "${VIRSH_METRICS}" > "${TMP}/libvirt-newer"
+mv "${TMP}/libvirt-newer" "${VIRSH_METRICS}"
+output=$(libvirt_report metrics)
+expect_rate "cpu : $(libvirt_metric "${output}" vm-running_cpu)" cpu 100 'libvirt: one fully occupied host core is 100 percent'
+expect_rate "rx : $(libvirt_metric "${output}" vm-running_rx)" rx 100 'libvirt: network RX sums both interfaces in kbit/s'
+expect "$(libvirt_metric "${output}" vm-running_tx)" '^U$' 'libvirt: one reset interface cannot be masked by another growing counter'
+expect_rate "read : $(libvirt_metric "${output}" vm-running_read)" read 1 'libvirt: disk reads are in MiB/s'
+expect_rate "write : $(libvirt_metric "${output}" vm-running_write)" write 2 'libvirt: disk writes are in MiB/s'
+printf "Domain: 'vm-running'\n  state.state=5\n" > "${VIRSH_METRICS}"
+output=$(libvirt_report metrics)
+expect "$(libvirt_metric "${output}" vm-running_rss)" '^U$' 'libvirt: stopped VM marks the old memory series unknown'
+expect "$(libvirt_metric "${output}" vm-running_read)" '^U$' 'libvirt: stopped VM marks old disk rates unknown'
+
 # Cross-extension failure and collision regressions.
 if ! sh "$TESTDIR/review/run.sh"; then FAIL=1; fi
 

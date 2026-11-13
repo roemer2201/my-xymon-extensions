@@ -34,5 +34,9 @@ Guests outside the required list appear in the details in any state. The
 test checks the state reported by libvirt. Guest network reachability and
 services inside the guest can be monitored separately through Xymon.
 
+Running guests also supply CPU utilization, QEMU resident memory and
+network and disk throughput where libvirt exposes the counters. See the
+[server setup](server/README.md) for the graph definitions and units.
+
 [libvirt read-only sockets](https://libvirt.org/daemons.html) ·
 [virsh domstats](https://libvirt.org/manpages/virsh.html#domstats)

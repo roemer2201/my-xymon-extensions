@@ -2,11 +2,12 @@
 # Replay domstats results and require the real read-only invocation.
 set -u
 
-if [ "$#" -ne 6 ] || [ "$*" != "--readonly --connect qemu:///system domstats --state --raw" ]; then
+if [ "$#" -ne 10 ] || [ "$*" != "--readonly --connect qemu:///system domstats --state --raw --cpu-total --balloon --interface --block" ]; then
     printf 'Unexpected virsh arguments: %s\n' "$*" >&2
     exit 2
 fi
 case "${VIRSH_FIXTURE:-normal}" in
+    metrics) cat "${VIRSH_METRICS}"; exit "$?" ;;
     error)
         printf 'error: Failed to connect to <libvirt> socket\n' >&2
         exit 1

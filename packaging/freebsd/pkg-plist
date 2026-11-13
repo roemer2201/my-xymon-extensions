@@ -108,6 +108,9 @@ share/doc/my-xymon-extensions/dnf/server/README.md
 share/doc/my-xymon-extensions/dnf/server/graphs.d/dnf.cfg
 share/doc/my-xymon-extensions/dnf/server/xymonserver.d/dnf.cfg
 share/doc/my-xymon-extensions/libvirt/README.md
+share/doc/my-xymon-extensions/libvirt/server/README.md
+share/doc/my-xymon-extensions/libvirt/server/graphs.d/libvirt.cfg
+share/doc/my-xymon-extensions/libvirt/server/xymonserver.d/libvirt.cfg
 share/doc/my-xymon-extensions/xymonext/README.md
 share/doc/my-xymon-extensions/xymonext/server/README.md
 share/doc/my-xymon-extensions/xymonext/server/graphs.d/xymonext.cfg

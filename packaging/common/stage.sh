@@ -122,7 +122,7 @@ if [ "$DOCDIR" != "-" ]; then
     # rrddefinitions.d directories. Every extension with RRD graphs has
     # them; "disk" uses the server's built-in handler and has none.
     for ext in smart temp la memory opkg wifi \
-        if_link lxc systemd bcache btrfs dnf xymonext; do
+        if_link lxc systemd bcache btrfs dnf libvirt xymonext; do
         mkdir -p "$DESTDIR$DOCDIR/$ext/server" || exit 1
         inst 0644 "extensions/$ext/server/README.md" \
             "$DESTDIR$DOCDIR/$ext/server/README.md" || exit 1
