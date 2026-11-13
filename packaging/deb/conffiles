@@ -27,4 +27,6 @@
 /etc/xymon/clientlaunch.d/procs.cfg
 /etc/xymon/my-xymon-extensions/dnf.cfg
 /etc/xymon/clientlaunch.d/dnf.cfg
+/etc/xymon/my-xymon-extensions/libvirt.cfg
+/etc/xymon/clientlaunch.d/libvirt.cfg
 /etc/xymon/my-xymon-extensions/xymonext.cfg

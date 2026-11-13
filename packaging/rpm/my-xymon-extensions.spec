@@ -158,6 +158,9 @@ chmod 0644 "$dnfsnippet"
 %{xymonhome}/ext/dnf.sh
 %config(noreplace) %{xymonhome}/etc/my-xymon-extensions/dnf.cfg
 %config(noreplace) %{xymonhome}/etc/clientlaunch.d/dnf.cfg
+%{xymonhome}/ext/libvirt.sh
+%config(noreplace) %{xymonhome}/etc/my-xymon-extensions/libvirt.cfg
+%config(noreplace) %{xymonhome}/etc/clientlaunch.d/libvirt.cfg
 %{xymonhome}/ext/xymonext.sh
 %{xymonhome}/ext/xymonext-send.sh
 %config(noreplace) %{xymonhome}/etc/my-xymon-extensions/xymonext.cfg

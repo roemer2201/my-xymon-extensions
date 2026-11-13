@@ -1,0 +1,35 @@
+#!/bin/sh
+# Replay domstats results and require the real read-only invocation.
+set -u
+
+if [ "$#" -ne 6 ] || [ "$*" != "--readonly --connect qemu:///system domstats --state --raw" ]; then
+    printf 'Unexpected virsh arguments: %s\n' "$*" >&2
+    exit 2
+fi
+case "${VIRSH_FIXTURE:-normal}" in
+    error)
+        printf 'error: Failed to connect to <libvirt> socket\n' >&2
+        exit 1
+        ;;
+    timeout) exec sleep 15 ;;
+    empty) exit 0 ;;
+    malformed) printf '%s\n' 'unexpected stdout'; exit 0 ;;
+esac
+
+cat <<'STATS'
+Domain: 'vm-running'
+  state.state=1
+  state.reason=1
+
+Domain: 'vm-stopped'
+  state.state=5
+  state.reason=1
+
+Domain: 'vm-paused'
+  state.state=3
+
+Domain: 'vm-unknown'
+
+Domain: 'vm<&>'
+  state.state=7
+STATS
