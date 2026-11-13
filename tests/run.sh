@@ -4480,9 +4480,11 @@ rm -f "$CFGHOME/etc/la.cfg" "$CFGHOME/etc/my-xymon-extensions/la.cfg"
 out=$(cfg_run)
 expect "$out" 'yellow >= 1\.5' "without any config file the built-in defaults apply"
 
-# Every extension must look in both places.
+# Extensions with legacy configs must look in both places.
 for script in "$REPO"/extensions/*/*.sh; do
     ext=$(basename "$script" .sh)
+    # libvirt has always used the package-specific config directory.
+    [ "$ext" != libvirt ] || continue
     grep -q 'CFGFILE=' "$script" || continue
     if grep -q "etc/my-xymon-extensions/$ext.cfg" "$script" &&
        grep -q "CFGFILE=\"\$XYMONHOME/etc/$ext.cfg\"" "$script"; then
@@ -5031,7 +5033,8 @@ expect_not "$out" '.' "postinst: silent for actions other than configure"
 # move an edited old file in their install scripts (the deb uses
 # mv_conffile). Each script is run here against a fake root.
 echo "--- config migration ---"
-sed -n 's|^/etc/xymon/my-xymon-extensions/\(.*\)\.cfg$|\1|p' "$TMP/client-etc" \
+# libvirt has no pre-0.20.0 config to migrate.
+sed -n '/\/libvirt\.cfg$/d; s|^/etc/xymon/my-xymon-extensions/\(.*\)\.cfg$|\1|p' "$TMP/client-etc" \
     | sort > "$TMP/cfg-names"
 cfglist() { # cfglist FILE - config names of every "for cfg in" loop in FILE
     awk '/for cfg in/ { on = 1; sub(/.*for cfg in/, "") }
@@ -5332,6 +5335,95 @@ else
     echo "FAIL: VERSION says $wantver, newest %changelog entry is ${specver:-none}"
     FAIL=1
 fi
+
+# Replay the libvirt state output through the normal script entry point.
+echo "--- libvirt ---"
+mkdir -p "${TMP}/libvirt-bin"
+ln -s "${TESTDIR}/libvirt/fakevirsh" "${TMP}/libvirt-bin/virsh"
+printf '%s\n' 'LIBVIRT_REQUIRED="vm-running"' > "${TMP}/libvirt.cfg"
+libvirt_report() {
+    # TESTSH can be a shell plus arguments, e.g. "busybox sh".
+    # shellcheck disable=SC2086
+    PATH="${TMP}/libvirt-bin:${PATH}" MACHINE=testhost XYMON='' XYMSRV='' \
+        LIBVIRT_CFG="${TMP}/libvirt.cfg" VIRSH_FIXTURE="$1" \
+        $TESTSH "${REPO}/extensions/libvirt/libvirt.sh"
+}
+output=$(libvirt_report normal)
+expect "${output}" '^status testhost\.libvirt green .*1/1 required VMs running; 5 VMs found' 'libvirt: running guest and optional stopped guest'
+expect "${output}" '^vm-stopped: shut off \(optional\)$' 'libvirt: optional VM is visible'
+expect "${output}" '^vm&lt;&amp;&gt;: suspended \(optional\)$' 'libvirt: names are HTML escaped'
+output=$(LIBVIRT_REQUIRED="vm-running vm-stopped vm-paused vm-unknown vm-missing vm-missing" libvirt_report normal)
+expect "${output}" '^status testhost\.libvirt red .*1/5 required VMs running' 'libvirt: required guests are deduplicated and must run'
+expect "${output}" '^vm-paused: paused \(&red required\)$' 'libvirt: paused is not running'
+expect "${output}" '^vm-unknown: state unavailable \(&red required\)$' 'libvirt: missing state for a required VM is red'
+expect "${output}" '^vm-missing: missing \(&red required\)$' 'libvirt: missing required VM is red'
+output=$(LIBVIRT_REQUIRED="" libvirt_report empty)
+expect "${output}" '^status testhost\.libvirt green .*0 VMs found; no required VMs configured' 'libvirt: an empty environment override replaces the configured VM list'
+output=$(libvirt_report error)
+expect "${output}" '^status testhost\.libvirt red .*libvirt query failed' 'libvirt: failed query is red'
+expect "${output}" '^error: Failed to connect to &lt;libvirt&gt; socket$' 'libvirt: query error is included'
+output=$(libvirt_report malformed)
+expect "${output}" '^status testhost\.libvirt red .*Unexpected output' 'libvirt: malformed results cannot report green'
+output=$(LIBVIRT_TIMEOUT=1 libvirt_report timeout)
+expect "${output}" '^status testhost\.libvirt red .*timed out after 1s' 'libvirt: timed-out query is red'
+expect "$(cat "${PKGSTAGE}/etc/clientlaunch.d/libvirt.cfg")" '^[[:space:]]+DISABLED$' 'libvirt: client launch task ships disabled'
+
+# Use two samples one minute apart, then simulate a counter reset and a stop.
+VIRSH_METRICS="${TMP}/libvirt.metrics"
+export VIRSH_METRICS
+cat > "${VIRSH_METRICS}" <<'EOF'
+Domain: 'vm-running'
+  state.state=1
+  cpu.time=60000000000
+  balloon.rss=2048
+  net.count=2
+  net.0.name=vnet1
+  net.0.rx.bytes=1000
+  net.0.tx.bytes=2000
+  net.1.name=vnet2
+  net.1.rx.bytes=3000
+  net.1.tx.bytes=4000
+  block.count=1
+  block.0.name=vda
+  block.0.path=/disk image
+  block.0.rd.bytes=100
+  block.0.wr.bytes=200
+
+Domain: 'vm-diskless'
+  state.state=1
+  balloon.rss=1024
+  block.count=0
+EOF
+output=$(libvirt_report metrics)
+expect "${output}" '^data testhost\.trends$' 'libvirt: metrics go to the native Xymon trends handler'
+libvirt_metric() {
+    printf '%s\n' "$1" | awk -v section="[libvirt,$2.rrd]" '$0 == section { getline; print $2 }'
+}
+expect "$(libvirt_metric "${output}" vm-running_rss)" '^2\.000$' 'libvirt: QEMU RSS is in MiB on the first poll'
+expect "$(libvirt_metric "${output}" vm-running_cpu)" '^U$' 'libvirt: CPU rate is unknown on the first poll'
+expect_not "${output}" '^\[libvirt,vm-diskless_(read|write)\.rrd\]' 'libvirt: no disk series for a VM reporting no block devices'
+{
+    read -r metric_time metric_boot
+    printf '%s %s\n' "$((metric_time - 60))" "${metric_boot}"
+    cat
+} < "${TMP}/libvirt.testhost.state" > "${TMP}/libvirt-older"
+mv "${TMP}/libvirt-older" "${TMP}/libvirt.testhost.state"
+sed -e 's/cpu.time=60000000000/cpu.time=120000000000/' \
+    -e 's/rx.bytes=1000/rx.bytes=601000/' -e 's/rx.bytes=3000/rx.bytes=153000/' \
+    -e 's/tx.bytes=2000/tx.bytes=200/' -e 's/tx.bytes=4000/tx.bytes=604000/' \
+    -e 's/rd.bytes=100/rd.bytes=62914660/' -e 's/wr.bytes=200/wr.bytes=125829320/' \
+    "${VIRSH_METRICS}" > "${TMP}/libvirt-newer"
+mv "${TMP}/libvirt-newer" "${VIRSH_METRICS}"
+output=$(libvirt_report metrics)
+expect_rate "cpu : $(libvirt_metric "${output}" vm-running_cpu)" cpu 100 'libvirt: one fully occupied host core is 100 percent'
+expect_rate "rx : $(libvirt_metric "${output}" vm-running_rx)" rx 100 'libvirt: network RX sums both interfaces in kbit/s'
+expect "$(libvirt_metric "${output}" vm-running_tx)" '^U$' 'libvirt: one reset interface cannot be masked by another growing counter'
+expect_rate "read : $(libvirt_metric "${output}" vm-running_read)" read 1 'libvirt: disk reads are in MiB/s'
+expect_rate "write : $(libvirt_metric "${output}" vm-running_write)" write 2 'libvirt: disk writes are in MiB/s'
+printf "Domain: 'vm-running'\n  state.state=5\n" > "${VIRSH_METRICS}"
+output=$(libvirt_report metrics)
+expect "$(libvirt_metric "${output}" vm-running_rss)" '^U$' 'libvirt: stopped VM marks the old memory series unknown'
+expect "$(libvirt_metric "${output}" vm-running_read)" '^U$' 'libvirt: stopped VM marks old disk rates unknown'
 
 # Cross-extension failure and collision regressions.
 if ! sh "$TESTDIR/review/run.sh"; then FAIL=1; fi

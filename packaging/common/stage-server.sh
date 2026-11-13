@@ -65,7 +65,7 @@ SKIP_EXTENSIONS="temp"
 # fritzbox reports several columns and ships one drop-in per column
 # group (fritzdsl.cfg, fritzwan.cfg, fritzbox.cfg), so every *.cfg of an
 # extension's drop-in directory is installed, not only <ext>.cfg.
-EXTENSIONS="smart temp la memory opkg wifi if_link lxc systemd bcache btrfs dnf xymonext powerline fritz-wifi fritzbox"
+EXTENSIONS="smart temp la memory opkg wifi if_link lxc systemd bcache btrfs dnf libvirt xymonext powerline fritz-wifi fritzbox"
 
 skipped() { # skipped NAME
     for skip in $SKIP_EXTENSIONS; do
