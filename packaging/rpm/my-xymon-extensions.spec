@@ -78,6 +78,10 @@ Included extensions:
   an overview at the top of the status and RRD graphs. Reads dnf's
   system cache only (dnf -C): no downloads, no root rights. Active out
   of the box in this package.
+* libvirt - QEMU/KVM guest states over the read-only libvirt system
+  socket: red when a required guest is missing or not running, or the
+  query fails, with RRD graphs of CPU, QEMU resident memory, network
+  and disk throughput per guest. Ships disabled.
 * xymonext - what the extensions above cost this host: wall clock
   time, CPU time and the number of bytes each test sends to the
   Xymon server, measured on every run and reported in one
@@ -158,6 +162,9 @@ chmod 0644 "$dnfsnippet"
 %{xymonhome}/ext/dnf.sh
 %config(noreplace) %{xymonhome}/etc/my-xymon-extensions/dnf.cfg
 %config(noreplace) %{xymonhome}/etc/clientlaunch.d/dnf.cfg
+%{xymonhome}/ext/libvirt.sh
+%config(noreplace) %{xymonhome}/etc/my-xymon-extensions/libvirt.cfg
+%config(noreplace) %{xymonhome}/etc/clientlaunch.d/libvirt.cfg
 %{xymonhome}/ext/xymonext.sh
 %{xymonhome}/ext/xymonext-send.sh
 %config(noreplace) %{xymonhome}/etc/my-xymon-extensions/xymonext.cfg
@@ -327,6 +334,16 @@ fi
 exit 0
 
 %changelog
+* Mon Nov 16 2026 roemer2201 <r.oliver@web.de> - 0.35.0-1
+- new extension "libvirt" (column "libvirt", task disabled by default):
+  states of the local QEMU/KVM guests over the read-only
+  qemu:///system connection, red when a guest listed in
+  LIBVIRT_REQUIRED is missing or not running, or when the query fails
+  or times out; clear without virsh or timeout. Running guests supply
+  CPU utilization, QEMU resident memory and network and disk
+  throughput as native trends data; the graph definitions are in
+  my-xymon-extensions-server.
+
 * Tue Nov 10 2026 roemer2201 <r.oliver@web.de> - 0.34.0-1
 - new extension "dnf" (column "dnf", active out of the box in this
   package): pending package updates on dnf-based systems, the

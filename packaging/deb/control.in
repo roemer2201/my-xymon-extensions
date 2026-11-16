@@ -72,6 +72,10 @@ Description: Portable Xymon client extensions
     stale repository metadata and a pending kernel reboot, read from
     dnf's system cache without downloading anything (task disabled by
     default: Debian/Ubuntu hosts have no dnf).
+  * libvirt - QEMU/KVM guest states over the read-only libvirt system
+    socket: red when a required guest is missing or not running, or
+    the query fails; RRD graphs of CPU, QEMU resident memory, network
+    and disk throughput per guest (task disabled by default).
   * xymonext - what the extensions above cost this host: wall clock
     time, CPU time and bytes sent to the server, measured on every
     run and reported in one "xymonext" column with RRD graphs per

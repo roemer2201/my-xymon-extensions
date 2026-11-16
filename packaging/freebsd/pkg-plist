@@ -14,6 +14,7 @@ www/xymon/client/ext/bcache.sh
 www/xymon/client/ext/btrfs.sh
 www/xymon/client/ext/procs.sh
 www/xymon/client/ext/dnf.sh
+www/xymon/client/ext/libvirt.sh
 www/xymon/client/ext/xymonext.sh
 www/xymon/client/ext/xymonext-send.sh
 @sample www/xymon/client/etc/my-xymon-extensions/smart.cfg.sample
@@ -45,6 +46,8 @@ www/xymon/client/ext/xymonext-send.sh
 @sample www/xymon/client/etc/clientlaunch.d/procs.cfg.sample
 @sample www/xymon/client/etc/my-xymon-extensions/dnf.cfg.sample
 @sample www/xymon/client/etc/clientlaunch.d/dnf.cfg.sample
+@sample www/xymon/client/etc/my-xymon-extensions/libvirt.cfg.sample
+@sample www/xymon/client/etc/clientlaunch.d/libvirt.cfg.sample
 @sample www/xymon/client/etc/my-xymon-extensions/xymonext.cfg.sample
 share/doc/my-xymon-extensions/README.md
 share/doc/my-xymon-extensions/temp/README.md
@@ -104,6 +107,10 @@ share/doc/my-xymon-extensions/dnf/README.md
 share/doc/my-xymon-extensions/dnf/server/README.md
 share/doc/my-xymon-extensions/dnf/server/graphs.d/dnf.cfg
 share/doc/my-xymon-extensions/dnf/server/xymonserver.d/dnf.cfg
+share/doc/my-xymon-extensions/libvirt/README.md
+share/doc/my-xymon-extensions/libvirt/server/README.md
+share/doc/my-xymon-extensions/libvirt/server/graphs.d/libvirt.cfg
+share/doc/my-xymon-extensions/libvirt/server/xymonserver.d/libvirt.cfg
 share/doc/my-xymon-extensions/xymonext/README.md
 share/doc/my-xymon-extensions/xymonext/server/README.md
 share/doc/my-xymon-extensions/xymonext/server/graphs.d/xymonext.cfg

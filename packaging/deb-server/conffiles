@@ -8,6 +8,7 @@
 /etc/xymon/xymonserver.d/wifi.cfg
 /etc/xymon/xymonserver.d/if_link.cfg
 /etc/xymon/xymonserver.d/lxc.cfg
+/etc/xymon/xymonserver.d/libvirt.cfg
 /etc/xymon/xymonserver.d/systemd.cfg
 /etc/xymon/xymonserver.d/bcache.cfg
 /etc/xymon/xymonserver.d/btrfs.cfg
@@ -23,6 +24,7 @@
 /etc/xymon/graphs.d/wifi.cfg
 /etc/xymon/graphs.d/if_link.cfg
 /etc/xymon/graphs.d/lxc.cfg
+/etc/xymon/graphs.d/libvirt.cfg
 /etc/xymon/graphs.d/systemd.cfg
 /etc/xymon/graphs.d/bcache.cfg
 /etc/xymon/graphs.d/btrfs.cfg
