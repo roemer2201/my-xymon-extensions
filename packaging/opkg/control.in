@@ -41,6 +41,8 @@ Description: Portable Xymon client extensions with standalone runner
  router (PROCS_MODE="local"); dnf - pending package updates on
  dnf-based systems (installed for completeness only: OpenWrt has no
  dnf, so it is not in the default test list and reports clear);
+ libvirt - QEMU/KVM guest states and graphs (not in the default test
+ list; clear without virsh);
  xymonext - what the
  tests above cost the router: wall clock time, CPU time and bytes
  sent per test, graphed per extension (the runner calls the

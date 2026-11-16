@@ -9,7 +9,7 @@
 #   4. Compare counters with the last snapshot and send RRD updates.
 #
 # Usage: libvirt.sh [-h|--help]
-# Version: 1.1.0 (2026-11-13)
+# Version: 1.2.0 (2026-11-16)
 
 set -u
 
@@ -257,28 +257,42 @@ if ! awk '
         if (!running(poll, name) || !number(poll, name, key)) return "U"
         return values[poll, name, key]
     }
-    function devices(poll, name, group, field,    count, n, key) {
+    # devices() is the number of named device records of a running guest.
+    # measured() counts the records among them that carry the counter:
+    # libvirt sends only the name (and path) of a disk without frontend
+    # statistics, e.g. a vhost-user disk or while QEMU provides none.
+    function devices(poll, name, group,    count, n) {
         if (!running(poll, name) || !number(poll, name, group ".count")) return 0
         count = values[poll, name, group ".count"] + 0
-        for (n = 0; n < count; n++) {
-            key = group "." n
-            if (!number(poll, name, key "." field) || values[poll, name, key ".name"] == "") return 0
-        }
+        for (n = 0; n < count; n++)
+            if (values[poll, name, group "." n ".name"] == "") return 0
         return count
     }
-    function device_rate(name, id, metric, group, field, scale,    count, old_count, i, key, delta, total) {
-        count = devices("new", name, group, field)
-        old_count = devices("old", name, group, field)
-        if (!count && !old_count) return
-        if (!interval_ok || !count || count != old_count) { emit(id, metric, "U"); return }
+    function measured(poll, name, group, field, count,    n, found) {
+        for (n = 0; n < count; n++)
+            if (number(poll, name, group "." n "." field)) found++
+        return found + 0
+    }
+    # A record without the counter in both polls is skipped. One that has
+    # it in only one poll, or any change of the device list, is unknown.
+    function device_rate(name, id, metric, group, field, scale,    count, old_count, i, key, delta, total, has_new, has_old) {
+        count = devices("new", name, group)
+        old_count = devices("old", name, group)
+        has_new = measured("new", name, group, field, count)
+        has_old = measured("old", name, group, field, old_count)
+        if (!has_new && !has_old) return
+        if (!interval_ok || !has_new || count != old_count) { emit(id, metric, "U"); return }
         for (i = 0; i < count; i++) {
             key = group "." i
-            delta = values["new", name, key "." field] - values["old", name, key "." field]
-            if (delta < 0 || values["new", name, key ".name"] != values["old", name, key ".name"] ||
-                (group == "block" && values["new", name, key ".path"] != values["old", name, key ".path"])) {
+            if (values["new", name, key ".name"] != values["old", name, key ".name"] ||
+                (group == "block" && values["new", name, key ".path"] != values["old", name, key ".path"]) ||
+                number("new", name, key "." field) != number("old", name, key "." field)) {
                 emit(id, metric, "U")
                 return
             }
+            if (!number("new", name, key "." field)) continue
+            delta = values["new", name, key "." field] - values["old", name, key "." field]
+            if (delta < 0) { emit(id, metric, "U"); return }
             total += delta
         }
         emit(id, metric, sprintf("%.3f", total * scale / elapsed))

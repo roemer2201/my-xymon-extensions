@@ -48,6 +48,9 @@ Included extensions:
 * dnf - pending package updates on dnf-based Linux systems (Rocky
   Linux, RHEL). FreeBSD has no dnf, so the column would report a clear
   status; ships disabled.
+* libvirt - QEMU/KVM guest states and per-guest CPU, memory, network
+  and disk graphs over the read-only qemu:///system connection; clear
+  without virsh, ships disabled.
 
 Requires net-mgmt/xymon-client and sysutils/smartmontools (>= 7.0).
 Activation steps (sudoers rule, clientlaunch.d include, server-side

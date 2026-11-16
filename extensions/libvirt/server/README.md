@@ -19,8 +19,11 @@ hyphens are preserved in the VM name and other bytes are encoded as
 the status but have no graphs.
 
 The client calculates rates from consecutive polls and sends unknown
-values when a counter resets, a VM stops, or a required counter is
-missing from either poll. A guest with `block.count=0` has no disk
-metrics. The first poll supplies the baseline for rates. Keep the
+values when a counter resets, a VM stops, the device list changes, or a
+device has a counter in only one of the two polls. A device without the
+counter in both polls is left out of the sum: libvirt reports only the
+name and path of a disk it has no statistics for, such as a vhost-user
+disk. A guest with `block.count=0`, or without any disk counters, has no
+disk metrics. The first poll supplies the baseline for rates. Keep the
 default five-minute interval. Rate calculations require two samples
 less than ten minutes apart.
