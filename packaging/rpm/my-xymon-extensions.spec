@@ -119,6 +119,13 @@ fi
 mv "$claudesh.new" "$claudesh"
 chmod 0755 "$claudesh"
 
+# The temp launch snippet is left out by stage.sh, because Debian's
+# hobbit-plugins owns clientlaunch.d/temp.cfg there. EL has no
+# hobbit-plugins, so this package installs the copy from the docs.
+tempsnippet="%{buildroot}%{xymonhome}/etc/clientlaunch.d/temp.cfg"
+cp "%{buildroot}%{_docdir}/%{name}/temp/clientlaunch.d/temp.cfg" "$tempsnippet" || exit 1
+chmod 0644 "$tempsnippet"
+
 # The shared launch snippet of the dnf extension ships disabled: the
 # deb and FreeBSD packages install it on hosts without dnf. Every host
 # this package is installed on has dnf, so the task is enabled here.
@@ -150,6 +157,7 @@ chmod 0644 "$dnfsnippet"
 %dir %{xymonhome}/etc/my-xymon-extensions
 %dir %{xymonhome}/etc/clientlaunch.d
 %config(noreplace) %{xymonhome}/etc/clientlaunch.d/smart.cfg
+%config(noreplace) %{xymonhome}/etc/clientlaunch.d/temp.cfg
 %config(noreplace) %{xymonhome}/etc/clientlaunch.d/la.cfg
 %config(noreplace) %{xymonhome}/etc/clientlaunch.d/memory.cfg
 %config(noreplace) %{xymonhome}/etc/clientlaunch.d/disk.cfg
@@ -287,6 +295,12 @@ The FRITZ!Box extensions "fritzdsl" and "fritzwan" are no longer part
  of this package: since 0.29.0 they are modules of the server-only
  fritzbox collector (my-xymon-extensions-server, Debian/Ubuntu). rpm
  keeps configs you had edited as .rpmsave.
+The "temp" extension (all hardware temperature sensors) is active out
+ of the box and adds a "temp" column; hosts without sensors, such as
+ most VMs, report it clear. Since 0.36.0 this package installs its
+ launch snippet itself (the deb cannot: Debian's hobbit-plugins owns
+ that file name). A [temp] task you added by hand is merged with it;
+ a task of another name that runs temp.sh would run twice.
 The "wifi" extension ships disabled too: enable it (remove the
  DISABLED line from the clientlaunch.d snippet) only on a Linux
  access point with iw installed.
@@ -442,7 +456,7 @@ EOF
         fi
     done
 fi
-# Up to 0.35.2 the helper sat in ext/; a rule naming it there no longer
+# Up to 0.35.1 the helper sat in ext/; a rule naming it there no longer
 # matches what claude.sh calls.
 for rules in %{_sysconfdir}/sudoers %{_sysconfdir}/sudoers.d/*; do
     [ -f "$rules" ] || continue

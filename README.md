@@ -91,6 +91,8 @@ claim the same path — so the packages here deliberately do **not**
 install the three `temp` files. They are shipped as documentation and
 put in place by hand; see
 [extensions/temp/server/README.md](extensions/temp/server/README.md).
+The rpm is the exception for the launch snippet: EL has no
+hobbit-plugins, so it installs `clientlaunch.d/temp.cfg` itself.
 
 ### Why this works
 

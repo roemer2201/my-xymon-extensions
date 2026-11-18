@@ -174,7 +174,9 @@ target platform.
   `xymonserver.d` (among them `temp.cfg`), so **no package here installs
   any of them**: the `temp` drop-ins ship as documentation
   (`SKIP_SNIPPETS` in `stage.sh`, `SKIP_EXTENSIONS` in
-  `stage-server.sh`). `tasks.d` and `rrddefinitions.d` are free. Before
+  `stage-server.sh`). The one exception is the rpm, which copies the
+  documented `clientlaunch.d/temp.cfg` into place in `%install` (EL has
+  no hobbit-plugins; pinned in `tests/run.sh`). `tasks.d` and `rrddefinitions.d` are free. Before
   adding a drop-in, check `dpkg -S /etc/xymon/<dir>/<name>.cfg`;
   `tests/run.sh` pins the known-taken names.
 - `/etc/sudoers.d` is shared too (`hobbit-plugins` owns `xymon`).

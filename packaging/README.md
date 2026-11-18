@@ -214,7 +214,9 @@ The same applies to **other** packages: `clientlaunch.d`, `graphs.d`,
 package. `hobbit-plugins` claims many names in the first three
 (`temp.cfg` among them), so neither package installs any of them; the
 `temp` configuration ships as documentation (see
-`extensions/temp/server/README.md`). `tasks.d` ships empty with `xymon`,
+`extensions/temp/server/README.md`). Only the rpm installs the `temp`
+launch snippet, copied from the docs in `%install`: EL has no
+hobbit-plugins. `tasks.d` ships empty with `xymon`,
 so the server-only `powerline` task lives there. `tests/run.sh` pins the
 taken names (Ubuntu 24.04) and the `temp` documentation files.
 

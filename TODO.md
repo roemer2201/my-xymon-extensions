@@ -83,30 +83,6 @@ lives (`$XYMONTMP` may be a tmpfs) and how a reused result is marked in
 the status. Not implemented (source: installation on a Xymon 4.3.30
 source build, Rocky Linux 10.3).
 
-## temp launch snippet in the rpm and FreeBSD packages
-
-`stage.sh` leaves `clientlaunch.d/temp.cfg` out of every package
-(`SKIP_SNIPPETS`), because Debian's `hobbit-plugins` owns that path and
-dpkg refuses two packages claiming one file. rpm and FreeBSD have no
-hobbit-plugins, so there the conflict does not exist, and the `temp`
-extension never starts unless the snippet is copied from the doc
-directory by hand. It could be installed for those two packages only,
-following the dnf special case (a step in the spec's `%install`).
-That needs:
-
-- spec `%install`: copy the snippet from the staged docs into
-  `%{xymonhome}/etc/clientlaunch.d/temp.cfg`; `%files`: a
-  `%config(noreplace)` line for it;
-- FreeBSD: the same step in `packaging/freebsd/build.sh` and an
-  `@sample` line in `pkg-plist`;
-- `tests/run.sh`: the pins for the skipped snippet (it must stay out of
-  the deb and remain in the docs) and the pkg-plist/stage comparison;
-- the post-install texts and `extensions/temp/README.md`, which say the
-  snippet is installed by hand everywhere.
-
-Not done: maintainer decision (source: installation on a Xymon 4.3.30
-source build, Rocky Linux 10.3).
-
 ## Unverified without hardware
 
 - powerline: a plcrate response whose MAC differs from the queried

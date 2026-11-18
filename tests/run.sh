@@ -5540,6 +5540,34 @@ out=$(CLAUDE_HELPER='' CLAUDE_CFG=/dev/null XYMONHOME='' $TESTSH "$TMP/claude-li
 expect "$out" 'claude-expiry\.sh not found' \
     "claude.sh with the rpm default looks only at that path"
 
+# temp: stage.sh ships the launch snippet as documentation only
+# (hobbit-plugins owns clientlaunch.d/temp.cfg on Debian); the rpm
+# copies it into place. Run that step of %install.
+TB="$TMP/rpm-buildroot-temp"
+rm -rf "$TB"; mkdir -p "$TB/usr/share/doc/my-xymon-extensions/temp/clientlaunch.d" \
+    "$TB$RPMROOT/client/etc/clientlaunch.d"
+cp "$REPO/packaging/common/clientlaunch.d/temp.cfg" "$TB/usr/share/doc/my-xymon-extensions/temp/clientlaunch.d/"
+awk '/^%install/ { on = 1; next } /^%/ { on = 0 }
+     on && /^tempsnippet=/ { take = 1 } on && take && /^$/ { exit } on && take' \
+    "$SPEC_FILE" | sed -e "s|%{buildroot}|$TB|g" -e "s|%{xymonhome}|$RPMROOT/client|g" \
+        -e "s|%{_docdir}|/usr/share/doc|g" -e "s|%{name}|my-xymon-extensions|g" \
+    > "$TMP/rpm-install-temp"
+if $TESTSH -e "$TMP/rpm-install-temp" &&
+   cmp -s "$REPO/packaging/common/clientlaunch.d/temp.cfg" \
+       "$TB$RPMROOT/client/etc/clientlaunch.d/temp.cfg" &&
+   grep -qx '%config(noreplace) %{xymonhome}/etc/clientlaunch.d/temp.cfg' "$SPEC_FILE"; then
+    echo "ok:   rpm: the temp launch snippet is installed (EL has no hobbit-plugins)"
+else
+    echo "FAIL: rpm: the temp launch snippet is not installed"
+    FAIL=1
+fi
+if grep -v '^share/doc/' "$REPO/packaging/freebsd/pkg-plist" | grep -q 'clientlaunch.d/temp.cfg'; then
+    echo "FAIL: FreeBSD: the temp launch snippet must stay documentation (no hwmon there)"
+    FAIL=1
+else
+    echo "ok:   FreeBSD ships the temp launch snippet as documentation only"
+fi
+
 # rpm post: a sudo rule must not name a script the xymon user can
 # replace. The test's client directory belongs to whoever runs the
 # suite: as root, a group-writable ext/ must be reported and a 0755 one

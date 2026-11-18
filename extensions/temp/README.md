@@ -10,11 +10,13 @@ per-sensor threshold checks and NCV lines for RRD graphing.
   without that interface (FreeBSD) report `clear`.
 - **Requires:** nothing beyond the kernel's sysfs — no `lm-sensors`,
   no `jq`, no `bc`; runs fine on BusyBox.
-- **Note:** the packages install the script and its config, but *not*
-  the `clientlaunch.d/temp.cfg` snippet that schedules it — that file
-  name belongs to Debian's `hobbit-plugins` package, and dpkg refuses
-  two packages claiming one path. Copy it in once from the docs
-  (`/usr/share/doc/my-xymon-extensions/temp/clientlaunch.d/temp.cfg`,
+- **Note:** the rpm package installs the `clientlaunch.d/temp.cfg`
+  snippet that schedules it, so the column is active there. The deb
+  and FreeBSD packages install the script and its config, but *not* the
+  snippet: on Debian that file name belongs to the `hobbit-plugins`
+  package, and dpkg refuses two packages claiming one path; FreeBSD has
+  no hwmon, so the column would only ever be clear. Copy it in once
+  from the docs (`/usr/share/doc/my-xymon-extensions/temp/clientlaunch.d/temp.cfg`,
   in this repository `packaging/common/clientlaunch.d/temp.cfg`) or add
   the task to `clientlaunch.cfg` yourself. On OpenWrt/TurrisOS the
   standalone runner is unaffected — it runs every installed extension.
