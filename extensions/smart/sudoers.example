@@ -1,4 +1,4 @@
-# sudoers rule for the Xymon "smart" extension.
+# sudoers rules for the Xymon "smart" extension.
 #
 # smartctl needs raw device access; the Xymon client usually runs as
 # user "xymon". Install this file with visudo -f:
@@ -6,17 +6,87 @@
 #   Linux:    visudo -f /etc/sudoers.d/xymon-smart
 #   FreeBSD:  visudo -f /usr/local/etc/sudoers.d/xymon-smart
 #
-# Keep exactly one uncommented line matching your platform's smartctl
-# path. A rule without an argument list lets the xymon user run
-# smartctl as root with ANY arguments - including commands that change
-# the disk, such as "smartctl -s off", "-t long", "-X" or "--set=...".
-# It is not limited to read-only SMART queries.
+# Every rule below is commented out: uncomment the lines of ONE
+# variant, with your platform's smartctl path (Linux /usr/sbin/smartctl,
+# FreeBSD /usr/local/sbin/smartctl).
+#
+# What smart.sh runs as root, always with the options in this order:
+#
+#   smartctl --version                         sudo probe
+#   smartctl --scan                            device discovery
+#   smartctl -i -H -A [-n standby] [OPTS] DEV  one call per device
+#   mmc extcsd read DEV                        eMMC (Linux, mmc-utils)
+#
+# "-n standby" is there with NOSPINUP="yes" (the default). OPTS is what
+# a device line in smart.cfg adds, e.g. device /dev/sdb "-d sat".
+#
+# Pitfalls:
+#
+# - A command WITHOUT an argument list may be run with ANY arguments
+#   (sudoers(5)): "smartctl -s off", "-t long", "-X", "--set=..." -
+#   that is variant C, not limited to read-only queries.
+# - A "*" in the arguments matches white space as well, i.e. further
+#   arguments: "smartctl -i -H -A *" also allows
+#   "smartctl -i -H -A -s off /dev/sda". It restricts nothing; neither
+#   does "mmc extcsd read /dev/mmcblk*" restrict the device.
+# - Regular expressions (variant A) need sudo 1.9.10 or later. Older
+#   sudo reads "^...$" as a plain pattern that matches nothing, so the
+#   column stays clear ("passwordless sudo ... is not configured").
+#   sudo-rs supports neither regular expressions nor wildcards inside
+#   the arguments (sudoers-rs(5)): use variant B there.
+# - Options that variant A does not know (anything in OPTS other than
+#   "-d TYPE") need a line of their own, e.g. from variant B.
+#
+# sudo by platform (packages as of 2026-11; check with "sudo -V"):
+#
+#   Ubuntu 22.04          sudo 1.9.9                      -> B
+#   Ubuntu 24.04          sudo 1.9.15p5                   -> A
+#   Ubuntu 26.04          sudo-rs 0.2.13 is /usr/bin/sudo -> B
+#                         (sudo 1.9.17p2 is installed too, as sudo.ws;
+#                         A only after switching the alternative)
+#   EL 8                  sudo 1.9.5p2                    -> B
+#   EL 9                  sudo 1.9.5p2; CentOS Stream 9 moved to
+#                         1.9.17p2 in 2025-11             -> B, or A
+#                         once "sudo -V" says 1.9.10+
+#   EL 10                 sudo 1.9.17p2                   -> A
+#   FreeBSD (ports/pkg)   sudo 1.9.17p2                   -> A
+
+# --- Variant A: regular expressions (sudo 1.9.10 or later) ----------
+# Only the calls smart.sh makes, for any disk the scan finds and any
+# smartctl device type ("-d sat", "-d megaraid,0", ...).
+
+# Linux:
+#xymon ALL=(root) NOPASSWD: /usr/sbin/smartctl ^--(version|scan)$
+#xymon ALL=(root) NOPASSWD: /usr/sbin/smartctl ^-i -H -A( -n standby)?( -d [a-z0-9,+/]+)? /dev/(sd[a-z]+|nvme[0-9]+(n[0-9]+)?)$
+#xymon ALL=(root) NOPASSWD: /usr/bin/mmc ^extcsd read /dev/mmcblk[0-9]+$
+
+# FreeBSD:
+#xymon ALL=(root) NOPASSWD: /usr/local/sbin/smartctl ^--(version|scan)$
+#xymon ALL=(root) NOPASSWD: /usr/local/sbin/smartctl ^-i -H -A( -n standby)?( -d [a-z0-9,+/]+)? /dev/(ada[0-9]+|da[0-9]+|nda[0-9]+|nvme[0-9]+)$
+
+# --- Variant B: exact arguments (every sudo, sudo-rs included) -------
+# One line per disk, written exactly as smart.sh calls smartctl for it:
+# list the disks with "smartctl --scan"; without "-n standby" if
+# NOSPINUP="no"; with the OPTS of its device line in smart.cfg. Outside
+# a regular expression, "," ":" "=" and "\" must be escaped with "\"
+# ("-d megaraid\,0"). sdX names can change between boots - adjust the
+# lines when they do, or name the disks in smart.cfg.
+
+#xymon ALL=(root) NOPASSWD: /usr/sbin/smartctl --version, /usr/sbin/smartctl --scan
+#xymon ALL=(root) NOPASSWD: /usr/sbin/smartctl -i -H -A -n standby /dev/sda
+#xymon ALL=(root) NOPASSWD: /usr/sbin/smartctl -i -H -A -n standby /dev/nvme0
+#xymon ALL=(root) NOPASSWD: /usr/sbin/smartctl -i -H -A -n standby -d sat /dev/sdb
+#xymon ALL=(root) NOPASSWD: /usr/bin/mmc extcsd read /dev/mmcblk0
+
+# --- Variant C: any arguments (what this file shipped up to 0.35.1) --
+# Simple, but grants every smartctl function as root, see above.
 
 # Debian/Ubuntu and Rocky/EL:
-xymon ALL=(root) NOPASSWD: /usr/sbin/smartctl
+#xymon ALL=(root) NOPASSWD: /usr/sbin/smartctl
 
 # FreeBSD (smartmontools from ports/packages):
 #xymon ALL=(root) NOPASSWD: /usr/local/sbin/smartctl
 
-# Linux hosts with eMMC devices (mmc-utils; read-only EXT_CSD query):
+# Linux hosts with eMMC devices (the subcommand is fixed, the "*" lets
+# the device path run on):
 #xymon ALL=(root) NOPASSWD: /usr/bin/mmc extcsd read /dev/mmcblk*

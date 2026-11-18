@@ -247,6 +247,8 @@ my-xymon-extensions: the per-extension configuration lives in
 To activate the "smart" extension:
  1. Grant the xymon user access to smartctl - see
     %{_docdir}/%{name}/smart/sudoers.example
+    (every rule there ships commented out: uncomment ONE variant;
+    A and B allow only the queries the extension makes)
  2. Make sure clientlaunch.cfg loads the client drop-in directory
     (add this line once if it is missing):
       directory %{xymonhome}/etc/clientlaunch.d

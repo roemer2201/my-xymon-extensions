@@ -105,6 +105,8 @@ EOF
 To activate the "smart" extension:
  1. Grant the xymon user access to smartctl - see
     /usr/share/doc/my-xymon-extensions/smart/sudoers.example
+    (every rule there ships commented out: uncomment ONE variant;
+    A and B allow only the queries the extension makes)
  2. Restart the client: service xymon-client restart
     (on a host that also runs the Xymon server: service xymon restart)
  The snippets in /etc/xymon/clientlaunch.d/ need no further wiring on

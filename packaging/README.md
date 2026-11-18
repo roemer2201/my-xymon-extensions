@@ -138,8 +138,9 @@ client tree laid out like a source build).
 The packages deliberately do **not** edit `clientlaunch.cfg` (it is
 owned by the xymon-client package). After installing, once per host:
 
-1. Install the sudoers rule (see `smart/sudoers.example` in the docs
-   directory).
+1. Install the sudoers rules for smart: one of the variants in
+   `smart/sudoers.example` in the docs directory, all of which ship
+   commented out (see `extensions/smart/README.md`, "Privileges").
 2. Ensure `clientlaunch.cfg` reads the `clientlaunch.d` directory
    shown in the table above, e.g. `directory
    $XYMONHOME/etc/clientlaunch.d`. On Debian/Ubuntu this is already

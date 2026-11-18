@@ -728,6 +728,114 @@ expect "${out}" "RRD data omitted - name \"${short_name}\" is already used" \
     "names colliding after truncation are detected"
 rm -f "${TMP}"/smart.*.state
 
+# sudoers.example: every variant ships commented out and parses, also
+# once uncommented. The regular expressions of variant A are checked
+# the way sudo applies them (sudoers(5): the arguments joined by single
+# spaces, matched as one POSIX ERE) - with grep -E, not with sudo, which
+# would need root. The smartctl calls smart.sh really makes must fit.
+SMSUDO="$REPO/extensions/smart/sudoers.example"
+if grep -Eq '^[[:space:]]*xymon[[:space:]]' "$SMSUDO"; then
+    echo "FAIL: smart sudoers.example ships an active rule"
+    FAIL=1
+else
+    echo "ok:   smart sudoers.example ships every rule commented out"
+fi
+sed 's/^#xymon /xymon /' "$SMSUDO" > "$TMP/smart-sudoers-active"
+if command -v visudo >/dev/null 2>&1; then
+    if visudo -c -f "$SMSUDO" >/dev/null 2>&1 &&
+       visudo -c -f "$TMP/smart-sudoers-active" >/dev/null 2>&1; then
+        echo "ok:   visudo accepts smart sudoers.example, also with every variant uncommented"
+    else
+        echo "FAIL: visudo rejects smart sudoers.example"
+        FAIL=1
+    fi
+else
+    echo "skip: visudo not available - smart sudoers.example syntax not checked"
+fi
+# smart_re <command path> -> the argument regexes of variant A for it
+smart_re() {
+    awk -v cmd="$1" '$1 == "xymon" && $4 == cmd && $5 ~ /^\^/ {
+        sub(/^[^^]*/, ""); print }' "$TMP/smart-sudoers-active"
+}
+smart_re /usr/sbin/smartctl > "$TMP/smart-re-linux"
+smart_re /usr/local/sbin/smartctl > "$TMP/smart-re-bsd"
+smart_re /usr/bin/mmc > "$TMP/smart-re-mmc"
+# smart_allows <regex file> <arguments> -> true if one regex matches
+smart_allows() {
+    printf '%s\n' "$2" | grep -Eq -f "$1"
+}
+if [ "$(wc -l < "$TMP/smart-re-linux")" -eq 2 ] &&
+   [ "$(wc -l < "$TMP/smart-re-bsd")" -eq 2 ] &&
+   [ "$(wc -l < "$TMP/smart-re-mmc")" -eq 1 ]; then
+    echo "ok:   variant A has its regular expressions for Linux, FreeBSD and mmc"
+else
+    echo "FAIL: variant A regular expressions not found in smart sudoers.example"
+    FAIL=1
+fi
+for args in '--version' '--scan' '-i -H -A /dev/sda' '-i -H -A -n standby /dev/sda' \
+    '-i -H -A -n standby -d sat /dev/sdb' '-i -H -A -n standby /dev/nvme0' \
+    '-i -H -A -d megaraid,0 /dev/sdc' '-i -H -A -n standby /dev/nvme0n1'; do
+    if smart_allows "$TMP/smart-re-linux" "$args"; then
+        echo "ok:   smart sudo regex allows: smartctl $args"
+    else
+        echo "FAIL: smart sudo regex rejects: smartctl $args"
+        FAIL=1
+    fi
+done
+for args in '-s off /dev/sda' '-t long /dev/sda' '-i -H -A -s off /dev/sda' \
+    '-i -H -A /dev/sda /dev/sdb' '-i -H -A -d sat -s off /dev/sda' '-X /dev/sda' \
+    '--scan -s off /dev/sda' '-i -H -A /dev/sda1' '-i -H -A --set=standby,now /dev/sda'; do
+    if smart_allows "$TMP/smart-re-linux" "$args"; then
+        echo "FAIL: smart sudo regex allows: smartctl $args"
+        FAIL=1
+    else
+        echo "ok:   smart sudo regex rejects: smartctl $args"
+    fi
+done
+if smart_allows "$TMP/smart-re-bsd" '-i -H -A -n standby /dev/ada0' &&
+   smart_allows "$TMP/smart-re-bsd" '-i -H -A -n standby /dev/nda0' &&
+   ! smart_allows "$TMP/smart-re-bsd" '-i -H -A -s off /dev/ada0'; then
+    echo "ok:   FreeBSD sudo regex: ada/nda devices yes, -s off no"
+else
+    echo "FAIL: FreeBSD sudo regex"
+    FAIL=1
+fi
+if smart_allows "$TMP/smart-re-mmc" 'extcsd read /dev/mmcblk0' &&
+   ! smart_allows "$TMP/smart-re-mmc" 'extcsd read /dev/mmcblk0 /dev/sda' &&
+   ! smart_allows "$TMP/smart-re-mmc" 'extcsd write 0 1 /dev/mmcblk0'; then
+    echo "ok:   mmc sudo regex: one eMMC device, read only"
+else
+    echo "FAIL: mmc sudo regex"
+    FAIL=1
+fi
+# The calls smart.sh makes (fixture device names replaced by a real one).
+printf '#!/bin/sh\nprintf "%%s\\n" "$*" >> "%s"\nexec "%s" "$@"\n' \
+    "$TMP/smartctl-args" "$FAKESMARTCTL" > "$TMP/smartctl-log"
+chmod 0755 "$TMP/smartctl-log"
+: > "$TMP/smartctl-args"
+printf 'SMARTCTL="%s"\nUSE_SUDO=no\nMMC_DEVICES=none\n' "$TMP/smartctl-log" > "$TMP/smart-args.cfg"
+printf 'device /dev/tsda "-d sat"\ndevice /dev/tnvme0\n' >> "$TMP/smart-args.cfg"
+# shellcheck disable=SC2086
+SMART_CFG="$TMP/smart-args.cfg" ${TESTSH} "$REPO/extensions/smart/smart.sh" > /dev/null
+echo 'NOSPINUP="no"' >> "$TMP/smart-args.cfg"
+# shellcheck disable=SC2086
+SMART_CFG="$TMP/smart-args.cfg" ${TESTSH} "$REPO/extensions/smart/smart.sh" > /dev/null
+printf 'SMARTCTL="%s"\nUSE_SUDO=no\nMMC_DEVICES=none\n' "$TMP/smartctl-log" > "$TMP/smart-args.cfg"
+# shellcheck disable=SC2086
+SMART_CFG="$TMP/smart-args.cfg" ${TESTSH} "$REPO/extensions/smart/smart.sh" > /dev/null
+sed 's| /dev/[^ ]*$| /dev/sda|' "$TMP/smartctl-args" > "$TMP/smartctl-args-sda"
+if grep -q -- '^-i -H -A -n standby -d sat /dev/sda$' "$TMP/smartctl-args-sda" &&
+   grep -q -- '^-i -H -A /dev/sda$' "$TMP/smartctl-args-sda" &&
+   grep -q -- '^--scan$' "$TMP/smartctl-args-sda" &&
+   ! grep -Ev -f "$TMP/smart-re-linux" "$TMP/smartctl-args-sda" | grep -q .; then
+    echo "ok:   every smartctl call of smart.sh fits the regular expressions of variant A"
+else
+    echo "FAIL: smartctl calls of smart.sh outside variant A:"
+    grep -Ev -f "$TMP/smart-re-linux" "$TMP/smartctl-args-sda" | sed 's/^/      /'
+    FAIL=1
+fi
+rm -f "${TMP}"/smart.*.state
+
 # ----------------------------------------------------------------------
 echo "--- temp ---"
 TEMPFIX="$TESTDIR/temp"
