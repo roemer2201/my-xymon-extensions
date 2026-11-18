@@ -7,7 +7,10 @@
 #   FreeBSD:  visudo -f /usr/local/etc/sudoers.d/xymon-smart
 #
 # Keep exactly one uncommented line matching your platform's smartctl
-# path. The rule only allows read-only SMART queries as root.
+# path. A rule without an argument list lets the xymon user run
+# smartctl as root with ANY arguments - including commands that change
+# the disk, such as "smartctl -s off", "-t long", "-X" or "--set=...".
+# It is not limited to read-only SMART queries.
 
 # Debian/Ubuntu and Rocky/EL:
 xymon ALL=(root) NOPASSWD: /usr/sbin/smartctl
