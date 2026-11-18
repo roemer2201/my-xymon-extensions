@@ -103,6 +103,41 @@ DNF refuses to work at all (`Cache-only enabled but no cache for '…'`),
 the column says "update status unknown". Run `dnf makecache` as root
 to rebuild missing metadata.
 
+### How soon a new advisory shows up
+
+The extension sees what root's cache holds, so a new advisory appears
+in the column only after dnf has refreshed that repository. On EL the
+refresh is `dnf makecache --timer`, started by `dnf-makecache.timer`
+(dnf 4.20.0: `OnBootSec=10min`, `OnUnitInactiveSec=1h`,
+`RandomizedDelaySec=60m`). That command does real work at most every
+`metadata_timer_sync` (dnf.conf, default 3 hours; otherwise "Metadata
+cache refreshed recently") and then refreshes every repository whose
+metadata has expired **or expires within that period**
+(`update_cache()` in `dnf/base.py`). Roughly:
+
+```
+delay  <=  mirror sync  +  metadata_expire of the repository
+           +  timer slack (up to ~2 h: 1 h inactive + 60 min random)
+           +  the poll interval of this test (5 min)
+```
+
+Often it is less, because a repository is refreshed up to
+`metadata_timer_sync` before it expires. Measured on Rocky Linux 10.3
+(`dnf config-manager --dump`, `systemctl cat dnf-makecache.timer`):
+`baseos` and `appstream` with `metadata_expire = 21600` (6 h), `epel`
+with `86400` (24 h) - so up to about 7-8 hours for a Rocky advisory and
+about 25-26 hours for an EPEL one.
+
+To see security advisories sooner, lower `metadata_expire` for the
+repositories that carry them (`dnf config-manager --save
+--setopt=baseos.metadata_expire=7200`, in seconds, or the line in the
+`.repo` file), and with it `metadata_timer_sync` in
+`/etc/dnf/dnf.conf`: as long as that stays at 3 hours, the timer
+refreshes no more often than that. The price is
+network traffic: every refresh asks the mirror for the repository's
+`repomd.xml`, and downloads the metadata again whenever it changed.
+Keep `DNF_MAXAGE` above the largest `metadata_expire` either way.
+
 ## The status message
 
 The message starts with an overview, so that a Xymon alert mail shows
@@ -223,3 +258,55 @@ of sending them:
 ```sh
 sh "$XYMONCLIENTHOME/ext/dnf.sh"
 ```
+
+To run it exactly as the xymon user sees it, with nothing but the
+variables xymonlaunch would set (`XYMON`/`XYMSRV` unset: nothing is
+sent):
+
+```sh
+sudo -u xymon env -i PATH=/usr/bin:/usr/sbin XYMONHOME=<client> \
+    XYMONTMP=<client>/tmp MACHINE=<host> sh <client>/ext/dnf.sh
+```
+
+## Verifying on a real host
+
+A pending security update can be produced on purpose, without touching
+anything the host depends on:
+
+1. Pick a **leaf package** (nothing else requires it) that has a
+   security advisory in the current repositories:
+   `dnf repoquery --installed --whatrequires <pkg>` prints nothing, and
+   `dnf -q updateinfo list --security --all <pkg>` lists an advisory.
+2. Fetch an older, **signed** build of it from the distribution's
+   archive (Rocky Linux: the vault of an earlier minor release), and
+   check the signature: `rpm -K <pkg>.rpm` must report
+   `digests signatures OK`.
+3. Downgrade: `dnf downgrade ./<pkg>.rpm`.
+4. Run the test (see [Dry run](#dry-run)) and compare its counts with
+   `dnf -C -q updateinfo list --updates --security --with-cve`: the
+   package, its severity, the advisory and the number of distinct CVEs
+   must agree.
+5. Put the package back: `dnf upgrade <pkg>`.
+
+Verified this way on Rocky Linux 10.3: `wget-1.24.5-5.el10` from the
+Rocky Linux 10.1 vault was reported as one moderate security update
+(RLSA-2026:62142, 2 CVEs), with the same counts as `dnf updateinfo`.
+
+Stale and missing metadata need no change to the real cache: point
+`DNF_CACHEDIR` at a stand-in that has the same directory names, with
+aged primary metadata, and leave one repository out:
+
+```sh
+mkdir /tmp/dnfcache
+for d in /var/cache/dnf/*-*/repodata; do
+    r=${d%/repodata}; mkdir -p "/tmp/dnfcache/${r##*/}/repodata"
+    touch -d '4 days ago' "/tmp/dnfcache/${r##*/}/repodata/primary.xml.zck"
+done
+rm -r /tmp/dnfcache/<repo id>-*     # one repository without metadata
+DNF_CACHEDIR=/tmp/dnfcache sh <client>/ext/dnf.sh
+```
+
+The column turns yellow, names every repository as too old and the
+missing one as without metadata, marks the result "partial results"
+and sends no `data` message. dnf itself still reads the real cache, so
+the update lists stay as they are.
