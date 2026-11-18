@@ -1,0 +1,14 @@
+slurm.x86_64                            26.05.5-1.el10_3           epel         
+slurm-perlapi.x86_64                    26.05.5-1.el10_3           epel         
+slurm-slurmctld.x86_64                  26.05.5-1.el10_3           epel         
+Obsoleting Packages
+kmod-vbox-guest-additions.x86_64        1:6.12.0~211.7.1-1.el10    @centos-kmods
+    kmod-vbox-guest-additions.x86_64    1:6.12.0~211.7.1-1.el10    @centos-kmods
+kmod-vbox-guest-additions.x86_64        1:6.12.0~211.7.1-1.el10    centos-kmods 
+    kmod-vbox-guest-additions.x86_64    1:6.12.0~211.7.1-1.el10    @centos-kmods
+kmod-vbox-guest-additions.x86_64        1:6.12.0~264.9.1-1.el10    @centos-kmods
+    kmod-vbox-guest-additions.x86_64    1:6.12.0~264.9.1-1.el10    @centos-kmods
+kmod-vbox-guest-additions.x86_64        1:6.12.0~264.9.1-1.el10    centos-kmods 
+    kmod-vbox-guest-additions.x86_64    1:6.12.0~264.9.1-1.el10    @centos-kmods
+Security: kernel-core-6.12.0-264.16.1.el10_3.x86_64 is an installed security update
+Security: kernel-core-6.12.0-211.16.1.el10_2.0.1.x86_64 is the currently running version

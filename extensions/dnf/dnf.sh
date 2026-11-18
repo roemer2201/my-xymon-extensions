@@ -63,7 +63,7 @@
 # $XYMONHOME/etc/my-xymon-extensions/dnf.cfg (see the shipped dnf.cfg;
 # the config file wins over the environment).
 
-# Version: 1.0.0 (2026-11-10)
+# Version: 1.0.1 (2026-11-17)
 
 set -u
 
@@ -453,10 +453,20 @@ fi
 # check-update: "name.arch  [epoch:]version-release  repo". Old dnf
 # versions wrap a line that does not fit the terminal width and
 # continue it indented, so the fields are collected across lines. The
-# "Obsoleting Packages" section at the end lists pairs: a package that
-# replaces an installed one under another name, and indented below it
-# the package it replaces. The replacing package is an update like any
-# other (dnf exits with 100 for it alone), the replaced one is not.
+# "Obsoleting Packages" section at the end lists pairs: a package with
+# an "Obsoletes:" that matches an installed one, and indented below it
+# the installed package it matches. The head line repeats for every
+# pair. Usually that is a package replacing another one under a new
+# name - an update (dnf exits with 100 for it alone). But a package
+# that obsoletes older builds of its own name (seen with kmod packages
+# of the CentOS Kmods SIG) is paired with itself, and with installed
+# builds as heads (repo "@..."), although "dnf upgrade" has nothing to
+# do. So each pair is decided on its own: no update if the head is
+# installed already or identical to the package below it (same
+# name.arch and [epoch:]version-release). A head counts once as soon
+# as one of its pairs is an update; the indented packages never count.
+# DNF indents the start of the installed row by four spaces, and
+# continued fields start further to the right.
 #
 # updateinfo list: "ID  Severity/Sec.  name-[epoch:]version-release.arch",
 # one line per advisory and package build - a package that is several
@@ -487,20 +497,53 @@ function sevname(s) {
     if (s == "Critical" || s == "Important" || s == "Moderate" || s == "Low") return s
     return "Unknown"
 }
+# isrow <name.arch> <version> -> true if the two look like a package row
+function isrow(na, v) {
+    return na ~ /\./ && v ~ /^([0-9]+:)?[[:alnum:]_.+~^]+-[[:alnum:]_.+~^]+$/
+}
+# addupd <name.arch> <version> <repo> -- one pending update; a package
+# listed twice (in both sections of check-update) is counted once
+function addupd(na, v, r) {
+    if (na in ver) return
+    order[++npkg] = na
+    ver[na] = v
+    repo[na] = r
+}
+# obsflush -- finish a head without a readable installed row. Keep
+# the candidate unless the head itself is already installed.
+function obsflush() {
+    if (ohead && orepo !~ /^@/) addupd(ona, over, orepo)
+    ohead = 0
+}
+# checkrow -- handle a complete logical row from check-update.
+function checkrow(na, v, r) {
+    if (!obsoleting) {
+        addupd(na, v, r)
+    } else if (!installed_row) {
+        ohead = 1; ona = na; over = v; orepo = r
+    } else if (ohead) {
+        if (orepo ~ /^@/ || (na == ona && v == over)) nnoupd++
+        else addupd(ona, over, orepo)
+        ohead = 0
+    }
+}
 kind == "check" {
     if ($0 ~ /^Obsoleting Packages/) { obsoleting = 1; nbuf = 0; next }
     if ($0 ~ /^Security: /) next
-    if ($0 ~ /^[ \t]*$/) { nbuf = 0; next }
-    if (obsoleting && ($0 ~ /^[ \t]/ || NF != 3)) next
-    if ($0 !~ /^[ \t]/) nbuf = 0
+    if ($0 ~ /^[ \t]*$/) { obsflush(); nbuf = 0; next }
+    if ($0 !~ /^[ \t]/) {
+        obsflush()
+        nbuf = 0
+        installed_row = 0
+    } else if (obsoleting && $0 ~ /^    [^ \t]/) {
+        nbuf = 0
+        installed_row = 1
+    } else if (nbuf == 0) {
+        next
+    }
     for (i = 1; i <= NF; i++) buf[++nbuf] = $i
     if (nbuf < 3) next
-    if (nbuf == 3 && buf[1] ~ /\./ &&
-        buf[2] ~ /^([0-9]+:)?[[:alnum:]_.+~^]+-[[:alnum:]_.+~^]+$/ && !(buf[1] in ver)) {
-        order[++npkg] = buf[1]
-        ver[buf[1]] = buf[2]
-        repo[buf[1]] = buf[3]
-    }
+    if (nbuf == 3 && isrow(buf[1], buf[2])) checkrow(buf[1], buf[2], buf[3])
     nbuf = 0
     next
 }
@@ -530,6 +573,7 @@ kind == "cve" && NF == 3 && $1 ~ /^CVE-/ {
     next
 }
 END {
+    obsflush()
     for (i = 1; i <= npkg; i++) {
         k = order[i]
         if (k in rank) {
@@ -550,6 +594,7 @@ END {
         npsev[psev[k]]++
     }
     print "updates", npkg + 0 > countfile
+    print "noupdate", nnoupd + 0 > countfile
     print "security", nsec + 0 > countfile
     print "other", nother + 0 > countfile
     print "cves", ncves + 0 > countfile
@@ -575,7 +620,9 @@ count() {
         "${WORKDIR}/counts"
 }
 NUPDATES=$(count updates)
-if [ "${CHECK_RC}" -eq 100 ] && [ "${NUPDATES}" -eq 0 ]; then
+# Exit code 100 for "Obsoleting Packages" pairs that install nothing new
+# is no update; without even such a pair the output was not understood.
+if [ "${CHECK_RC}" -eq 100 ] && [ "${NUPDATES}" -eq 0 ] && [ "$(count noupdate)" -eq 0 ]; then
     fail_report check "${CHECK_RC}" "check-update" "reported updates, but no package rows could be read"
 fi
 NSEC=$(count security)
