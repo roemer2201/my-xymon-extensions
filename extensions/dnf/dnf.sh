@@ -467,7 +467,10 @@ reuse_load() {
         [ -e "${rl_path}" ] || continue
         # Follow linked .repo files and rpmdb directories. An unreadable
         # subtree is not evidence that the inputs are unchanged.
-        rl_new=$(find -L "${rl_path}" -newer "${REUSEFILE}" -print -quit 2>/dev/null) || return 1
+        # RPM queries can touch SQLite's shared-memory WAL index without
+        # changing packages. The database and its -wal still count.
+        rl_new=$(find -L "${rl_path}" -newer "${REUSEFILE}" \
+            ! \( -type f -name '*-shm' \) -print -quit 2>/dev/null) || return 1
         [ -z "${rl_new}" ] || return 1
     done
     mkdir "${WORKDIR}/reuse" || return 1

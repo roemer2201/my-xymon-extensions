@@ -228,7 +228,9 @@ reboots. So a run reuses the answers of `check-update` and
   running-kernel check is redone after a reboot;
 - nothing below `DNF_REUSE_WATCH` - the dnf configuration, the repo
   files and the rpm database - is newer than the start of the saved query; a new
-  or deleted file changes its directory's mtime.
+  or deleted file changes its directory's mtime. SQLite shared-memory files
+  (`*-shm`) are ignored because RPM queries can touch them; the database
+  and its `-wal` file are still watched.
 
 On the Rocky Linux 10.3 host above, a run that reuses the answers
 took 1.1 s CPU instead of 7.2 s (`xymonext`); `dnf makecache` and a

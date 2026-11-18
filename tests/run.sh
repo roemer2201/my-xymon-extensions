@@ -2196,6 +2196,19 @@ dnf_reuse_run XYMONTMP="$TMP/shared" > /dev/null
 dnf_expect_asked yes "reuse: shared temporary directory always queries dnf"
 [ ! -e "$TMP/shared/dnf-reuse.dnf" ] || { echo "FAIL: shared cache written"; FAIL=1; }
 
+# Create all three files before saving the answers: creating a new file
+# changes the directory mtime, independently of the file's own mtime.
+touch "$RW/w2/rpmdb.sqlite" "$RW/w2/rpmdb.sqlite-wal" "$RW/w2/rpmdb.sqlite-shm"
+dnf_reuse_run DNF_REUSE_WATCH="$RW/w2" > /dev/null
+touch -t 209912312359 "$RW/w2/rpmdb.sqlite-shm"
+dnf_reuse_run DNF_REUSE_WATCH="$RW/w2" > /dev/null
+dnf_expect_asked no "reuse: an RPM read touching only SQLite shared memory reuses the answers"
+for dbpart in rpmdb.sqlite-wal rpmdb.sqlite; do
+    touch -t 209912312359 "$RW/w2/$dbpart"
+    dnf_reuse_run DNF_REUSE_WATCH="$RW/w2" > /dev/null
+    dnf_expect_asked yes "reuse: a change to $dbpart asks dnf again"
+    touch -t 200001010000 "$RW/w2/$dbpart"
+done
 dnf_reuse_run DNF_REUSE_WATCH="$RW/w2" > /dev/null
 touch -t 209912312359 "$RW/w2/updated.repo"
 dnf_reuse_run DNF_REUSE_WATCH="$RW/w2" > /dev/null
