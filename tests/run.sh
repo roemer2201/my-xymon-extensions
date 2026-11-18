@@ -4897,7 +4897,20 @@ check_server_recipe() {
     find "$rs_etc" -type f > "$TMP/recipe-expected" || return 1
     printf '%s\n' "$rs_graph.rpmnew" >> "$TMP/recipe-expected"
     rm "$rs_task" && printf 'local graph\n' > "$rs_graph" || return 1
-    run_server_recipe > "$TMP/recipe-output" || return 1
+    # Simulate pasting the recipe into a shell with interactive RHEL
+    # aliases. With stdin closed, a prompt could silently skip an update.
+    {
+        printf '%s\n' "alias rm='rm -i'" "alias mv='mv -i'" "alias cp='cp -i'"
+        cat "$recipe"
+    } > "$recipe.aliases" || return 1
+    recipe="$recipe.aliases"
+    printf 'outdated program\n' > "$RECIPE_SERVER/ext/powerline.sh" || return 1
+    printf 'outdated documentation\n' > "$RECIPE_SERVER/share/doc/my-xymon-extensions-server/README.md" || return 1
+    printf 'older candidate\n' > "$rs_graph.rpmnew" || return 1
+    run_server_recipe </dev/null > "$TMP/recipe-output" 2> "$TMP/recipe-errors" || return 1
+    if [ -s "$TMP/recipe-errors" ]; then cat "$TMP/recipe-errors" >&2; return 1; fi
+    cmp -s "$REPO/extensions/powerline/powerline.sh" "$RECIPE_SERVER/ext/powerline.sh" &&
+        cmp -s "$REPO/README.md" "$RECIPE_SERVER/share/doc/my-xymon-extensions-server/README.md" || return 1
     # All other configurations were identical. Only the changed graph
     # gets a sibling, and its exact suffix must be one stackio ignores.
     find "$rs_etc" -type f | sort > "$TMP/recipe-files"

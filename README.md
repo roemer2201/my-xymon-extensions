@@ -219,22 +219,22 @@ Existing configuration files stay in place.
     SRV=/home/xymon/server
     test -f "$SRV/etc/tasks.cfg"
     STAGE=$(mktemp -d)
-    trap 'rm -rf "$STAGE"' EXIT
+    trap 'command rm -rf "$STAGE"' EXIT
     sh packaging/common/stage-server.sh "$STAGE" "$SRV/ext" "$SRV/etc" \
         "$SRV/share/doc/my-xymon-extensions-server" -
     for src in "$STAGE$SRV"/etc/*/*; do
         dest=${src#"$STAGE"}
         if [ -e "$dest" ] || [ -L "$dest" ]; then
             if [ -f "$dest" ] && cmp -s "$src" "$dest"; then
-                rm "$src"
+                command rm -f "$src"
             else
                 test ! -d "$dest.rpmnew"
-                mv -f "$src" "$dest.rpmnew"
+                command mv -f "$src" "$dest.rpmnew"
                 printf 'Kept %s; review %s.rpmnew\n' "$dest" "$dest"
             fi
         fi
     done
-    cp -R "$STAGE$SRV/." "$SRV/"
+    command cp -R "$STAGE$SRV/." "$SRV/"
     for f in xymonserver graphs rrddefinitions tasks; do
         printf 'Check %s/etc/%s.cfg for: directory %s/etc/%s.d\n' "$SRV" "$f" "$SRV" "$f"
     done
