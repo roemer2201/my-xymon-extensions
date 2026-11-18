@@ -227,7 +227,12 @@ Notes:
   command shows it. Add it if it is missing.
 - The fifth argument `-` installs no sudo rule. `powerline` needs one
   once it is enabled: take `powerline/powerline.sudoers` from the doc
-  directory (see `extensions/powerline/server/README.md`).
+  directory (see `extensions/powerline/server/README.md`). On a source
+  build `$SRV` belongs to the xymon user (`make install` chowns it), so
+  a rule on `$SRV/ext/powerline-read.sh` would let that user replace
+  the helper and run anything as root: copy the helper to a directory
+  only root can write, name the copy in the rule and set
+  `POWERLINE_HELPER` to it.
 - The server-only collectors `powerline`, `fritzbox` and `fritz-wifi`
   are installed with their tasks in `tasks.d`, but stay off until
   `*_ENABLED=1` is set in `$SRV/etc/my-xymon-extensions-server/`;

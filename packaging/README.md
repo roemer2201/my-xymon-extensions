@@ -64,7 +64,13 @@ RPM_XYMONHOME=/usr/local/xymon/client RPM_CLIENTDEP=no make rpm
 dnf install build/rpm/RPMS/noarch/my-xymon-extensions-*.noarch.rpm
 ```
 
-`smartmontools` stays a dependency. The package name and version are
+`smartmontools` stays a dependency. Mind the sudo rules: Xymon's
+`make install` gives the client directory and its `ext/` to the xymon
+user, and a rule naming a script in there (`claude-expiry.sh`) lets
+that user replace it and run anything as root. Copy such a helper to a
+directory only root can write and point the rule and the extension's
+`*_HELPER` setting at the copy (see `claude/sudoers.example`).
+`smartctl` itself is no such case. The package name and version are
 the same for every layout, so do not mix packages built for different
 client directories in one repository.
 

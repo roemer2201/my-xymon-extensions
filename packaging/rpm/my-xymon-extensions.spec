@@ -24,8 +24,9 @@ Source0:        %{name}-%{version}.tar.gz
 BuildArch:      noarch
 Requires:       smartmontools
 Recommends:     curl
-# "xymon-client" matches the Terabithia and EPEL package names;
-# rebuild with --define 'xymonclientpkg <name>' for other builds.
+# "xymon-client" matches the Terabithia package name (EPEL has no
+# Xymon package); rebuild with --define 'xymonclientpkg <name>' for
+# other builds.
 %{!?xymonclientpkg: %global xymonclientpkg xymon-client}
 %if %{with clientdep}
 Requires:       %{xymonclientpkg}

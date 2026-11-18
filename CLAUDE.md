@@ -102,8 +102,11 @@ target platform.
   `$MACHINE`/`$MACHINEDOTS` (client hostname).
 - Known install locations (for packaging only, never in scripts):
   - Debian/Ubuntu: `/usr/lib/xymon/client`
-  - EL/Rocky (EPEL xymon-client): `/usr/share/xymon-client` (check the
-    actual package used; Terabithia builds use `/usr/lib64/xymon/client`)
+  - EL/Rocky: there is no EPEL package of Xymon. Terabithia builds
+    (package `xymon-client`): `/usr/lib64/xymon/client`, the rpm
+    spec's default. A client built from the sources: wherever it was
+    installed, typically `<XYMONTOPDIR>/client`; build the rpm for it
+    with `RPM_XYMONHOME=<dir> RPM_CLIENTDEP=no make rpm`.
   - FreeBSD (ports `net-mgmt/xymon-client`): `/usr/local/www/xymon/client`
 - Status reports go through `$XYMON $XYMSRV "status ..."` — never call a
   hardcoded binary path or open sockets yourself.

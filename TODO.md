@@ -112,6 +112,22 @@ That needs:
 Not done: maintainer decision (source: installation on a Xymon 4.3.30
 source build, Rocky Linux 10.3).
 
+## sudo helpers in directories the xymon user owns
+
+`claude-expiry.sh` (client) and `powerline-read.sh` (server) are meant
+to be run as root through sudo, and both are installed into `ext/`. On
+a Xymon built from the sources that directory belongs to the xymon
+user (4.3.30 `build/Makefile.rules`, `install-dirs`, chowns
+`XYMONHOME`, `bin/`, `etc/` and `ext/`), so a rule naming the helper
+there lets that user replace it and run anything as root. Documented
+for now (`claude/sudoers.example`, `README.md` server recipe,
+`packaging/README.md`): copy the helper to a root-only directory and
+point `CLAUDE_HELPER`/`POWERLINE_HELPER` at it. Maintainer decision
+whether the rpm should install the helpers to a root-owned
+`%{_libexecdir}` instead, at least with `--without clientdep`, and
+whether a post-install should warn when `ext/` is not root's (source:
+installation on a Xymon 4.3.30 source build, Rocky Linux 10.3).
+
 ## README: "current upstream" drop-in lines unverified
 
 `README.md` ("Wiring it up on your server") says current upstream

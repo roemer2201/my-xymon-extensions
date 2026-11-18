@@ -4,18 +4,35 @@
 #
 # Install with visudo -f /etc/sudoers.d/xymon-claude (FreeBSD:
 # /usr/local/etc/sudoers.d/xymon-claude). Keep one uncommented line per
-# account and platform: the user name in the rule is what limits it to
-# those accounts. Hosts where the client runs as root need no rule -
-# set CLAUDE_SUDO="no" there.
+# account, with the path of YOUR platform: the user name in the rule is
+# what limits it to those accounts. Hosts where the client runs as root
+# need no rule - set CLAUDE_SUDO="no" there.
+#
+# The helper, and every directory above it, must not be writable by the
+# xymon user - otherwise it could replace the helper and run anything as
+# root. The packages install it root-owned below /usr; a Xymon built
+# from the sources makes its client directory and ext/ belong to the
+# xymon user ("make install" chowns them), see below.
 
-# Debian/Ubuntu and Rocky/EL - the default account:
+# Debian/Ubuntu (deb package) - the default account:
 xymon ALL=(root) NOPASSWD: /usr/lib/xymon/client/ext/claude-expiry.sh root
 
-# Rocky/EL with the EPEL xymon-client package (different prefix):
-#xymon ALL=(root) NOPASSWD: /usr/share/xymon-client/ext/claude-expiry.sh root
+# Rocky/EL with the rpm of this repository, default layout (Terabithia
+# xymon-client, /usr/lib64/xymon/client):
+#xymon ALL=(root) NOPASSWD: /usr/lib64/xymon/client/ext/claude-expiry.sh root
 
 # FreeBSD (net-mgmt/xymon-client):
 #xymon ALL=(root) NOPASSWD: /usr/local/www/xymon/client/ext/claude-expiry.sh root
+
+# A client built from the sources (the rpm built with
+# RPM_XYMONHOME=<dir> installs the helper as <dir>/ext/claude-expiry.sh,
+# e.g. /home/xymon/client/ext with XYMONTOPDIR=/home/xymon). That
+# directory belongs to the xymon user, so do NOT point a rule there:
+# copy the helper to a directory only root can write, and name that
+# copy in the rule and in CLAUDE_HELPER (claude.cfg):
+#   install -o root -g root -m 0755 /home/xymon/client/ext/claude-expiry.sh \
+#       /usr/local/libexec/claude-expiry.sh
+#xymon ALL=(root) NOPASSWD: /usr/local/libexec/claude-expiry.sh root
 
 # Further accounts: one line each, and add them to CLAUDE_ACCOUNTS:
 #xymon ALL=(root) NOPASSWD: /usr/lib/xymon/client/ext/claude-expiry.sh deploy
