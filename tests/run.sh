@@ -4860,6 +4860,47 @@ else
 fi
 
 # --- the server package ------------------------------------------------
+# Run the source-install recipe itself against a disposable server tree.
+# Only its example installation path changes; the commands come from README.
+recipe="$TMP/source-install"
+export RECIPE_SERVER="$TMP/source server"
+awk '/^#### Recipe: a server without the Debian package$/ { section = 1 }
+     section && /^```sh$/ { code = 1; next }
+     code && /^```$/ { exit }
+     code && /^    SRV=/ { print "    SRV=\"$RECIPE_SERVER\""; next }
+     code { print }' "$REPO/README.md" > "$recipe"
+run_server_recipe() {
+    # shellcheck disable=SC2086  # TESTSH may be multi-word
+    (cd "$REPO" && $TESTSH "$recipe")
+}
+check_server_recipe() {
+    rs_etc="$RECIPE_SERVER/etc"
+    rs_graph="$rs_etc/graphs.d/smart.cfg"
+    rs_task="$rs_etc/tasks.d/powerline.cfg"
+    mkdir -p "$rs_etc" && touch "$rs_etc/tasks.cfg" || return 1
+    run_server_recipe >/dev/null || return 1
+    [ -s "$rs_graph" ] && [ -s "$rs_task" ] || return 1
+    cp "$rs_graph" "$TMP/stock-graph" && cp "$rs_task" "$TMP/stock-task" || return 1
+    find "$rs_etc" -type f > "$TMP/recipe-expected" || return 1
+    printf '%s\n' "$rs_graph.rpmnew" >> "$TMP/recipe-expected"
+    rm "$rs_task" && printf 'local graph\n' > "$rs_graph" || return 1
+    run_server_recipe > "$TMP/recipe-output" || return 1
+    # All other configurations were identical. Only the changed graph
+    # gets a sibling, and its exact suffix must be one stackio ignores.
+    find "$rs_etc" -type f | sort > "$TMP/recipe-files"
+    sort "$TMP/recipe-expected" > "$TMP/recipe-sorted"
+    cmp -s "$TMP/recipe-sorted" "$TMP/recipe-files" &&
+        cmp -s "$TMP/stock-task" "$rs_task" &&
+        cmp -s "$TMP/stock-graph" "$rs_graph.rpmnew" &&
+        grep -Fxq 'local graph' "$rs_graph" &&
+        grep -Fq "$rs_graph.rpmnew" "$TMP/recipe-output"
+}
+if check_server_recipe; then
+    echo "ok:   README server update installs missing files and offers only changed configs as .rpmnew"
+else
+    echo "FAIL: README server update"; FAIL=1
+fi
+
 # Same idea for stage-server.sh: it must install every drop-in file, and
 # the deb conffiles list must name exactly the installed config files.
 

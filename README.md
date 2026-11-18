@@ -210,8 +210,8 @@ There is no server package for EL or FreeBSD, but its file list,
 arguments. For a source build, run the following in a checkout as the
 account that owns the server tree (normally `xymon`). Set `SRV` to the
 server's home. The example installs the documentation inside that tree
-and keeps any existing configuration files, including edited task and
-graph snippets.
+and refreshes the programs in `ext/` and the files in `share/doc/`.
+Existing configuration files stay in place.
 
 ```sh
 (
@@ -225,8 +225,13 @@ graph snippets.
     for src in "$STAGE$SRV"/etc/*/*; do
         dest=${src#"$STAGE"}
         if [ -e "$dest" ] || [ -L "$dest" ]; then
-            printf 'Keeping %s\n' "$dest"
-            rm "$src"
+            if [ -f "$dest" ] && cmp -s "$src" "$dest"; then
+                rm "$src"
+            else
+                test ! -d "$dest.rpmnew"
+                mv -f "$src" "$dest.rpmnew"
+                printf 'Kept %s; review %s.rpmnew\n' "$dest" "$dest"
+            fi
         fi
     done
     cp -R "$STAGE$SRV/." "$SRV/"
@@ -256,8 +261,11 @@ same path also counts. Then restart Xymon (e.g.
   are installed with their tasks in `tasks.d`, but stay off until
   `*_ENABLED=1` is set in `$SRV/etc/my-xymon-extensions-server/`;
   until then each run exits at once.
-- On updates, compare the configuration files reported as kept with the
-  new examples and apply any wanted changes.
+- Missing configuration files are installed; identical ones are left alone.
+  If the files differ, compare the active file with `<file>.rpmnew`,
+  merge or adopt the changes you want, then delete the `.rpmnew` copy.
+  Xymon 4.3.30 skips `*.rpmnew` in a `directory` directive but would
+  load a plain `.new` copy as another graph, setting or task.
 - The `temp` drop-ins only land in the doc directory (their names
   clash with hobbit-plugins on Debian); copy them into place by hand,
   see [extensions/temp/server/README.md](extensions/temp/server/README.md).
