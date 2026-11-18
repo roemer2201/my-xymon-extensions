@@ -175,13 +175,20 @@ say so.
   arrives: the archives are fixed when an RRD file is created, so files
   created without the line have to be deleted once (see the
   extension's `server/README.md`).
-- **Current upstream Xymon** ships every config file with a trailing
-  `optional directory $XYMONHOME/etc/<name>.d`, so `graphs.d` and
-  `rrddefinitions.d` work out of the box. Its drop-in directory for the
-  server config is named `xymonserver.cfg.d`, not `xymonserver.d` —
-  either put the file there or add
-  `optional directory $XYMONHOME/etc/xymonserver.d` to
-  `xymonserver.cfg`.
+- **Other builds may already read drop-in directories.** Neither the
+  Xymon 4.3.30 release nor the SVN trunk does (checked 2026-11-18), but
+  packaged builds can differ. Look at the end of the three files before
+  adding anything:
+
+  ```sh
+  tail -n 3 xymonserver.cfg graphs.cfg rrddefinitions.cfg
+  ```
+
+  A `directory` or `optional directory` line there that names a
+  drop-in directory with its full path is all you need - put the files
+  into that directory, whatever it is called. A line that contains a
+  variable such as `$XYMONHOME` does not work: the reader expands no
+  variables in these lines (see above).
 - **Anything else** (source installs, EL/FreeBSD packages): create the
   directory and add one line at the **end** of the matching config file,
   with the path written out, e.g.

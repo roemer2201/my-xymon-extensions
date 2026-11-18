@@ -43,6 +43,15 @@ There is no rpm or FreeBSD packaging for my-xymon-extensions-server. The
 tasks.d layout and the powerline helper's fixed /usr/bin tool paths would
 need review first (source: PLAN1.md, "Open TODOs").
 
+Until then, other servers are set up by hand with the recipe in
+`README.md` ("Recipe: a server without the Debian package"). A
+`make server-install` target was considered and not built: it would
+have to answer the same questions as a package (edited files in
+`my-xymon-extensions-server/` on an update, never touching a stock
+config file) without a package manager's help. If non-Debian servers
+become common, a server rpm is the better answer (source: installation
+on a Xymon 4.3.30 source build, Rocky Linux 10.3).
+
 ## dnf: reuse the previous result while nothing changed
 
 A dnf run costs about 8 s wall clock and 7.6 s CPU (measured with
@@ -72,20 +81,6 @@ metadata age (step 4) and with it the repository lines and colors:
 Open: a full run at least every N hours anyway, where the state file
 lives (`$XYMONTMP` may be a tmpfs) and how a reused result is marked in
 the status. Not implemented (source: installation on a Xymon 4.3.30
-source build, Rocky Linux 10.3).
-
-## Optional `make server-install` target for non-Debian servers
-
-The server side outside Debian/Ubuntu is installed by hand with the
-recipe in `README.md` ("Recipe: a server without the Debian package"):
-`stage-server.sh` into a staging directory, copy, then one
-`optional directory` line per config file. A Makefile target could do
-the first two steps, e.g. `make server-install SRV=/home/xymon/server
-DESTDIR=...`, and print (never append) the missing lines. It must not
-touch a stock config file, and it has to decide what happens to
-edited files in `my-xymon-extensions-server/` on an update (skip them,
-or install `.new` copies). Maintainer decision whether a target is
-worth it next to the recipe (source: installation on a Xymon 4.3.30
 source build, Rocky Linux 10.3).
 
 ## temp launch snippet in the rpm and FreeBSD packages
@@ -127,19 +122,6 @@ whether the rpm should install the helpers to a root-owned
 `%{_libexecdir}` instead, at least with `--without clientdep`, and
 whether a post-install should warn when `ext/` is not root's (source:
 installation on a Xymon 4.3.30 source build, Rocky Linux 10.3).
-
-## README: "current upstream" drop-in lines unverified
-
-`README.md` ("Wiring it up on your server") says current upstream
-Xymon ships every config file with a trailing
-`optional directory $XYMONHOME/etc/<name>.d` and names its server
-drop-in directory `xymonserver.cfg.d`. Neither the 4.3.30 release nor
-the SVN trunk (checked 2026-11-18) has such lines in `graphs.cfg`,
-`rrddefinitions.cfg` or `xymonserver.cfg.DIST`, and their
-`stackfgets()` expands no variables in a `directory` line, so a line
-with `$XYMONHOME` would not work there. Find the release this
-statement describes, or correct it (source: installation on a Xymon
-4.3.30 source build, Rocky Linux 10.3).
 
 ## Unverified without hardware
 
