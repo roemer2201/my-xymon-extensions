@@ -65,7 +65,7 @@
 # $XYMONHOME/etc/my-xymon-extensions/dnf.cfg (see the shipped dnf.cfg;
 # the config file wins over the environment).
 
-# Version: 1.1.0 (2026-11-18)
+# Version: 1.1.1 (2026-11-18)
 
 set -u
 

@@ -484,6 +484,20 @@ done
 exit 0
 
 %changelog
+* Wed Nov 18 2026 roemer2201 <r.oliver@web.de> - 0.36.1-1
+- dnf: validate cached answers against repomd.xml and changes since the
+  query started; publish them atomically and disable reuse in shared
+  temporary directories. Ignore SQLite *-shm updates from RPM readers;
+  changes to the database or its write-ahead log still invalidate answers
+- rpm post-install: match the actual client drop-in directory and honor
+  later task overrides on source-built server/client hosts; clarify which
+  launcher to restart, including installations using a service unit
+- source server install: keep local configuration, offer changed defaults
+  as .rpmnew, and refresh programs and docs without interactive prompts
+- smart: validate examples with rules supported by each sudo parser;
+  document the Rocky 10.3 SMART and dnf reuse checks and clarify the
+  packaged Claude helper default
+
 * Wed Nov 18 2026 roemer2201 <r.oliver@web.de> - 0.36.0-1
 - post-install: on a host where Xymon server and client were built
   from one source tree, the server's tasks.cfg starts the client and
