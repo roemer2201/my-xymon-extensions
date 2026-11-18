@@ -81,6 +81,53 @@ directory /usr/local/xymon/client/etc/clientlaunch.d
 The path has to be written out: xymonlaunch does not expand
 `$XYMONCLIENTHOME` in a `directory` line. Then restart the client.
 
+#### Server and client from one source build
+
+A Xymon **server** built from the sources installs a client as well:
+`build/Makefile.rules` puts the server at `$XYMONTOPDIR/server` and the
+client at `$XYMONTOPDIR/client`. On such a host only the server's
+xymonlaunch runs (`xymon.sh start`, with `server/etc/tasks.cfg`), and
+its stock `tasks.cfg` starts the local client itself:
+
+```
+[xymonclient]
+	ENVFILE /home/xymon/client/etc/xymonclient.cfg
+	NEEDS xymond
+	CMD /home/xymon/client/bin/xymonclient.sh
+	LOGFILE $XYMONSERVERLOGS/xymonclient.log
+	INTERVAL 5m
+```
+
+`client/etc/clientlaunch.cfg` and `client/runclient.sh` are never used
+there, so the drop-in line in `clientlaunch.cfg` would change nothing:
+no extension starts, and nothing reports an error. Add it at the end of
+the **server's** `tasks.cfg` instead (with `XYMONTOPDIR=/home/xymon`):
+
+```
+directory /home/xymon/client/etc/clientlaunch.d
+```
+
+and restart Xymon (`/home/xymon/server/xymon.sh restart`). The snippets
+stay in the client's `clientlaunch.d`; nothing goes to the server's
+`tasks.d`. Put the line into one of the two files only: should
+`runclient.sh` ever be started as well, every extension would run
+twice.
+
+The tasks work unchanged under the server's launcher: its environment
+(`xymonserver.cfg`) defines `$XYMONCLIENTHOME`, and xymonlaunch loads a
+task's `ENVFILE` (here the client's `xymonclient.cfg`, which defines
+`$XYMONCLIENTLOGS`) in the child process before it expands `LOGFILE`
+(`common/xymonlaunch.c`, verified in Xymon 4.3.30).
+
+The rpm post-install detects this layout - a `tasks.cfg` in
+`<client>/../server/etc` with an enabled task whose `CMD` runs this
+client's `xymonclient.sh`, written out or as `$XYMONCLIENTHOME` (resolved
+through the server's `xymonserver.cfg`) - and then names `tasks.cfg`
+instead of `clientlaunch.cfg`, with its real path. It points out the
+line if it is in `clientlaunch.cfg` as well, and edits neither file.
+Installation tested on Rocky Linux 10.3 with Xymon 4.3.30 built from
+the sources, server and client below `/home/xymon`.
+
 Built on Rocky Linux the package carries that release's dist tag
 (`.el10`); it is `noarch` and installs on every EL release. The
 installation was tested on Rocky Linux 10 (in a container, with a
@@ -98,7 +145,10 @@ owned by the xymon-client package). After installing, once per host:
    $XYMONHOME/etc/clientlaunch.d`. On Debian/Ubuntu this is already
    the case: the init script writes one `include` line per `*.cfg`
    into `/var/run/xymon/clientlaunch-include.cfg`, which both
-   `clientlaunch.cfg` and the server's `tasks.cfg` read.
+   `clientlaunch.cfg` and the server's `tasks.cfg` read. Where a
+   Xymon server built from the sources starts the client, the line
+   goes into the server's `tasks.cfg` instead (see "Server and client
+   from one source build" above).
 3. Restart the Xymon client (a restart, not a reload — on
    Debian/Ubuntu that include list is regenerated at start).
 

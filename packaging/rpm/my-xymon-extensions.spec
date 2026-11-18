@@ -250,6 +250,9 @@ To activate the "smart" extension:
  2. Make sure clientlaunch.cfg loads the client drop-in directory
     (add this line once if it is missing):
       directory %{xymonhome}/etc/clientlaunch.d
+    Where the Xymon server's tasks.cfg starts this client (server and
+    client built from one source tree), the line goes into tasks.cfg
+    instead - the check below names the file.
     NOTE: up to version 0.14.0 the snippets went to etc/tasks.d and
     that is what the line said. tasks.d belongs to the SERVER's
     xymonlaunch (tasks.cfg) - on a host that is server and client,
@@ -316,13 +319,70 @@ RRD graphs need a one-time setup on the Xymon SERVER (not here):
  %{_docdir}/%{name}/<extension>/server/ - copy them over and restart
  Xymon there; see the README.md next to them.
 EOF
-# None of the snippets is read unless clientlaunch.cfg includes the
-# drop-in directory, and a Xymon client built from the sources does
-# not. That file is not ours to edit (it belongs to the xymon-client
-# package or to the admin), so say exactly what is missing.
+# None of the snippets is read unless the launcher that starts the
+# client includes the drop-in directory, and a Xymon built from the
+# sources does not. Neither file is ours to edit (they belong to the
+# xymon-client package or to the admin), so say exactly what is
+# missing.
+dropin='^[[:space:]]*(optional[[:space:]]+)?directory[[:space:]]+[^[:space:]]*clientlaunch\.d'
 launchcfg=%{xymonhome}/etc/clientlaunch.cfg
-if [ -f "$launchcfg" ] &&
-   ! grep -Eq '^[[:space:]]*(optional[[:space:]]+)?directory[[:space:]]+[^[:space:]]*clientlaunch\.d' "$launchcfg"; then
+# Server and client from one source build: the server's xymonlaunch
+# starts the client itself (tasks.cfg, task [xymonclient], CMD
+# <client>/bin/xymonclient.sh), and clientlaunch.cfg is never read.
+# The build puts the server at $XYMONTOPDIR/server and the client at
+# $XYMONTOPDIR/client (build/Makefile.rules), so that tasks.cfg sits
+# next to this client. It counts only if an enabled task runs THIS
+# client's xymonclient.sh - written out, or as $XYMONCLIENTHOME, which
+# the server's xymonserver.cfg defines.
+servetc=%{xymonhome}/../server/etc
+taskscfg=""
+if [ -f "$servetc/tasks.cfg" ]; then
+    clientbin=$(cd %{xymonhome}/bin 2>/dev/null && pwd -P)
+    xch=$(sed -n 's/^[[:space:]]*XYMONCLIENTHOME="\{0,1\}\([^"[:space:]]*\).*/\1/p' \
+        "$servetc/xymonserver.cfg" 2>/dev/null | tail -n 1)
+    clientcmds=$(awk '
+        function done() { if (!off && cmd ~ /(^|\/)xymonclient\.sh$/) print cmd }
+        /^[[:space:]]*\[/ { done(); cmd = ""; off = 0; next }
+        toupper($1) == "CMD" { cmd = $2 }
+        NF == 1 && toupper($1) == "DISABLED" { off = 1 }
+        NF == 1 && toupper($1) == "ENABLED" { off = 0 }
+        END { done() }' "$servetc/tasks.cfg")
+    for cmd in $clientcmds; do
+        case "$cmd" in
+            '$XYMONCLIENTHOME/'*|'${XYMONCLIENTHOME}/'*)
+                [ -n "$xch" ] || continue
+                cmd="$xch/${cmd#*/}" ;;
+        esac
+        cmddir=$(cd "$(dirname "$cmd")" 2>/dev/null && pwd -P)
+        if [ -n "$clientbin" ] && [ "$cmddir" = "$clientbin" ]; then
+            taskscfg="$(cd "$servetc" && pwd -P)/tasks.cfg"
+        fi
+    done
+fi
+if [ -n "$taskscfg" ]; then
+    if ! grep -Eq "$dropin" "$taskscfg"; then
+        cat <<EOF
+ TODO: on this host the Xymon SERVER starts the client: a task in
+   $taskscfg
+ runs xymonclient.sh, and clientlaunch.cfg is not read at all. NONE
+ of these extensions is started until tasks.cfg reads the drop-in
+ directory. Add this line at the end of that file and restart Xymon
+ (xymon.sh restart):
+   directory %{xymonhome}/etc/clientlaunch.d
+ Put the line into tasks.cfg only, not into both files: should
+ clientlaunch.cfg ever be started too (runclient.sh), every extension
+ would run twice. The snippets stay in clientlaunch.d - never move
+ them to the server's tasks.d.
+EOF
+    fi
+    if [ -f "$launchcfg" ] && grep -Eq "$dropin" "$launchcfg"; then
+        cat <<EOF
+ NOTE: $launchcfg
+ reads the drop-in directory as well. The server's tasks.cfg starts the
+ client on this host, so remove the line there: one file only.
+EOF
+    fi
+elif [ -f "$launchcfg" ] && ! grep -Eq "$dropin" "$launchcfg"; then
     cat <<'EOF'
  TODO: clientlaunch.cfg does not read the drop-in directory yet, so
  NONE of these extensions is started. Add this line at the end of

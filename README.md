@@ -221,6 +221,13 @@ through. Set `XYMONEXT_ENABLE="no"` in `xymonext.cfg` (or in
        INTERVAL 5m
    ```
 
+   On a Xymon server built from the sources, the server's `tasks.cfg`
+   starts the local client and `clientlaunch.cfg` is not read: there
+   the `directory <client>/etc/clientlaunch.d` line goes at the end of
+   the server's `tasks.cfg` instead, and into that file only (see
+   [packaging/README.md](packaging/README.md), "Server and client from
+   one source build").
+
 4. Restart the Xymon client.
 
 ## Hosts without a Xymon client (OpenWrt / TurrisOS)

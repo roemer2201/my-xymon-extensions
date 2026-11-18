@@ -5288,6 +5288,67 @@ rm -f "$RE/clientlaunch.cfg"
 out=$($TESTSH "$TMP/rpm-post" 1)
 expect_not "$out" 'TODO' "rpm post: no claim about a clientlaunch.cfg that does not exist"
 
+# Server and client from one source build ($XYMONTOPDIR/server and
+# $XYMONTOPDIR/client): the server's tasks.cfg starts the client, and
+# clientlaunch.cfg is never read. The line belongs into tasks.cfg.
+RS="$RPMROOT/server/etc"
+mkdir -p "$RS" "$RPMROOT/client/bin"
+rs_real=$(cd "$RS" && pwd -P)
+# shellcheck disable=SC2016  # the literal text of a clientlaunch.cfg
+printf '[client]\n\tCMD $XYMONCLIENTHOME/bin/xymonclient.sh\n' > "$RE/clientlaunch.cfg"
+printf 'XYMONSERVERROOT="%s"\nXYMONCLIENTHOME="%s/client"\t\t# client\n' \
+    "$RPMROOT" "$RPMROOT" > "$RS/xymonserver.cfg"
+rpm_tasks() { # rpm_tasks CMD [extra line] - a tasks.cfg like the source build's
+    printf '[xymond]\n\tCMD xymond\n\n[xymonclient]\n\tENVFILE %s/client/etc/xymonclient.cfg\n\tNEEDS xymond\n\tCMD %s\n\tINTERVAL 5m\n%s\n\n# Include add-on modules.\ndirectory %s/server/etc/tasks.d\n' \
+        "$RPMROOT" "$1" "${2:-}" "$RPMROOT" > "$RS/tasks.cfg"
+}
+rpm_tasks "$RPMROOT/client/bin/xymonclient.sh"
+cp "$RS/tasks.cfg" "$TMP/tasks.before"
+cp "$RE/clientlaunch.cfg" "$TMP/clientlaunch.before"
+out=$($TESTSH "$TMP/rpm-post" 1)
+expect "$out" '^ TODO: on this host the Xymon SERVER starts the client' \
+    "rpm post: a server tasks.cfg that starts this client is detected"
+expect "$out" "^   $rs_real/tasks\\.cfg\$" "rpm post: names tasks.cfg with its real path"
+expect "$out" "^   directory $RE/clientlaunch\\.d\$" \
+    "rpm post: the line for tasks.cfg points at the client's clientlaunch.d"
+expect "$out" 'not into both files' "rpm post: warns against the line in both files"
+expect_not "$out" 'TODO: clientlaunch\.cfg' \
+    "rpm post: no advice for a clientlaunch.cfg nothing reads"
+if cmp -s "$RS/tasks.cfg" "$TMP/tasks.before" &&
+   cmp -s "$RE/clientlaunch.cfg" "$TMP/clientlaunch.before"; then
+    echo "ok:   rpm post: tasks.cfg and clientlaunch.cfg are left alone"
+else
+    echo "FAIL: rpm post edited tasks.cfg or clientlaunch.cfg"
+    FAIL=1
+fi
+echo "directory $RE/clientlaunch.d" >> "$RE/clientlaunch.cfg"
+out=$($TESTSH "$TMP/rpm-post" 1)
+expect "$out" '^ TODO: on this host the Xymon SERVER' \
+    "rpm post: the line in clientlaunch.cfg does not help on a combined host"
+expect "$out" '^ NOTE: .*clientlaunch\.cfg$' "rpm post: the line in clientlaunch.cfg is pointed out"
+echo "directory $RE/clientlaunch.d" >> "$RS/tasks.cfg"
+out=$($TESTSH "$TMP/rpm-post" 1)
+expect_not "$out" 'TODO' "rpm post: quiet once tasks.cfg reads the directory"
+expect "$out" '^ NOTE: ' "rpm post: still asks to drop the second copy of the line"
+cp "$TMP/clientlaunch.before" "$RE/clientlaunch.cfg"
+out=$($TESTSH "$TMP/rpm-post" 1)
+expect_not "$out" '^ (TODO|NOTE): ' "rpm post: silent with the line in tasks.cfg only"
+# shellcheck disable=SC2016  # $XYMONCLIENTHOME as written in tasks.cfg
+rpm_tasks '$XYMONCLIENTHOME/bin/xymonclient.sh'
+out=$($TESTSH "$TMP/rpm-post" 1)
+expect "$out" '^ TODO: on this host the Xymon SERVER' \
+    "rpm post: \$XYMONCLIENTHOME in tasks.cfg is resolved through xymonserver.cfg"
+rpm_tasks "$RPMROOT/client/bin/xymonclient.sh" '	DISABLED'
+out=$($TESTSH "$TMP/rpm-post" 1)
+expect "$out" '^ TODO: clientlaunch\.cfg does not read' \
+    "rpm post: a disabled client task leaves clientlaunch.cfg in charge"
+rpm_tasks "/opt/other/client/bin/xymonclient.sh"
+out=$($TESTSH "$TMP/rpm-post" 1)
+expect "$out" '^ TODO: clientlaunch\.cfg does not read' \
+    "rpm post: a server that starts another client changes nothing here"
+expect_not "$out" 'Xymon SERVER starts' "rpm post: ... and is not mentioned"
+rm -rf "$RPMROOT/server"
+
 # dnf: the shared snippet ships disabled (deb and FreeBSD hosts have no
 # dnf), and the rpm - the one package whose hosts all have dnf - enables
 # it at build time. Run that step of the spec against the staged file.
