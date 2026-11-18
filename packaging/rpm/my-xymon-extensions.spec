@@ -100,6 +100,25 @@ sh packaging/common/stage.sh "%{buildroot}" \
     "%{xymonhome}/etc/clientlaunch.d" \
     "%{_docdir}/%{name}"
 
+# The claude helper is run as root through sudo, so it must not sit
+# where the xymon user can replace it - and a Xymon built from the
+# sources hands its client directory and ext/ to that user ("make
+# install" chowns them). Every layout of this package therefore puts
+# the helper root-owned below %{_libexecdir}, and claude.sh looks there
+# unless CLAUDE_HELPER says otherwise.
+claudehelper="%{_libexecdir}/%{name}/claude-expiry.sh"
+claudesh="%{buildroot}%{xymonhome}/ext/claude.sh"
+mkdir -p "%{buildroot}%{_libexecdir}/%{name}"
+mv "%{buildroot}%{xymonhome}/ext/claude-expiry.sh" "%{buildroot}$claudehelper" || exit 1
+sed "s|^CLAUDE_HELPER=\"\${CLAUDE_HELPER:-}\"|CLAUDE_HELPER=\"\${CLAUDE_HELPER:-$claudehelper}\"|" \
+    "$claudesh" > "$claudesh.new"
+if cmp -s "$claudesh" "$claudesh.new"; then
+    echo "ext/claude.sh: no empty CLAUDE_HELPER default to replace" >&2
+    exit 1
+fi
+mv "$claudesh.new" "$claudesh"
+chmod 0755 "$claudesh"
+
 # The shared launch snippet of the dnf extension ships disabled: the
 # deb and FreeBSD packages install it on hosts without dnf. Every host
 # this package is installed on has dnf, so the task is enabled here.
@@ -145,7 +164,8 @@ chmod 0644 "$dnfsnippet"
 %config(noreplace) %{xymonhome}/etc/my-xymon-extensions/lxc.cfg
 %config(noreplace) %{xymonhome}/etc/clientlaunch.d/lxc.cfg
 %{xymonhome}/ext/claude.sh
-%{xymonhome}/ext/claude-expiry.sh
+%dir %{_libexecdir}/%{name}
+%{_libexecdir}/%{name}/claude-expiry.sh
 %config(noreplace) %{xymonhome}/etc/my-xymon-extensions/claude.cfg
 %config(noreplace) %{xymonhome}/etc/clientlaunch.d/claude.cfg
 %{xymonhome}/ext/systemd.sh
@@ -307,7 +327,8 @@ The "lxc" extension ships disabled: on an LXC host, remove the
 The "claude" extension ships disabled: it reports how much longer the
  Claude Code login of an account is valid (yellow 10 days before it
  expires, red 5 days). The credentials file is mode 0600 in a private
- home directory, so allow the xymon user to run the reader as root -
+ home directory, so allow the xymon user to run the reader,
+ %{_libexecdir}/%{name}/claude-expiry.sh, as root -
  see %{_docdir}/%{name}/claude/sudoers.example, which ships one line
  for the "root" account - list the accounts to check in
  CLAUDE_ACCOUNTS in %{xymonhome}/etc/my-xymon-extensions/claude.cfg and uncomment the task
@@ -394,6 +415,42 @@ elif [ -f "$launchcfg" ] && ! grep -Eq "$dropin" "$launchcfg"; then
    directory %{xymonhome}/etc/clientlaunch.d
 EOF
 fi
+# A sudo rule must never name a script the xymon user can replace. A
+# Xymon built from the sources gives the client directory and ext/ to
+# that user ("make install" chowns them), so a rule pointing below it
+# is a way to root. Warn where that is the case, and name the sudoers
+# files that do point there.
+unsafe=""
+for dir in %{xymonhome} %{xymonhome}/ext; do
+    [ -d "$dir" ] || continue
+    if [ -n "$(find "$dir" -prune \( ! -user root -o -perm -0020 -o -perm -0002 \) 2>/dev/null)" ]; then
+        unsafe="$unsafe $dir"
+    fi
+done
+if [ -n "$unsafe" ]; then
+    cat <<EOF
+ WARNING: not only root can write to$unsafe.
+ Never point a sudo rule at a script below %{xymonhome}: the xymon
+ user could replace it and run anything as root. This package installs
+ its sudo helper as %{_libexecdir}/%{name}/claude-expiry.sh
+ for that reason; name that path in a rule.
+EOF
+    for rules in %{_sysconfdir}/sudoers %{_sysconfdir}/sudoers.d/*; do
+        [ -f "$rules" ] || continue
+        if grep -v '^[[:space:]]*#' "$rules" 2>/dev/null | grep -q "%{xymonhome}/"; then
+            echo "   $rules has a rule naming a path below %{xymonhome}"
+        fi
+    done
+fi
+# Up to 0.35.2 the helper sat in ext/; a rule naming it there no longer
+# matches what claude.sh calls.
+for rules in %{_sysconfdir}/sudoers %{_sysconfdir}/sudoers.d/*; do
+    [ -f "$rules" ] || continue
+    if grep -v '^[[:space:]]*#' "$rules" 2>/dev/null | grep -q "/ext/claude-expiry\.sh"; then
+        echo " NOTE: $rules names ext/claude-expiry.sh. The rpm installs the"
+        echo " helper as %{_libexecdir}/%{name}/claude-expiry.sh now - change the rule."
+    fi
+done
 exit 0
 
 %changelog

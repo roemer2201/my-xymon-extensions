@@ -5321,6 +5321,8 @@ scriptlet() { # scriptlet NAME OUT
     awk -v want="%$1" '/^%/ { on = ($1 == want); next } on' "$SPEC_FILE" \
         | sed -e "s|%{xymonhome}|$RPMROOT/client|g" \
               -e "s|%{_localstatedir}|$RPMROOT/var|g" \
+              -e "s|%{_sysconfdir}|$RPMROOT/etc|g" \
+              -e "s|%{_libexecdir}|/usr/libexec|g" \
               -e "s|%{name}|my-xymon-extensions|g" > "$2"
 }
 SPEC_FILE="$REPO/packaging/rpm/my-xymon-extensions.spec"
@@ -5488,6 +5490,82 @@ if $TESTSH -e "$TMP/rpm-install-dnf" 2>/dev/null; then
 else
     echo "ok:   the rpm build fails if the snippet has no DISABLED line"
 fi
+
+# claude: the rpm moves the sudo helper out of ext/ into a root-only
+# directory and makes that the default of claude.sh. Run that step of
+# %install against copies of the two scripts.
+CB="$TMP/rpm-buildroot-claude"
+rm -rf "$CB"; mkdir -p "$CB$RPMROOT/client/ext"
+cp "$REPO/extensions/claude/claude.sh" "$REPO/extensions/claude/claude-expiry.sh" \
+    "$CB$RPMROOT/client/ext/"
+awk '/^%install/ { on = 1; next } /^%/ { on = 0 }
+     on && /^claudehelper=/ { take = 1 } on && take && /^$/ { exit } on && take' \
+    "$SPEC_FILE" | sed -e "s|%{buildroot}|$CB|g" -e "s|%{xymonhome}|$RPMROOT/client|g" \
+        -e "s|%{_libexecdir}|/usr/libexec|g" -e "s|%{name}|my-xymon-extensions|g" \
+    > "$TMP/rpm-install-claude"
+# shellcheck disable=SC2016  # literal shell text in claude.sh
+if $TESTSH -e "$TMP/rpm-install-claude" &&
+   [ -x "$CB/usr/libexec/my-xymon-extensions/claude-expiry.sh" ] &&
+   [ ! -e "$CB$RPMROOT/client/ext/claude-expiry.sh" ] &&
+   [ -x "$CB$RPMROOT/client/ext/claude.sh" ] &&
+   grep -q '^CLAUDE_HELPER="${CLAUDE_HELPER:-/usr/libexec/my-xymon-extensions/claude-expiry\.sh}"' \
+       "$CB$RPMROOT/client/ext/claude.sh"; then
+    echo "ok:   rpm: the claude helper moves to libexec and becomes the default"
+else
+    echo "FAIL: rpm: claude helper not moved to libexec, or claude.sh default not set"
+    FAIL=1
+fi
+if grep -qx '%{_libexecdir}/%{name}/claude-expiry.sh' "$SPEC_FILE" &&
+   ! grep -q '^%{xymonhome}/ext/claude-expiry\.sh' "$SPEC_FILE"; then
+    echo "ok:   rpm %files: the claude helper is packaged in libexec only"
+else
+    echo "FAIL: rpm %files: claude helper path"
+    FAIL=1
+fi
+# The step must fail rather than ship a claude.sh it could not change.
+cp "$REPO/extensions/claude/claude-expiry.sh" "$CB$RPMROOT/client/ext/"
+if $TESTSH -e "$TMP/rpm-install-claude" 2>/dev/null; then
+    echo "FAIL: the rpm build step accepts a claude.sh without the expected default"
+    FAIL=1
+else
+    echo "ok:   the rpm build fails if claude.sh has no empty CLAUDE_HELPER default"
+fi
+# With the default replaced, claude.sh uses the libexec helper; an
+# explicit CLAUDE_HELPER still wins.
+# shellcheck disable=SC2016  # literal shell text in claude.sh
+sed 's|^CLAUDE_HELPER="${CLAUDE_HELPER:-}"|CLAUDE_HELPER="${CLAUDE_HELPER:-/nonexistent/claude-expiry.sh}"|' \
+    "$REPO/extensions/claude/claude.sh" > "$TMP/claude-libexec.sh"
+# shellcheck disable=SC2086
+out=$(CLAUDE_HELPER='' CLAUDE_CFG=/dev/null XYMONHOME='' $TESTSH "$TMP/claude-libexec.sh" 2>&1)
+expect "$out" 'claude-expiry\.sh not found' \
+    "claude.sh with the rpm default looks only at that path"
+
+# rpm post: a sudo rule must not name a script the xymon user can
+# replace. The test's client directory belongs to whoever runs the
+# suite: as root, a group-writable ext/ must be reported and a 0755 one
+# not; as anyone else, both are reported (not root's).
+scriptlet post "$TMP/rpm-post"
+rm -rf "$RPMROOT"; mkdir -p "$RPMROOT/client/ext" "$RPMROOT/etc/sudoers.d"
+chmod 0755 "$RPMROOT/client" "$RPMROOT/client/ext"
+printf 'xymon ALL=(root) NOPASSWD: %s/client/ext/claude-expiry.sh root\n' "$RPMROOT" \
+    > "$RPMROOT/etc/sudoers.d/xymon-claude"
+printf '#xymon ALL=(root) NOPASSWD: %s/client/ext/x.sh\n' "$RPMROOT" > "$RPMROOT/etc/sudoers.d/commented"
+if [ "$(id -u)" -eq 0 ]; then
+    out=$($TESTSH "$TMP/rpm-post" 1)
+    expect_not "$out" 'WARNING: not only root' "rpm post: silent about a root-owned 0755 client directory"
+    chmod 0775 "$RPMROOT/client/ext"
+fi
+out=$($TESTSH "$TMP/rpm-post" 1)
+expect "$out" "^ WARNING: not only root can write to.*$RPMROOT/client/ext" \
+    "rpm post: a client directory the xymon user can write is reported"
+expect "$out" '/usr/libexec/my-xymon-extensions/claude-expiry\.sh' \
+    "rpm post: names the root-owned helper path"
+expect "$out" "^   $RPMROOT/etc/sudoers\.d/xymon-claude has a rule naming a path below" \
+    "rpm post: names a sudoers file pointing below the client directory"
+expect_not "$out" 'sudoers\.d/commented has' "rpm post: commented-out rules are ignored"
+expect "$out" "^ NOTE: $RPMROOT/etc/sudoers\\.d/xymon-claude names ext/claude-expiry\\.sh" \
+    "rpm post: a claude rule for the old helper path is pointed out"
+rm -rf "$RPMROOT"
 
 # A Xymon client compiled by hand is in no rpm database: the dependency
 # on the client package must be optional, and build.sh must reject a

@@ -27,7 +27,7 @@ files into an entirely different tree.
 |---|---|---|---|
 | deb | `/usr/lib/xymon/client/ext/` | `/etc/xymon/` (conffiles; reachable as `$XYMONCLIENTHOME/etc` via Debian's symlink) | `/usr/share/doc/my-xymon-extensions/` |
 | deb-server | — (no client files) | `/etc/xymon/{xymonserver,graphs,rrddefinitions,tasks}.d/`, `/etc/xymon/my-xymon-extensions-server/` and `/etc/sudoers.d/my-xymon-extensions-server` (all conffiles) | `/usr/share/doc/my-xymon-extensions-server/` |
-| rpm | `/usr/lib64/xymon/client/ext/` | `/usr/lib64/xymon/client/etc/` (`%config(noreplace)`) | `/usr/share/doc/my-xymon-extensions/` |
+| rpm | `/usr/lib64/xymon/client/ext/`; claude's sudo helper in `/usr/libexec/my-xymon-extensions/` | `/usr/lib64/xymon/client/etc/` (`%config(noreplace)`) | `/usr/share/doc/my-xymon-extensions/` |
 | FreeBSD | `/usr/local/www/xymon/client/ext/` | `/usr/local/www/xymon/client/etc/` (`@sample`) | `/usr/local/share/doc/my-xymon-extensions/` |
 | opkg | `/usr/lib/xymon-standalone/ext/` | `/etc/xymon-standalone/` (conffiles; incl. `standalone.cfg`, no launch snippets — no xymonlaunch; `/usr/lib/xymon-standalone/etc` is a symlink to it) | none (flash space) |
 
@@ -66,11 +66,14 @@ dnf install build/rpm/RPMS/noarch/my-xymon-extensions-*.noarch.rpm
 
 `smartmontools` stays a dependency. Mind the sudo rules: Xymon's
 `make install` gives the client directory and its `ext/` to the xymon
-user, and a rule naming a script in there (`claude-expiry.sh`) lets
-that user replace it and run anything as root. Copy such a helper to a
-directory only root can write and point the rule and the extension's
-`*_HELPER` setting at the copy (see `claude/sudoers.example`).
-`smartctl` itself is no such case. The package name and version are
+user, and a rule naming a script in there would let that user replace
+it and run anything as root. That is why the rpm installs the one sudo
+helper it has, `claude-expiry.sh`, as
+`/usr/libexec/my-xymon-extensions/claude-expiry.sh` - root-owned and
+the same for every layout - and makes it the default of `claude.sh`;
+the sudo rule names that path. The post-install warns when the client
+directory or `ext/` can be written by anyone but root, and names
+sudoers files whose rules point below it. The package name and version are
 the same for every layout, so do not mix packages built for different
 client directories in one repository.
 
