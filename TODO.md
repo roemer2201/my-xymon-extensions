@@ -43,6 +43,57 @@ There is no rpm or FreeBSD packaging for my-xymon-extensions-server. The
 tasks.d layout and the powerline helper's fixed /usr/bin tool paths would
 need review first (source: PLAN1.md, "Open TODOs").
 
+## Optional `make server-install` target for non-Debian servers
+
+The server side outside Debian/Ubuntu is installed by hand with the
+recipe in `README.md` ("Recipe: a server without the Debian package"):
+`stage-server.sh` into a staging directory, copy, then one
+`optional directory` line per config file. A Makefile target could do
+the first two steps, e.g. `make server-install SRV=/home/xymon/server
+DESTDIR=...`, and print (never append) the missing lines. It must not
+touch a stock config file, and it has to decide what happens to
+edited files in `my-xymon-extensions-server/` on an update (skip them,
+or install `.new` copies). Maintainer decision whether a target is
+worth it next to the recipe (source: installation on a Xymon 4.3.30
+source build, Rocky Linux 10.3).
+
+## temp launch snippet in the rpm and FreeBSD packages
+
+`stage.sh` leaves `clientlaunch.d/temp.cfg` out of every package
+(`SKIP_SNIPPETS`), because Debian's `hobbit-plugins` owns that path and
+dpkg refuses two packages claiming one file. rpm and FreeBSD have no
+hobbit-plugins, so there the conflict does not exist, and the `temp`
+extension never starts unless the snippet is copied from the doc
+directory by hand. It could be installed for those two packages only,
+following the dnf special case (a step in the spec's `%install`).
+That needs:
+
+- spec `%install`: copy the snippet from the staged docs into
+  `%{xymonhome}/etc/clientlaunch.d/temp.cfg`; `%files`: a
+  `%config(noreplace)` line for it;
+- FreeBSD: the same step in `packaging/freebsd/build.sh` and an
+  `@sample` line in `pkg-plist`;
+- `tests/run.sh`: the pins for the skipped snippet (it must stay out of
+  the deb and remain in the docs) and the pkg-plist/stage comparison;
+- the post-install texts and `extensions/temp/README.md`, which say the
+  snippet is installed by hand everywhere.
+
+Not done: maintainer decision (source: installation on a Xymon 4.3.30
+source build, Rocky Linux 10.3).
+
+## README: "current upstream" drop-in lines unverified
+
+`README.md` ("Wiring it up on your server") says current upstream
+Xymon ships every config file with a trailing
+`optional directory $XYMONHOME/etc/<name>.d` and names its server
+drop-in directory `xymonserver.cfg.d`. Neither the 4.3.30 release nor
+the SVN trunk (checked 2026-11-18) has such lines in `graphs.cfg`,
+`rrddefinitions.cfg` or `xymonserver.cfg.DIST`, and their
+`stackfgets()` expands no variables in a `directory` line, so a line
+with `$XYMONHOME` would not work there. Find the release this
+statement describes, or correct it (source: installation on a Xymon
+4.3.30 source build, Rocky Linux 10.3).
+
 ## Unverified without hardware
 
 - powerline: a plcrate response whose MAC differs from the queried

@@ -114,6 +114,20 @@ sources for the three files used here:
 | `rrddefinitions.cfg` | `load_rrddefs()`, `xymond/xymond_rrd.c` | yes |
 | `xymonserver.cfg` | `loadenv()`, `lib/environ.c` | yes |
 
+Checked again in the **Xymon 4.3.30** release sources, and in use on a
+4.3.30 server built from them:
+
+- `optional directory` works in all three files (`stackfgets()`,
+  `lib/stackio.c`). The reader expands **no** variables in an
+  `include` or `directory` line: write the path out. A line such as
+  `optional directory $XYMONHOME/etc/xymonserver.d` names a directory
+  literally called `$XYMONHOME` and, being optional, fails silently.
+- `NAME+="…"` in `xymonserver.cfg` appends to the variable
+  (`loadenv()`, `lib/environ.c`, `appendto`).
+- xymonlaunch loads a task's `ENVFILE` in the child process before it
+  expands `LOGFILE` (`common/xymonlaunch.c`), so `$XYMONCLIENTLOGS` in
+  the client snippets works under the server's launcher as well.
+
 ### Debian/Ubuntu: the server package
 
 On Debian/Ubuntu there is no need to copy anything by hand —
@@ -170,13 +184,63 @@ say so.
   `xymonserver.cfg`.
 - **Anything else** (source installs, EL/FreeBSD packages): create the
   directory and add one line at the **end** of the matching config file,
-  e.g. `optional directory $XYMONHOME/etc/xymonserver.d`. A single
-  `include $XYMONHOME/etc/xymonserver.d/<name>.cfg` per file works too.
+  with the path written out, e.g.
+  `optional directory /home/xymon/server/etc/xymonserver.d`. A single
+  `include /home/xymon/server/etc/xymonserver.d/<name>.cfg` per file
+  works too. The recipe below does all of it.
 
 The **end** matters for `xymonserver.cfg`: the snippets extend the
 stock settings with `NAME+="…"`, which appends verbatim (hence the
 leading comma in every value) and requires the variable to be defined
 already.
+
+#### Recipe: a server without the Debian package
+
+There is no server package for EL or FreeBSD, but its file list,
+`packaging/common/stage-server.sh`, takes the target paths as
+arguments. Stage into an empty directory, copy the tree over, then
+wire up the drop-in directories. Run as root in a checkout of this
+repository; `SRV` is the server's `$XYMONHOME` (a source build:
+`$XYMONTOPDIR/server`):
+
+```sh
+SRV=/home/xymon/server
+STAGE=$(mktemp -d)
+sh packaging/common/stage-server.sh "$STAGE" "$SRV/ext" "$SRV/etc" \
+    /usr/share/doc/my-xymon-extensions-server -
+cp -R "$STAGE"/. /
+rm -rf "$STAGE"
+for f in xymonserver graphs rrddefinitions; do
+    grep -q "^optional directory $SRV/etc/$f\.d\$" "$SRV/etc/$f.cfg" ||
+        printf 'optional directory %s/etc/%s.d\n' "$SRV" "$f" >> "$SRV/etc/$f.cfg"
+done
+grep -n 'tasks\.d' "$SRV/etc/tasks.cfg"
+```
+
+Then restart Xymon (`$SRV/xymon.sh restart`, as the xymon user).
+Notes:
+
+- The lines go at the **end** of each file (`NAME+=` needs the stock
+  value first) and name the path literally, see above.
+- The stock 4.3.30 `tasks.cfg` already ends with
+  `directory $SRV/etc/tasks.d` (written out at build time); the last
+  command shows it. Add it if it is missing.
+- The fifth argument `-` installs no sudo rule. `powerline` needs one
+  once it is enabled: take `powerline/powerline.sudoers` from the doc
+  directory (see `extensions/powerline/server/README.md`).
+- The server-only collectors `powerline`, `fritzbox` and `fritz-wifi`
+  are installed with their tasks in `tasks.d`, but stay off until
+  `*_ENABLED=1` is set in `$SRV/etc/my-xymon-extensions-server/`;
+  until then each run exits at once.
+- On an update the copy overwrites those config files as well: delete
+  `"$STAGE$SRV/etc/my-xymon-extensions-server"` before the `cp` if you
+  have edited them.
+- The `temp` drop-ins only land in the doc directory (their names
+  clash with hobbit-plugins on Debian); copy them into place by hand,
+  see [extensions/temp/server/README.md](extensions/temp/server/README.md).
+
+Tested on Rocky Linux 10.3 with Xymon 4.3.30 built from the sources
+(server and client below `/home/xymon`).
 
 ## Design principles
 
