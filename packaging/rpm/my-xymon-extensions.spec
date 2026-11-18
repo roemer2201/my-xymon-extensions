@@ -468,7 +468,7 @@ done
 exit 0
 
 %changelog
-* Wed Nov 18 2026 roemer2201 <r.oliver@web.de> - 0.35.2-1
+* Wed Nov 18 2026 roemer2201 <r.oliver@web.de> - 0.36.0-1
 - post-install: on a host where Xymon server and client were built
   from one source tree, the server's tasks.cfg starts the client and
   clientlaunch.cfg is never read. The check now finds such a tasks.cfg
@@ -482,15 +482,33 @@ exit 0
   makes - regular expressions (sudo 1.9.10+) or exact lines per disk
   (older sudo, sudo-rs on Ubuntu 26.04) - next to the old broad rule.
   Every rule ships commented out: pick a variant when installing it
+- claude: the sudo helper claude-expiry.sh is now installed as
+  /usr/libexec/my-xymon-extensions/claude-expiry.sh (root-owned, the
+  same for every client directory) and is the default of the packaged
+  claude.sh. Below a source-built client, ext/ belongs to the xymon
+  user, who could replace a helper there and run anything as root.
+  CHANGE an existing sudo rule to the new path; the post-install
+  points out rules that still name ext/claude-expiry.sh
+- post-install: warns when the client directory or ext/ can be written
+  by anyone but root, and names sudoers files with rules below it
 - claude: sudoers.example had the Debian path on its Rocky/EL line;
-  the rpm installs below /usr/lib64/xymon/client. One line per
-  platform now, and a warning not to point a sudo rule into a
-  directory the xymon user owns (a source build's ext/)
+  one line per platform now
+- temp: this package installs the launch snippet
+  clientlaunch.d/temp.cfg (active) - EL has no hobbit-plugins, which
+  owns that name on Debian. Hosts without sensors report the column
+  clear. A [temp] task added by hand is merged with it by xymonlaunch
+- dnf: reuses the answers of check-update and updateinfo for up to
+  DNF_REUSE minutes (60) while the repository metadata, the rpm
+  database, the dnf configuration and the boot id are unchanged - a
+  run took about 8 s of CPU before. The report is built anew every
+  time and says when answers were reused; DNF_REUSE=0 restores the old
+  behavior
 - docs: installing the server drop-ins without the Debian package
   (stage-server.sh recipe), what was checked in Xymon 4.3.30 (and that
   include/directory lines expand no variables), how soon a new dnf
   advisory shows up and how to verify the dnf test on a real host;
-  EPEL has no Xymon package
+  EPEL has no Xymon package; no claim about drop-in lines in "current
+  upstream" Xymon, which neither 4.3.30 nor the SVN trunk has
 
 * Tue Nov 17 2026 roemer2201 <r.oliver@web.de> - 0.35.1-1
 - dnf: a package that obsoletes older builds of its own name (the kmod
