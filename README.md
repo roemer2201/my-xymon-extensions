@@ -365,9 +365,10 @@ See [packaging/README.md](packaging/README.md) for the details.
 ## Testing
 
 - `shellcheck` (with `--shell=sh`) must pass for all scripts.
-- Linux targets are tested in Ubuntu and Rocky Linux containers.
-- FreeBSD is tested in CI using a FreeBSD VM (`vmactions/freebsd-vm`
-  on GitHub Actions).
+- The Ubuntu CI job runs the unit and graph tests. Rocky Linux 9 and 10
+  jobs build and install the RPM and run the DNF extension.
+- The native FreeBSD VM job is disabled; CI does not currently test
+  FreeBSD or build its package.
 - OpenWrt/TurrisOS compatibility is enforced by running the test suite
   under BusyBox `sh` with BusyBox userland in CI.
 
@@ -375,6 +376,7 @@ See [packaging/README.md](packaging/README.md) for the details.
 
 See [CLAUDE.md](CLAUDE.md) for the coding and portability rules that all
 contributions — human or AI-assisted — must follow.
+[TODO.md](TODO.md) tracks open decisions and checks that need hardware.
 
 ## License
 
