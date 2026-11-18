@@ -1,0 +1,5 @@
+repo id                    repo name
+appstream                  Rocky Linux 10 - AppStream
+baseos                     Rocky Linux 10 - BaseOS
+centos-kmods               CentOS Kmods SIG - kernel modules for EL 10
+epel                       Extra Packages for Enterprise Linux 10 - x86_64

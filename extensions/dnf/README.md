@@ -42,6 +42,19 @@ list, the advisory still appears, marked "not offered by
 check-update". An update listed by `check-update` is a candidate;
 DNF can still rule it out when resolving an upgrade transaction.
 
+`check-update` ends with an "Obsoleting Packages" section: pairs of a
+package that obsoletes an installed one and, indented below it, the
+installed package. A package that replaces another one under a new
+name counts as an update. Some packages obsolete older builds of their
+own name (seen with the kmod packages of the CentOS Kmods SIG); dnf
+then pairs installed builds with themselves and exits with 100,
+although `dnf upgrade` has nothing to do. Each pair is therefore
+checked on its own: it is no update if the obsoleting package is
+already installed (repository `@…`) or identical to the package below
+it (same `name.arch` and `[epoch:]version-release`). A package counts
+once as soon as one of its pairs is an update. If only such pairs are
+listed, the column reports "packages up to date".
+
 ### Why `-C` on every call
 
 dnf keeps one metadata cache **per user**. Called without `-C` by the

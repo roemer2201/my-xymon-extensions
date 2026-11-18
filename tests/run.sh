@@ -1855,6 +1855,53 @@ expect "$out" '^updates : 4$' \
     "wrapped output: four updates, one listed in both sections counted once"
 expect "$out" '^status\+30 testhost\.dnf yellow ' "updates without advisories report yellow"
 
+# A package that obsoletes older builds of its own name (CentOS Kmods
+# SIG, dnf 4.20 on Rocky Linux 10.3) is paired with itself under
+# "Obsoleting Packages", also with installed builds as head lines.
+# "dnf upgrade" does nothing for it, so it is no update.
+dnf_cache selfobsolete
+out=$(dnf_run selfobsolete)
+expect "$out" '^status\+30 testhost\.dnf yellow .* - dnf: 0 security update\(s\), 3 other update\(s\), reboot pending$' \
+    "self-obsoleting package: three other updates, reboot pending"
+expect_not "$out" 'kmod-vbox' "a package that obsoletes only itself is not an update"
+expect_not "$out" '@centos-kmods' "an installed package is never listed as an update"
+for p in slurm slurm-perlapi slurm-slurmctld; do
+    expect "$out" "^    $p\\.x86_64 26\\.05\\.5-1\\.el10_3 \\(epel\\)\$" \
+        "self-obsoleting package: $p is still an update"
+done
+expect "$out" '^updates : 3$' "self-obsoleting package: not counted for the graphs"
+expect "$out" '^&yellow Reboot pending' "self-obsoleting package: reboot hint kept"
+
+# The same pairs alone: dnf exits with 100, but nothing is pending.
+mkdir -p "$TMP/dnf-selfobs"
+cp "$TESTDIR/dnf/data/selfobsolete/repolist.out" "$TMP/dnf-selfobs/"
+grep -Ev '^(slurm|Security: )' "$TESTDIR/dnf/data/selfobsolete/check.out" \
+    > "$TMP/dnf-selfobs/check.out"
+echo 100 > "$TMP/dnf-selfobs/check.rc"
+out=$(dnf_run "$TMP/dnf-selfobs")
+expect "$out" '^status\+30 testhost\.dnf green .* - dnf: packages up to date$' \
+    "only self-obsoleting pairs: up to date, not unknown"
+expect "$out" '^updates : 0$' "only self-obsoleting pairs: zero updates for the graphs"
+
+# Decided pair by pair: a head counts once as soon as one of its pairs
+# is an update, and a newer build obsoleting an older one of its own
+# name is an update.
+{
+    echo 'Obsoleting Packages'
+    echo 'newpkg.x86_64        2.0-1.el10      baseos'
+    echo '    newpkg.x86_64    2.0-1.el10      @System'
+    echo 'newpkg.x86_64        2.0-1.el10      baseos'
+    echo '    oldpkg.x86_64    1.0-1.el10      @System'
+    echo 'kmod-x.x86_64        1:2.0-1.el10    centos-kmods'
+    echo '    kmod-x.x86_64    1:1.0-1.el10    @centos-kmods'
+} > "$TMP/dnf-selfobs/check.out"
+out=$(dnf_run "$TMP/dnf-selfobs")
+expect "$out" '^    newpkg\.x86_64 2\.0-1\.el10 \(baseos\)$' \
+    "a head with one real pair is an update"
+expect "$out" '^    kmod-x\.x86_64 1:2\.0-1\.el10 \(centos-kmods\)$' \
+    "a newer build obsoleting an older one of its own name is an update"
+expect "$out" '^updates : 2$' "a head listed in several pairs is counted once"
+
 mkdir -p "$TMP/dnf-output"
 cp "$TESTDIR/dnf/data/clean/repolist.out" "$TMP/dnf-output/repolist.out"
 dnf_cache clean

@@ -334,6 +334,17 @@ fi
 exit 0
 
 %changelog
+* Tue Nov 17 2026 roemer2201 <r.oliver@web.de> - 0.35.1-1
+- dnf: a package that obsoletes older builds of its own name (the kmod
+  packages of the CentOS Kmods SIG) is no longer reported as an update.
+  dnf check-update pairs such installed builds with themselves under
+  "Obsoleting Packages" and exits with 100, although dnf upgrade has
+  nothing to do; the column stayed yellow and the "updates" graph
+  counted them. Each pair is now decided on its own: no update if the
+  obsoleting package is installed already or identical to the package
+  it obsoletes. If only such pairs are listed, the column reports
+  "packages up to date" instead of "update status unknown"
+
 * Mon Nov 16 2026 roemer2201 <r.oliver@web.de> - 0.35.0-1
 - new extension "libvirt" (column "libvirt", task disabled by default):
   states of the local QEMU/KVM guests over the read-only
