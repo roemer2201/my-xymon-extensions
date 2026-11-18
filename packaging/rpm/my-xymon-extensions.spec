@@ -24,8 +24,9 @@ Source0:        %{name}-%{version}.tar.gz
 BuildArch:      noarch
 Requires:       smartmontools
 Recommends:     curl
-# "xymon-client" matches the Terabithia and EPEL package names;
-# rebuild with --define 'xymonclientpkg <name>' for other builds.
+# "xymon-client" matches the Terabithia package name (EPEL has no
+# Xymon package); rebuild with --define 'xymonclientpkg <name>' for
+# other builds.
 %{!?xymonclientpkg: %global xymonclientpkg xymon-client}
 %if %{with clientdep}
 Requires:       %{xymonclientpkg}
@@ -99,6 +100,32 @@ sh packaging/common/stage.sh "%{buildroot}" \
     "%{xymonhome}/etc/clientlaunch.d" \
     "%{_docdir}/%{name}"
 
+# The claude helper is run as root through sudo, so it must not sit
+# where the xymon user can replace it - and a Xymon built from the
+# sources hands its client directory and ext/ to that user ("make
+# install" chowns them). Every layout of this package therefore puts
+# the helper root-owned below %{_libexecdir}, and claude.sh looks there
+# unless CLAUDE_HELPER says otherwise.
+claudehelper="%{_libexecdir}/%{name}/claude-expiry.sh"
+claudesh="%{buildroot}%{xymonhome}/ext/claude.sh"
+mkdir -p "%{buildroot}%{_libexecdir}/%{name}"
+mv "%{buildroot}%{xymonhome}/ext/claude-expiry.sh" "%{buildroot}$claudehelper" || exit 1
+sed "s|^CLAUDE_HELPER=\"\${CLAUDE_HELPER:-}\"|CLAUDE_HELPER=\"\${CLAUDE_HELPER:-$claudehelper}\"|" \
+    "$claudesh" > "$claudesh.new"
+if cmp -s "$claudesh" "$claudesh.new"; then
+    echo "ext/claude.sh: no empty CLAUDE_HELPER default to replace" >&2
+    exit 1
+fi
+mv "$claudesh.new" "$claudesh"
+chmod 0755 "$claudesh"
+
+# The temp launch snippet is left out by stage.sh, because Debian's
+# hobbit-plugins owns clientlaunch.d/temp.cfg there. EL has no
+# hobbit-plugins, so this package installs the copy from the docs.
+tempsnippet="%{buildroot}%{xymonhome}/etc/clientlaunch.d/temp.cfg"
+cp "%{buildroot}%{_docdir}/%{name}/temp/clientlaunch.d/temp.cfg" "$tempsnippet" || exit 1
+chmod 0644 "$tempsnippet"
+
 # The shared launch snippet of the dnf extension ships disabled: the
 # deb and FreeBSD packages install it on hosts without dnf. Every host
 # this package is installed on has dnf, so the task is enabled here.
@@ -130,6 +157,7 @@ chmod 0644 "$dnfsnippet"
 %dir %{xymonhome}/etc/my-xymon-extensions
 %dir %{xymonhome}/etc/clientlaunch.d
 %config(noreplace) %{xymonhome}/etc/clientlaunch.d/smart.cfg
+%config(noreplace) %{xymonhome}/etc/clientlaunch.d/temp.cfg
 %config(noreplace) %{xymonhome}/etc/clientlaunch.d/la.cfg
 %config(noreplace) %{xymonhome}/etc/clientlaunch.d/memory.cfg
 %config(noreplace) %{xymonhome}/etc/clientlaunch.d/disk.cfg
@@ -144,7 +172,8 @@ chmod 0644 "$dnfsnippet"
 %config(noreplace) %{xymonhome}/etc/my-xymon-extensions/lxc.cfg
 %config(noreplace) %{xymonhome}/etc/clientlaunch.d/lxc.cfg
 %{xymonhome}/ext/claude.sh
-%{xymonhome}/ext/claude-expiry.sh
+%dir %{_libexecdir}/%{name}
+%{_libexecdir}/%{name}/claude-expiry.sh
 %config(noreplace) %{xymonhome}/etc/my-xymon-extensions/claude.cfg
 %config(noreplace) %{xymonhome}/etc/clientlaunch.d/claude.cfg
 %{xymonhome}/ext/systemd.sh
@@ -247,9 +276,14 @@ my-xymon-extensions: the per-extension configuration lives in
 To activate the "smart" extension:
  1. Grant the xymon user access to smartctl - see
     %{_docdir}/%{name}/smart/sudoers.example
+    (every rule there ships commented out: uncomment ONE variant;
+    A and B allow only the queries the extension makes)
  2. Make sure clientlaunch.cfg loads the client drop-in directory
     (add this line once if it is missing):
       directory %{xymonhome}/etc/clientlaunch.d
+    Where the Xymon server's tasks.cfg starts this client (server and
+    client built from one source tree), the line goes into tasks.cfg
+    instead - the check below names the file.
     NOTE: up to version 0.14.0 the snippets went to etc/tasks.d and
     that is what the line said. tasks.d belongs to the SERVER's
     xymonlaunch (tasks.cfg) - on a host that is server and client,
@@ -261,6 +295,12 @@ The FRITZ!Box extensions "fritzdsl" and "fritzwan" are no longer part
  of this package: since 0.29.0 they are modules of the server-only
  fritzbox collector (my-xymon-extensions-server, Debian/Ubuntu). rpm
  keeps configs you had edited as .rpmsave.
+The "temp" extension (all hardware temperature sensors) is active out
+ of the box and adds a "temp" column; hosts without sensors, such as
+ most VMs, report it clear. Since 0.36.0 this package installs its
+ launch snippet itself (the deb cannot: Debian's hobbit-plugins owns
+ that file name). A [temp] task you added by hand is merged with it;
+ a task of another name that runs temp.sh would run twice.
 The "wifi" extension ships disabled too: enable it (remove the
  DISABLED line from the clientlaunch.d snippet) only on a Linux
  access point with iw installed.
@@ -301,7 +341,8 @@ The "lxc" extension ships disabled: on an LXC host, remove the
 The "claude" extension ships disabled: it reports how much longer the
  Claude Code login of an account is valid (yellow 10 days before it
  expires, red 5 days). The credentials file is mode 0600 in a private
- home directory, so allow the xymon user to run the reader as root -
+ home directory, so allow the xymon user to run the reader,
+ %{_libexecdir}/%{name}/claude-expiry.sh, as root -
  see %{_docdir}/%{name}/claude/sudoers.example, which ships one line
  for the "root" account - list the accounts to check in
  CLAUDE_ACCOUNTS in %{xymonhome}/etc/my-xymon-extensions/claude.cfg and uncomment the task
@@ -316,13 +357,86 @@ RRD graphs need a one-time setup on the Xymon SERVER (not here):
  %{_docdir}/%{name}/<extension>/server/ - copy them over and restart
  Xymon there; see the README.md next to them.
 EOF
-# None of the snippets is read unless clientlaunch.cfg includes the
-# drop-in directory, and a Xymon client built from the sources does
-# not. That file is not ours to edit (it belongs to the xymon-client
-# package or to the admin), so say exactly what is missing.
+# None of the snippets is read unless the launcher that starts the
+# client includes the drop-in directory, and a Xymon built from the
+# sources does not. Neither file is ours to edit (they belong to the
+# xymon-client package or to the admin), so say exactly what is
+# missing.
+# stackio.c resolves relative directory names against the main config
+# file. It does not expand variables or strip trailing comments.
+reads_dropin() {
+    wanted=$(cd "%{xymonhome}/etc/clientlaunch.d" 2>/dev/null && pwd -P) || return 1
+    awk '{
+        sub(/^[ \t]*/, ""); sub(/^optional[ \t]+/, "")
+        if (sub(/^directory[ \t]+/, "")) { sub(/[[:space:]]+$/, ""); print }
+    }' "$1" | (
+        while IFS= read -r dir; do
+            case "$dir" in /*) ;; *) dir="${1%/*}/$dir" ;; esac
+            actual=$(cd "$dir" 2>/dev/null && pwd -P) || continue
+            [ "$actual" != "$wanted" ] || exit 0
+        done
+        exit 1
+    )
+}
 launchcfg=%{xymonhome}/etc/clientlaunch.cfg
-if [ -f "$launchcfg" ] &&
-   ! grep -Eq '^[[:space:]]*(optional[[:space:]]+)?directory[[:space:]]+[^[:space:]]*clientlaunch\.d' "$launchcfg"; then
+# Server and client from one source build: the server's xymonlaunch
+# starts the client itself (tasks.cfg, task [xymonclient], CMD
+# <client>/bin/xymonclient.sh), and clientlaunch.cfg is never read.
+# The build puts the server at $XYMONTOPDIR/server and the client at
+# $XYMONTOPDIR/client (build/Makefile.rules), so that tasks.cfg sits
+# next to this client. It counts only if an enabled task runs THIS
+# client's xymonclient.sh - written out, or as $XYMONCLIENTHOME, which
+# the server's xymonserver.cfg defines.
+servetc=%{xymonhome}/../server/etc
+taskscfg=""
+if [ -f "$servetc/tasks.cfg" ]; then
+    clientbin=$(cd %{xymonhome}/bin 2>/dev/null && pwd -P)
+    xch=$(sed -n 's/^[[:space:]]*XYMONCLIENTHOME="\{0,1\}\([^"[:space:]]*\).*/\1/p' \
+        "$servetc/xymonserver.cfg" 2>/dev/null | tail -n 1)
+    clientcmds=$(awk '
+        /^[[:space:]]*\[[^]]*\]/ {
+            task = $0; sub(/^[[:space:]]*\[/, "", task); sub(/\].*/, "", task); next
+        }
+        task != "" && toupper($1) == "CMD" && $2 !~ /^[+-]/ { cmd[task] = $2 }
+        task != "" && toupper($0) ~ /^[[:space:]]*DISABLED[[:space:]]*(#.*)?$/ { off[task] = 1 }
+        task != "" && toupper($0) ~ /^[[:space:]]*ENABLED[[:space:]]*(#.*)?$/ { off[task] = 0 }
+        END { for (t in cmd) if (!off[t] && cmd[t] ~ /(^|\/)xymonclient\.sh$/) print cmd[t] }' "$servetc/tasks.cfg")
+    for cmd in $clientcmds; do
+        case "$cmd" in
+            '$XYMONCLIENTHOME/'*|'${XYMONCLIENTHOME}/'*)
+                [ -n "$xch" ] || continue
+                cmd="$xch/${cmd#*/}" ;;
+        esac
+        cmddir=$(cd "$(dirname "$cmd")" 2>/dev/null && pwd -P)
+        if [ -n "$clientbin" ] && [ "$cmddir" = "$clientbin" ]; then
+            taskscfg="$(cd "$servetc" && pwd -P)/tasks.cfg"
+        fi
+    done
+fi
+if [ -n "$taskscfg" ]; then
+    if ! reads_dropin "$taskscfg"; then
+        cat <<EOF
+ TODO: on this host the Xymon SERVER starts the client: a task in
+   $taskscfg
+ runs xymonclient.sh, and clientlaunch.cfg is not read at all. NONE
+ of these extensions is started until tasks.cfg reads the drop-in
+ directory. Add this line at the end of that file and restart Xymon
+ (xymon.sh restart, or the service unit that starts it):
+   directory %{xymonhome}/etc/clientlaunch.d
+ Put the line into tasks.cfg only, not into both files: should
+ clientlaunch.cfg ever be started too (runclient.sh), every extension
+ would run twice. The snippets stay in clientlaunch.d - never move
+ them to the server's tasks.d.
+EOF
+    fi
+    if [ -f "$launchcfg" ] && reads_dropin "$launchcfg"; then
+        cat <<EOF
+ NOTE: $launchcfg
+ reads the drop-in directory as well. The server's tasks.cfg starts the
+ client on this host. Keep the line in tasks.cfg; remove it from clientlaunch.cfg.
+EOF
+    fi
+elif [ -f "$launchcfg" ] && ! reads_dropin "$launchcfg"; then
     cat <<'EOF'
  TODO: clientlaunch.cfg does not read the drop-in directory yet, so
  NONE of these extensions is started. Add this line at the end of
@@ -331,9 +445,101 @@ if [ -f "$launchcfg" ] &&
    directory %{xymonhome}/etc/clientlaunch.d
 EOF
 fi
+# A sudo rule must never name a script the xymon user can replace. A
+# Xymon built from the sources gives the client directory and ext/ to
+# that user ("make install" chowns them), so a rule pointing below it
+# is a way to root. Warn where that is the case, and name the sudoers
+# files that do point there.
+unsafe=""
+for dir in %{xymonhome} %{xymonhome}/ext; do
+    [ -d "$dir" ] || continue
+    if [ -n "$(find "$dir" -prune \( ! -user root -o -perm -0020 -o -perm -0002 \) 2>/dev/null)" ]; then
+        unsafe="$unsafe $dir"
+    fi
+done
+if [ -n "$unsafe" ]; then
+    cat <<EOF
+ WARNING: not only root can write to$unsafe.
+ Never point a sudo rule at a script below %{xymonhome}: the xymon
+ user could replace it and run anything as root. This package installs
+ its sudo helper as %{_libexecdir}/%{name}/claude-expiry.sh
+ for that reason; name that path in a rule.
+EOF
+    for rules in %{_sysconfdir}/sudoers %{_sysconfdir}/sudoers.d/*; do
+        [ -f "$rules" ] || continue
+        if grep -v '^[[:space:]]*#' "$rules" 2>/dev/null | grep -q "%{xymonhome}/"; then
+            echo "   $rules has a rule naming a path below %{xymonhome}"
+        fi
+    done
+fi
+# Up to 0.35.1 the helper sat in ext/; a rule naming it there no longer
+# matches what claude.sh calls.
+for rules in %{_sysconfdir}/sudoers %{_sysconfdir}/sudoers.d/*; do
+    [ -f "$rules" ] || continue
+    if grep -v '^[[:space:]]*#' "$rules" 2>/dev/null | grep -q "/ext/claude-expiry\.sh"; then
+        echo " NOTE: $rules names ext/claude-expiry.sh. The rpm installs the"
+        echo " helper as %{_libexecdir}/%{name}/claude-expiry.sh now - change the rule."
+    fi
+done
 exit 0
 
 %changelog
+* Wed Nov 18 2026 roemer2201 <r.oliver@web.de> - 0.36.1-1
+- dnf: validate cached answers against repomd.xml and changes since the
+  query started; publish them atomically and disable reuse in shared
+  temporary directories. Ignore SQLite *-shm updates from RPM readers;
+  changes to the database or its write-ahead log still invalidate answers
+- rpm post-install: match the actual client drop-in directory and honor
+  later task overrides on source-built server/client hosts; clarify which
+  launcher to restart, including installations using a service unit
+- source server install: keep local configuration, offer changed defaults
+  as .rpmnew, and refresh programs and docs without interactive prompts
+- smart: validate examples with rules supported by each sudo parser;
+  document the Rocky 10.3 SMART and dnf reuse checks and clarify the
+  packaged Claude helper default
+
+* Wed Nov 18 2026 roemer2201 <r.oliver@web.de> - 0.36.0-1
+- post-install: on a host where Xymon server and client were built
+  from one source tree, the server's tasks.cfg starts the client and
+  clientlaunch.cfg is never read. The check now finds such a tasks.cfg
+  next to the client (an enabled task running this client's
+  xymonclient.sh) and asks for the drop-in line there - in that file
+  only - instead of in clientlaunch.cfg, where it changed nothing. It
+  still edits neither file
+- smart: sudoers.example claimed its rule allowed only read-only
+  queries; a rule without arguments allows ANY smartctl arguments. The
+  file now offers restricted rules for exactly the calls smart.sh
+  makes - regular expressions (sudo 1.9.10+) or exact lines per disk
+  (older sudo, sudo-rs on Ubuntu 26.04) - next to the old broad rule.
+  Every rule ships commented out: pick a variant when installing it
+- claude: the sudo helper claude-expiry.sh is now installed as
+  /usr/libexec/my-xymon-extensions/claude-expiry.sh (root-owned, the
+  same for every client directory) and is the default of the packaged
+  claude.sh. Below a source-built client, ext/ belongs to the xymon
+  user, who could replace a helper there and run anything as root.
+  CHANGE an existing sudo rule to the new path; the post-install
+  points out rules that still name ext/claude-expiry.sh
+- post-install: warns when the client directory or ext/ can be written
+  by anyone but root, and names sudoers files with rules below it
+- claude: sudoers.example had the Debian path on its Rocky/EL line;
+  one line per platform now
+- temp: this package installs the launch snippet
+  clientlaunch.d/temp.cfg (active) - EL has no hobbit-plugins, which
+  owns that name on Debian. Hosts without sensors report the column
+  clear. A [temp] task added by hand is merged with it by xymonlaunch
+- dnf: reuses the answers of check-update and updateinfo for up to
+  DNF_REUSE minutes (60) while the repository metadata, the rpm
+  database, the dnf configuration and the boot id are unchanged - a
+  run took about 8 s of CPU before. The report is built anew every
+  time and says when answers were reused; DNF_REUSE=0 restores the old
+  behavior
+- docs: installing the server drop-ins without the Debian package
+  (stage-server.sh recipe), what was checked in Xymon 4.3.30 (and that
+  include/directory lines expand no variables), how soon a new dnf
+  advisory shows up and how to verify the dnf test on a real host;
+  EPEL has no Xymon package; no claim about drop-in lines in "current
+  upstream" Xymon, which neither 4.3.30 nor the SVN trunk has
+
 * Tue Nov 17 2026 roemer2201 <r.oliver@web.de> - 0.35.1-1
 - dnf: a package that obsoletes older builds of its own name (the kmod
   packages of the CentOS Kmods SIG) is no longer reported as an update.

@@ -27,7 +27,7 @@ files into an entirely different tree.
 |---|---|---|---|
 | deb | `/usr/lib/xymon/client/ext/` | `/etc/xymon/` (conffiles; reachable as `$XYMONCLIENTHOME/etc` via Debian's symlink) | `/usr/share/doc/my-xymon-extensions/` |
 | deb-server | — (no client files) | `/etc/xymon/{xymonserver,graphs,rrddefinitions,tasks}.d/`, `/etc/xymon/my-xymon-extensions-server/` and `/etc/sudoers.d/my-xymon-extensions-server` (all conffiles) | `/usr/share/doc/my-xymon-extensions-server/` |
-| rpm | `/usr/lib64/xymon/client/ext/` | `/usr/lib64/xymon/client/etc/` (`%config(noreplace)`) | `/usr/share/doc/my-xymon-extensions/` |
+| rpm | `/usr/lib64/xymon/client/ext/`; claude's sudo helper in `/usr/libexec/my-xymon-extensions/` | `/usr/lib64/xymon/client/etc/` (`%config(noreplace)`) | `/usr/share/doc/my-xymon-extensions/` |
 | FreeBSD | `/usr/local/www/xymon/client/ext/` | `/usr/local/www/xymon/client/etc/` (`@sample`) | `/usr/local/share/doc/my-xymon-extensions/` |
 | opkg | `/usr/lib/xymon-standalone/ext/` | `/etc/xymon-standalone/` (conffiles; incl. `standalone.cfg`, no launch snippets — no xymonlaunch; `/usr/lib/xymon-standalone/etc` is a symlink to it) | none (flash space) |
 
@@ -64,7 +64,16 @@ RPM_XYMONHOME=/usr/local/xymon/client RPM_CLIENTDEP=no make rpm
 dnf install build/rpm/RPMS/noarch/my-xymon-extensions-*.noarch.rpm
 ```
 
-`smartmontools` stays a dependency. The package name and version are
+`smartmontools` stays a dependency. Mind the sudo rules: Xymon's
+`make install` gives the client directory and its `ext/` to the xymon
+user, and a rule naming a script in there would let that user replace
+it and run anything as root. That is why the rpm installs the one sudo
+helper it has, `claude-expiry.sh`, as
+`/usr/libexec/my-xymon-extensions/claude-expiry.sh` - root-owned and
+the same for every layout - and makes it the default of `claude.sh`;
+the sudo rule names that path. The post-install warns when the client
+directory or `ext/` can be written by anyone but root, and names
+sudoers files whose rules point below it. The package name and version are
 the same for every layout, so do not mix packages built for different
 client directories in one repository.
 
@@ -81,6 +90,53 @@ directory /usr/local/xymon/client/etc/clientlaunch.d
 The path has to be written out: xymonlaunch does not expand
 `$XYMONCLIENTHOME` in a `directory` line. Then restart the client.
 
+#### Server and client from one source build
+
+A Xymon **server** built from the sources installs a client as well:
+`build/Makefile.rules` puts the server at `$XYMONTOPDIR/server` and the
+client at `$XYMONTOPDIR/client`. On such a host only the server's
+xymonlaunch runs (`xymon.sh start`, with `server/etc/tasks.cfg`), and
+its stock `tasks.cfg` starts the local client itself:
+
+```
+[xymonclient]
+	ENVFILE /home/xymon/client/etc/xymonclient.cfg
+	NEEDS xymond
+	CMD /home/xymon/client/bin/xymonclient.sh
+	LOGFILE $XYMONSERVERLOGS/xymonclient.log
+	INTERVAL 5m
+```
+
+`client/etc/clientlaunch.cfg` and `client/runclient.sh` are never used
+there, so the drop-in line in `clientlaunch.cfg` would change nothing:
+no extension starts, and nothing reports an error. Add it at the end of
+the **server's** `tasks.cfg` instead (with `XYMONTOPDIR=/home/xymon`):
+
+```
+directory /home/xymon/client/etc/clientlaunch.d
+```
+
+and restart Xymon (`/home/xymon/server/xymon.sh restart`). The snippets
+stay in the client's `clientlaunch.d`; nothing goes to the server's
+`tasks.d`. Put the line into one of the two files only: should
+`runclient.sh` ever be started as well, every extension would run
+twice.
+
+The tasks work unchanged under the server's launcher: its environment
+(`xymonserver.cfg`) defines `$XYMONCLIENTHOME`, and xymonlaunch loads a
+task's `ENVFILE` (here the client's `xymonclient.cfg`, which defines
+`$XYMONCLIENTLOGS`) in the child process before it expands `LOGFILE`
+(`common/xymonlaunch.c`, verified in Xymon 4.3.30).
+
+The rpm post-install detects this layout - a `tasks.cfg` in
+`<client>/../server/etc` with an enabled task whose `CMD` runs this
+client's `xymonclient.sh`, written out or as `$XYMONCLIENTHOME` (resolved
+through the server's `xymonserver.cfg`) - and then names `tasks.cfg`
+instead of `clientlaunch.cfg`, with its real path. It points out the
+line if it is in `clientlaunch.cfg` as well, and edits neither file.
+Installation tested on Rocky Linux 10.3 with Xymon 4.3.30 built from
+the sources, server and client below `/home/xymon`.
+
 Built on Rocky Linux the package carries that release's dist tag
 (`.el10`); it is `noarch` and installs on every EL release. The
 installation was tested on Rocky Linux 10 (in a container, with a
@@ -91,14 +147,18 @@ client tree laid out like a source build).
 The packages deliberately do **not** edit `clientlaunch.cfg` (it is
 owned by the xymon-client package). After installing, once per host:
 
-1. Install the sudoers rule (see `smart/sudoers.example` in the docs
-   directory).
+1. Install the sudoers rules for smart: one of the variants in
+   `smart/sudoers.example` in the docs directory, all of which ship
+   commented out (see `extensions/smart/README.md`, "Privileges").
 2. Ensure `clientlaunch.cfg` reads the `clientlaunch.d` directory
-   shown in the table above, e.g. `directory
-   $XYMONHOME/etc/clientlaunch.d`. On Debian/Ubuntu this is already
+   using its literal path, e.g. `directory /usr/local/xymon/client/etc/clientlaunch.d`
+   for a source client in `/usr/local/xymon/client`. On Debian/Ubuntu this is already
    the case: the init script writes one `include` line per `*.cfg`
    into `/var/run/xymon/clientlaunch-include.cfg`, which both
-   `clientlaunch.cfg` and the server's `tasks.cfg` read.
+   `clientlaunch.cfg` and the server's `tasks.cfg` read. Where a
+   Xymon server built from the sources starts the client, the line
+   goes into the server's `tasks.cfg` instead (see "Server and client
+   from one source build" above).
 3. Restart the Xymon client (a restart, not a reload — on
    Debian/Ubuntu that include list is regenerated at start).
 
@@ -154,7 +214,9 @@ The same applies to **other** packages: `clientlaunch.d`, `graphs.d`,
 package. `hobbit-plugins` claims many names in the first three
 (`temp.cfg` among them), so neither package installs any of them; the
 `temp` configuration ships as documentation (see
-`extensions/temp/server/README.md`). `tasks.d` ships empty with `xymon`,
+`extensions/temp/server/README.md`). Only the rpm installs the `temp`
+launch snippet, copied from the docs in `%install`: EL has no
+hobbit-plugins. `tasks.d` ships empty with `xymon`,
 so the server-only `powerline` task lives there. `tests/run.sh` pins the
 taken names (Ubuntu 24.04) and the `temp` documentation files.
 

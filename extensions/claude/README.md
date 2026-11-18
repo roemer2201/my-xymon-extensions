@@ -45,7 +45,12 @@ through [`claude-expiry.sh`](claude-expiry.sh) via `sudo`. The helper
 takes a **user name, never a path** - the sudoers rule names the allowed
 accounts - and prints only timestamps and the subscription type, never
 token material. Install the rule with
-`visudo -f /etc/sudoers.d/xymon-claude`. Where the extension already
+`visudo -f /etc/sudoers.d/xymon-claude`. The helper must lie where the
+xymon user cannot replace it: the deb and FreeBSD packages install it
+root-owned next to `claude.sh`, the rpm as
+`/usr/libexec/my-xymon-extensions/claude-expiry.sh` (whatever its
+client directory - a source-built client's `ext/` belongs to the xymon
+user) and makes that the default. Where the extension already
 runs as root (standalone runner, OpenWrt) no rule is needed
 (`CLAUDE_SUDO` `auto` or `no`).
 

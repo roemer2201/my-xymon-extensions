@@ -185,7 +185,7 @@ Notes:
   device is shown as `clear` with an installation hint — mirroring the
   behaviour when disks are present but smartmontools is missing.
 - `mmc extcsd read` needs root; when running unprivileged add the mmc
-  line from `sudoers.example`. On OpenWrt the standalone runner is
+  line of your variant from `sudoers.example`. On OpenWrt the standalone runner is
   driven by root's crontab, so no sudo setup is needed there.
 
 ## How vendor normalization works
@@ -372,10 +372,50 @@ The packages built from this repository do steps 1–3 automatically.
 ### Privileges (sudo)
 
 `smartctl` needs raw device access, but the Xymon client runs as user
-`xymon`. Install the rule from `sudoers.example` (as
+`xymon`. Install the rules from `sudoers.example` (as
 `/etc/sudoers.d/xymon-smart` on Linux, `/usr/local/etc/sudoers.d/` on
 FreeBSD). Without root/sudo the column reports `clear` with a hint —
 never wrong data.
+
+Every rule in the file is commented out; uncomment one of three
+variants. smart.sh runs exactly these commands as root, with the
+options always in this order:
+
+```
+smartctl --version                         # sudo probe
+smartctl --scan                            # device discovery
+smartctl -i -H -A [-n standby] [OPTS] DEV  # per device; OPTS from a device line
+mmc extcsd read DEV                        # eMMC
+```
+
+- **A — regular expressions** (recommended where available, sudo
+  1.9.10 or later: Ubuntu 24.04, EL 10, FreeBSD): allows only these
+  calls, for every disk the scan finds and every `-d TYPE`. Other
+  options in a `device` line need an extra line.
+- **B — exact arguments** (every sudo, including sudo < 1.9.10 on
+  Ubuntu 22.04 and EL 8/9, and sudo-rs, the default `sudo` of Ubuntu
+  26.04): one line per disk, written as smart.sh calls it.
+- **C — the bare command**, which this file shipped up to 0.35.1: a
+  rule without arguments lets the xymon user run `smartctl` with
+  **any** arguments as root — `-s off`, `-t long`, `-X`, `--set=…`
+  included.
+
+A `*` in the arguments is no way out: it matches white space too, so
+`smartctl -i -H -A *` also allows `smartctl -i -H -A -s off /dev/sda`,
+and `mmc extcsd read /dev/mmcblk*` accepts any trailing text after the
+device name. sudo-rs knows neither wildcards inside the arguments nor
+regular expressions (`sudoers-rs(5)`). The sudo versions per platform
+are listed in the file; check yours with `sudo -V`. `tests/run.sh`
+checks the shipped file and the compatible rules with `visudo -c`
+(variant B on sudo-rs; all variants on classic sudo 1.9.10+) and the
+regular expressions of variant A against the calls smart.sh makes and
+against writing commands such as `-s off` — with `grep -E` the way
+sudoers(5) describes the matching, not with sudo itself, which would
+need root. With sudo itself, variant A was checked on Rocky Linux 10.3
+(sudo 1.9.17p2, `sudo -l -U xymon /usr/sbin/smartctl …`): the calls of
+smart.sh - also with `-d sat` and `-d megaraid,0` - are allowed;
+`-s off`, `-t long`, `-X`, `--set=…`, a second device, `/dev/../…`
+and `-d "sat -s off"` as one argument are refused.
 
 ### Manual test run
 

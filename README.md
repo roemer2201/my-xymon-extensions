@@ -91,6 +91,8 @@ claim the same path — so the packages here deliberately do **not**
 install the three `temp` files. They are shipped as documentation and
 put in place by hand; see
 [extensions/temp/server/README.md](extensions/temp/server/README.md).
+The rpm is the exception for the launch snippet: EL has no
+hobbit-plugins, so it installs `clientlaunch.d/temp.cfg` itself.
 
 ### Why this works
 
@@ -113,6 +115,20 @@ sources for the three files used here:
 | `graphs.cfg` | `load_gdefs()`, `web/showgraph.c` | yes (`stackfopen`/`stackfgets`) |
 | `rrddefinitions.cfg` | `load_rrddefs()`, `xymond/xymond_rrd.c` | yes |
 | `xymonserver.cfg` | `loadenv()`, `lib/environ.c` | yes |
+
+Checked again in the **Xymon 4.3.30** release sources, and in use on a
+4.3.30 server built from them:
+
+- `optional directory` works in all three files (`stackfgets()`,
+  `lib/stackio.c`). The reader expands **no** variables in an
+  `include` or `directory` line: write the path out. A line such as
+  `optional directory $XYMONHOME/etc/xymonserver.d` names a directory
+  literally called `$XYMONHOME` and, being optional, fails silently.
+- `NAME+="…"` in `xymonserver.cfg` appends to the variable
+  (`loadenv()`, `lib/environ.c`, `appendto`).
+- xymonlaunch loads a task's `ENVFILE` in the child process before it
+  expands `LOGFILE` (`common/xymonlaunch.c`), so `$XYMONCLIENTLOGS` in
+  the client snippets works under the server's launcher as well.
 
 ### Debian/Ubuntu: the server package
 
@@ -161,22 +177,101 @@ say so.
   arrives: the archives are fixed when an RRD file is created, so files
   created without the line have to be deleted once (see the
   extension's `server/README.md`).
-- **Current upstream Xymon** ships every config file with a trailing
-  `optional directory $XYMONHOME/etc/<name>.d`, so `graphs.d` and
-  `rrddefinitions.d` work out of the box. Its drop-in directory for the
-  server config is named `xymonserver.cfg.d`, not `xymonserver.d` —
-  either put the file there or add
-  `optional directory $XYMONHOME/etc/xymonserver.d` to
-  `xymonserver.cfg`.
+- **Other builds may already read drop-in directories.** Neither the
+  Xymon 4.3.30 release nor the SVN trunk does (checked 2026-11-18), but
+  packaged builds can differ. Look at the end of the three files before
+  adding anything:
+
+  ```sh
+  tail -n 3 xymonserver.cfg graphs.cfg rrddefinitions.cfg
+  ```
+
+  A `directory` or `optional directory` line there that names a
+  drop-in directory with its full path is all you need - put the files
+  into that directory, whatever it is called. A line that contains a
+  variable such as `$XYMONHOME` does not work: the reader expands no
+  variables in these lines (see above).
 - **Anything else** (source installs, EL/FreeBSD packages): create the
   directory and add one line at the **end** of the matching config file,
-  e.g. `optional directory $XYMONHOME/etc/xymonserver.d`. A single
-  `include $XYMONHOME/etc/xymonserver.d/<name>.cfg` per file works too.
+  with the path written out, e.g.
+  `optional directory /home/xymon/server/etc/xymonserver.d`. A single
+  `include /home/xymon/server/etc/xymonserver.d/<name>.cfg` per file
+  works too. The recipe below shows the lines to check.
 
 The **end** matters for `xymonserver.cfg`: the snippets extend the
 stock settings with `NAME+="…"`, which appends verbatim (hence the
 leading comma in every value) and requires the variable to be defined
 already.
+
+#### Recipe: a server without the Debian package
+
+There is no server package for EL or FreeBSD, but its file list,
+`packaging/common/stage-server.sh`, takes the target paths as
+arguments. For a source build, run the following in a checkout as the
+account that owns the server tree (normally `xymon`). Set `SRV` to the
+server's home. The example installs the documentation inside that tree
+and refreshes the programs in `ext/` and the files in `share/doc/`.
+Existing configuration files stay in place.
+
+```sh
+(
+    set -e
+    SRV=/home/xymon/server
+    test -f "$SRV/etc/tasks.cfg"
+    STAGE=$(mktemp -d)
+    trap 'command rm -rf "$STAGE"' EXIT
+    sh packaging/common/stage-server.sh "$STAGE" "$SRV/ext" "$SRV/etc" \
+        "$SRV/share/doc/my-xymon-extensions-server" -
+    for src in "$STAGE$SRV"/etc/*/*; do
+        dest=${src#"$STAGE"}
+        if [ -e "$dest" ] || [ -L "$dest" ]; then
+            if [ -f "$dest" ] && cmp -s "$src" "$dest"; then
+                command rm -f "$src"
+            else
+                test ! -d "$dest.rpmnew"
+                command mv -f "$src" "$dest.rpmnew"
+                printf 'Kept %s; review %s.rpmnew\n' "$dest" "$dest"
+            fi
+        fi
+    done
+    command cp -R "$STAGE$SRV/." "$SRV/"
+    for f in xymonserver graphs rrddefinitions tasks; do
+        printf 'Check %s/etc/%s.cfg for: directory %s/etc/%s.d\n' "$SRV" "$f" "$SRV" "$f"
+    done
+)
+```
+
+Add each missing line once; an existing `optional directory` for the
+same path also counts. Then restart Xymon (e.g.
+`/home/xymon/server/xymon.sh restart` as the xymon user). Notes:
+
+- The lines go at the **end** of each file (`NAME+=` needs the stock
+  value first) and name the path literally, see above.
+- The stock 4.3.30 `tasks.cfg` already ends with
+  `directory $SRV/etc/tasks.d` (written out at build time).
+- The fifth argument `-` installs no sudo rule. `powerline` needs one
+  once it is enabled: take `powerline/powerline.sudoers` from the doc
+  directory (see `extensions/powerline/server/README.md`). On a source
+  build `$SRV` belongs to the xymon user (`make install` chowns it), so
+  a rule on `$SRV/ext/powerline-read.sh` would let that user replace
+  the helper and run anything as root: install the helper as root **from a trusted checkout** into a
+  directory only root can write, name that copy in the rule and set
+  `POWERLINE_HELPER` to it.
+- The server-only collectors `powerline`, `fritzbox` and `fritz-wifi`
+  are installed with their tasks in `tasks.d`, but stay off until
+  `*_ENABLED=1` is set in `$SRV/etc/my-xymon-extensions-server/`;
+  until then each run exits at once.
+- Missing configuration files are installed; identical ones are left alone.
+  If the files differ, compare the active file with `<file>.rpmnew`,
+  merge or adopt the changes you want, then delete the `.rpmnew` copy.
+  Xymon 4.3.30 skips `*.rpmnew` in a `directory` directive but would
+  load a plain `.new` copy as another graph, setting or task.
+- The `temp` drop-ins only land in the doc directory (their names
+  clash with hobbit-plugins on Debian); copy them into place by hand,
+  see [extensions/temp/server/README.md](extensions/temp/server/README.md).
+
+The source-build layout above is from Rocky Linux 10.3 with Xymon
+4.3.30 (server and client below `/home/xymon`).
 
 ## Design principles
 
@@ -220,6 +315,13 @@ through. Set `XYMONEXT_ENABLE="no"` in `xymonext.cfg` (or in
        LOGFILE $XYMONHOME/logs/myextension.log
        INTERVAL 5m
    ```
+
+   On a Xymon server built from the sources, the server's `tasks.cfg`
+   starts the local client and `clientlaunch.cfg` is not read: there
+   the `directory <client>/etc/clientlaunch.d` line goes at the end of
+   the server's `tasks.cfg` instead, and into that file only (see
+   [packaging/README.md](packaging/README.md), "Server and client from
+   one source build").
 
 4. Restart the Xymon client.
 

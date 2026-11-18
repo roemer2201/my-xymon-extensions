@@ -43,6 +43,15 @@ There is no rpm or FreeBSD packaging for my-xymon-extensions-server. The
 tasks.d layout and the powerline helper's fixed /usr/bin tool paths would
 need review first (source: PLAN1.md, "Open TODOs").
 
+Until then, other servers are set up by hand with the recipe in
+`README.md` ("Recipe: a server without the Debian package"). A
+`make server-install` target was considered and not built: it would
+have to answer the same questions as a package (edited files in
+`my-xymon-extensions-server/` on an update, never touching a stock
+config file) without a package manager's help. If non-Debian servers
+become common, a server rpm is the better answer (source: installation
+on a Xymon 4.3.30 source build, Rocky Linux 10.3).
+
 ## Unverified without hardware
 
 - powerline: a plcrate response whose MAC differs from the queried

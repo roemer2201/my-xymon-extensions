@@ -67,7 +67,7 @@ CLAUDE_COLUMN="${CLAUDE_COLUMN:-claude}"    # Xymon column name
 CLAUDE_ACCOUNTS="${CLAUDE_ACCOUNTS:-root}"  # accounts to check
 CLAUDE_WARN="${CLAUDE_WARN:-10}"            # yellow at/below N days left
 CLAUDE_CRIT="${CLAUDE_CRIT:-5}"             # red at/below N days left
-CLAUDE_HELPER="${CLAUDE_HELPER:-}"          # empty: next to this script
+CLAUDE_HELPER="${CLAUDE_HELPER:-}"          # helper path; empty: search (the rpm sets its own)
 CLAUDE_SUDO="${CLAUDE_SUDO:-auto}"          # auto|yes|no
 
 # Own subdirectory since 0.20.0 ($XYMONHOME/etc is shared with the

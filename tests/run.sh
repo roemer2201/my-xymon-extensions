@@ -728,6 +728,122 @@ expect "${out}" "RRD data omitted - name \"${short_name}\" is already used" \
     "names colliding after truncation are detected"
 rm -f "${TMP}"/smart.*.state
 
+# sudoers.example: every variant ships commented out and parses, also
+# once uncommented. The regular expressions of variant A are checked
+# the way sudo applies them (sudoers(5): the arguments joined by single
+# spaces, matched as one POSIX ERE) - with grep -E, not with sudo, which
+# would need root. The smartctl calls smart.sh really makes must fit.
+SMSUDO="$REPO/extensions/smart/sudoers.example"
+if grep -Eq '^[[:space:]]*xymon[[:space:]]' "$SMSUDO"; then
+    echo "FAIL: smart sudoers.example ships an active rule"
+    FAIL=1
+else
+    echo "ok:   smart sudoers.example ships every rule commented out"
+fi
+sed 's/^#xymon /xymon /' "$SMSUDO" > "$TMP/smart-sudoers-active"
+# Variant B is portable. Variant A needs classic sudo >= 1.9.10;
+# sudo-rs also rejects the wildcard arguments in C. On Ubuntu both
+# parsers can be installed, with visudo.ws providing classic sudo.
+sed -n '/^# --- Variant B:/,/^# --- Variant C:/s/^#xymon /xymon /p' "$SMSUDO" > "$TMP/smart-sudoers-B"
+for parser in visudo visudo.ws; do
+    command -v "$parser" >/dev/null 2>&1 || continue
+    fixture="$TMP/smart-sudoers-B"
+    if "$parser" -V | awk '$1 ~ /^visudo([.]ws)?$/ && $2 == "version" { split($3,v,"[.]")
+        classic = (v[1] == 1 && (v[2]+0 > 9 || (v[2]+0 == 9 && v[3]+0 >= 10))) }
+        END { exit !classic }'; then
+        fixture="$TMP/smart-sudoers-active"
+    fi
+    if [ -s "$fixture" ] && "$parser" -c -f "$SMSUDO" && "$parser" -c -f "$fixture"; then
+        echo "ok:   $parser accepts the shipped example and ${fixture##*/}"
+    else
+        echo "FAIL: $parser rejects smart sudoers.example or ${fixture##*/}"
+        FAIL=1
+    fi
+done
+# smart_re <command path> -> the argument regexes of variant A for it
+smart_re() {
+    awk -v cmd="$1" '$1 == "xymon" && $4 == cmd && $5 ~ /^\^/ {
+        sub(/^[^^]*/, ""); print }' "$TMP/smart-sudoers-active"
+}
+smart_re /usr/sbin/smartctl > "$TMP/smart-re-linux"
+smart_re /usr/local/sbin/smartctl > "$TMP/smart-re-bsd"
+smart_re /usr/bin/mmc > "$TMP/smart-re-mmc"
+# smart_allows <regex file> <arguments> -> true if one regex matches
+smart_allows() {
+    printf '%s\n' "$2" | grep -Eq -f "$1"
+}
+if [ "$(wc -l < "$TMP/smart-re-linux")" -eq 2 ] &&
+   [ "$(wc -l < "$TMP/smart-re-bsd")" -eq 2 ] &&
+   [ "$(wc -l < "$TMP/smart-re-mmc")" -eq 1 ]; then
+    echo "ok:   variant A has its regular expressions for Linux, FreeBSD and mmc"
+else
+    echo "FAIL: variant A regular expressions not found in smart sudoers.example"
+    FAIL=1
+fi
+for args in '--version' '--scan' '-i -H -A /dev/sda' '-i -H -A -n standby /dev/sda' \
+    '-i -H -A -n standby -d sat /dev/sdb' '-i -H -A -n standby /dev/nvme0' \
+    '-i -H -A -d megaraid,0 /dev/sdc' '-i -H -A -n standby /dev/nvme0n1'; do
+    if smart_allows "$TMP/smart-re-linux" "$args"; then
+        echo "ok:   smart sudo regex allows: smartctl $args"
+    else
+        echo "FAIL: smart sudo regex rejects: smartctl $args"
+        FAIL=1
+    fi
+done
+for args in '-s off /dev/sda' '-t long /dev/sda' '-i -H -A -s off /dev/sda' \
+    '-i -H -A /dev/sda /dev/sdb' '-i -H -A -d sat -s off /dev/sda' '-X /dev/sda' \
+    '--scan -s off /dev/sda' '-i -H -A /dev/sda1' '-i -H -A --set=standby,now /dev/sda'; do
+    if smart_allows "$TMP/smart-re-linux" "$args"; then
+        echo "FAIL: smart sudo regex allows: smartctl $args"
+        FAIL=1
+    else
+        echo "ok:   smart sudo regex rejects: smartctl $args"
+    fi
+done
+if smart_allows "$TMP/smart-re-bsd" '-i -H -A -n standby /dev/ada0' &&
+   smart_allows "$TMP/smart-re-bsd" '-i -H -A -n standby /dev/nda0' &&
+   ! smart_allows "$TMP/smart-re-bsd" '-i -H -A -s off /dev/ada0'; then
+    echo "ok:   FreeBSD sudo regex: ada/nda devices yes, -s off no"
+else
+    echo "FAIL: FreeBSD sudo regex"
+    FAIL=1
+fi
+if smart_allows "$TMP/smart-re-mmc" 'extcsd read /dev/mmcblk0' &&
+   ! smart_allows "$TMP/smart-re-mmc" 'extcsd read /dev/mmcblk0 /dev/sda' &&
+   ! smart_allows "$TMP/smart-re-mmc" 'extcsd write 0 1 /dev/mmcblk0'; then
+    echo "ok:   mmc sudo regex: one eMMC device, read only"
+else
+    echo "FAIL: mmc sudo regex"
+    FAIL=1
+fi
+# The calls smart.sh makes (fixture device names replaced by a real one).
+printf '#!/bin/sh\nprintf "%%s\\n" "$*" >> "%s"\nexec "%s" "$@"\n' \
+    "$TMP/smartctl-args" "$FAKESMARTCTL" > "$TMP/smartctl-log"
+chmod 0755 "$TMP/smartctl-log"
+: > "$TMP/smartctl-args"
+printf 'SMARTCTL="%s"\nUSE_SUDO=no\nMMC_DEVICES=none\n' "$TMP/smartctl-log" > "$TMP/smart-args.cfg"
+printf 'device /dev/tsda "-d sat"\ndevice /dev/tnvme0\n' >> "$TMP/smart-args.cfg"
+# shellcheck disable=SC2086
+SMART_CFG="$TMP/smart-args.cfg" ${TESTSH} "$REPO/extensions/smart/smart.sh" > /dev/null
+echo 'NOSPINUP="no"' >> "$TMP/smart-args.cfg"
+# shellcheck disable=SC2086
+SMART_CFG="$TMP/smart-args.cfg" ${TESTSH} "$REPO/extensions/smart/smart.sh" > /dev/null
+printf 'SMARTCTL="%s"\nUSE_SUDO=no\nMMC_DEVICES=none\n' "$TMP/smartctl-log" > "$TMP/smart-args.cfg"
+# shellcheck disable=SC2086
+SMART_CFG="$TMP/smart-args.cfg" ${TESTSH} "$REPO/extensions/smart/smart.sh" > /dev/null
+sed 's| /dev/[^ ]*$| /dev/sda|' "$TMP/smartctl-args" > "$TMP/smartctl-args-sda"
+if grep -q -- '^-i -H -A -n standby -d sat /dev/sda$' "$TMP/smartctl-args-sda" &&
+   grep -q -- '^-i -H -A /dev/sda$' "$TMP/smartctl-args-sda" &&
+   grep -q -- '^--scan$' "$TMP/smartctl-args-sda" &&
+   ! grep -Ev -f "$TMP/smart-re-linux" "$TMP/smartctl-args-sda" | grep -q .; then
+    echo "ok:   every smartctl call of smart.sh fits the regular expressions of variant A"
+else
+    echo "FAIL: smartctl calls of smart.sh outside variant A:"
+    grep -Ev -f "$TMP/smart-re-linux" "$TMP/smartctl-args-sda" | sed 's/^/      /'
+    FAIL=1
+fi
+rm -f "${TMP}"/smart.*.state
+
 # ----------------------------------------------------------------------
 echo "--- temp ---"
 TEMPFIX="$TESTDIR/temp"
@@ -1574,7 +1690,10 @@ export DNF_CFG="$TESTDIR/dnf/dnf_test.cfg"
 unset DNF_COLUMN DNF_MAXAGE DNF_TIMEOUT DNF_LIFETIME DNF_UPDATES_COLOR \
     DNF_SEC_CRITICAL_COLOR DNF_SEC_IMPORTANT_COLOR DNF_SEC_MODERATE_COLOR \
     DNF_SEC_LOW_COLOR DNF_SEC_UNKNOWN_COLOR DNF_REBOOT_COLOR DNF_SHOW_CVES \
-    FAKEDNF_VERSION 2>/dev/null || true
+    DNF_REUSE_WATCH DNF_BOOTID FAKEDNF_VERSION 2>/dev/null || true
+# The scenarios share $XYMONTMP and repository lists, so reusing dnf's
+# answers would mix them up: off here, tested on its own below.
+export DNF_REUSE=0
 
 # dnf_cache <scenario> -- a fresh fake system cache: one directory per
 # repository of the scenario, named like libdnf names them
@@ -1992,6 +2111,131 @@ out=$(dnf_run "$TMP/dnf-output")
 expect "$out" '^&yellow "dnf -C --version" did not finish within 120 second' \
     "the dnf version probe is also subject to the timeout"
 expect_not "$out" '^data ' "a failed version probe sends no data"
+
+# --- reuse of dnf's answers --------------------------------------------
+# The answers of check-update and updateinfo are reused while the key
+# (repositories, primary metadata mtimes, boot id, ...) is unchanged,
+# nothing below DNF_REUSE_WATCH is newer than the saved file and that
+# file is younger than DNF_REUSE minutes. Changes are made with
+# "touch -t" into the future or the past: comparisons by the second
+# (BusyBox find -newer) must not decide a test.
+RW="$TMP/dnf-reuse-watch"
+rm -rf "$RW"; mkdir -p "$RW/w1" "$RW/w2"
+printf 'boot-1\n' > "$TMP/dnf-bootid"
+rm -f "$TMP"/dnf-reuse.*
+dnf_cache updates
+# dnf_reuse_run [VAR=value ...] -> dnf.sh on "updates" with reuse on
+dnf_reuse_run() {
+    dnf_run updates DNF_REUSE=60 DNF_REUSE_WATCH="$RW/w1" DNF_BOOTID="$TMP/dnf-bootid" "$@"
+}
+# dnf_asked -> true if the last run called check-update
+dnf_asked() {
+    grep -q 'check-update' "$FAKEDNF_LOG"
+}
+# dnf_expect_asked yes|no <description> -- did the last run ask dnf?
+dnf_expect_asked() {
+    if dnf_asked; then dea_got=yes; else dea_got=no; fi
+    if [ "$dea_got" = "$1" ]; then
+        echo "ok:   $2"
+    else
+        echo "FAIL: $2 (dnf asked: $dea_got)"
+        FAIL=1
+    fi
+}
+# dnf_comparable <output> -> the messages without date and reuse note
+dnf_comparable() {
+    printf '%s\n' "$1" | sed -e 's/^\(status+[0-9]* [^ ]* [a-z]*\) .* - dnf:/\1 - dnf:/' \
+        -e '/^Package and advisory lists: /,/^no repository refresh/d' -e '/^$/d'
+}
+out1=$(dnf_reuse_run)
+dnf_expect_asked yes "reuse: the first run asks dnf"
+if [ -f "$TMP/dnf-reuse.dnf" ]; then
+    echo "ok:   reuse: the answers are saved in \$XYMONTMP/dnf-reuse.<column>"
+else
+    echo "FAIL: reuse: no saved answers"; FAIL=1
+fi
+out2=$(dnf_reuse_run)
+if ! dnf_asked && ! grep -q 'updateinfo' "$FAKEDNF_LOG" && grep -q 'repolist' "$FAKEDNF_LOG"; then
+    echo "ok:   reuse: the second run lists the repositories but asks nothing else"
+else
+    echo "FAIL: reuse: the second run asked dnf again"; FAIL=1
+fi
+if [ "$(dnf_comparable "$out1")" = "$(dnf_comparable "$out2")" ]; then
+    echo "ok:   reuse: status and data message are the same as from dnf itself"
+else
+    echo "FAIL: reuse: the reused result differs"; FAIL=1
+fi
+expect "$out2" "^Package and advisory lists: dnf's answers from 0 minute\\(s\\) ago, reused" \
+    "reuse: the status says that the answers were reused"
+expect_not "$out1" '^Package and advisory lists:' "reuse: no such note after asking dnf"
+expect "$out2" '^updates : 20$' "reuse: the graphs get the same values"
+
+printf 'boot-2\n' > "$TMP/dnf-bootid"
+dnf_reuse_run > /dev/null
+dnf_expect_asked yes "reuse: a reboot (new boot id) asks dnf again"
+dnf_reuse_run > /dev/null
+dnf_expect_asked no "reuse: ... and reuses that run's answers afterwards"
+
+touch -t 209912312359 "$FAKEDNF_CACHE/baseos-0123456789abcdef/repodata/primary.xml.gz"
+dnf_reuse_run > /dev/null
+dnf_expect_asked yes "reuse: refreshed repository metadata asks dnf again"
+
+# A repository can publish new advisory data for the same packages.
+index="$FAKEDNF_CACHE/baseos-0123456789abcdef/repodata/repomd.xml"
+echo index-before > "$index"
+dnf_reuse_run > /dev/null
+echo index-after > "$index"
+dnf_reuse_run > /dev/null
+dnf_expect_asked yes "reuse: changed advisory index with unchanged primary asks dnf again"
+
+# A shared temporary directory must not be a source of saved answers.
+mkdir -p "$TMP/shared"
+chmod 1777 "$TMP/shared"
+dnf_reuse_run XYMONTMP="$TMP/shared" > /dev/null
+dnf_reuse_run XYMONTMP="$TMP/shared" > /dev/null
+dnf_expect_asked yes "reuse: shared temporary directory always queries dnf"
+[ ! -e "$TMP/shared/dnf-reuse.dnf" ] || { echo "FAIL: shared cache written"; FAIL=1; }
+
+# Create all three files before saving the answers: creating a new file
+# changes the directory mtime, independently of the file's own mtime.
+touch "$RW/w2/rpmdb.sqlite" "$RW/w2/rpmdb.sqlite-wal" "$RW/w2/rpmdb.sqlite-shm"
+dnf_reuse_run DNF_REUSE_WATCH="$RW/w2" > /dev/null
+touch -t 209912312359 "$RW/w2/rpmdb.sqlite-shm"
+dnf_reuse_run DNF_REUSE_WATCH="$RW/w2" > /dev/null
+dnf_expect_asked no "reuse: an RPM read touching only SQLite shared memory reuses the answers"
+for dbpart in rpmdb.sqlite-wal rpmdb.sqlite; do
+    touch -t 209912312359 "$RW/w2/$dbpart"
+    dnf_reuse_run DNF_REUSE_WATCH="$RW/w2" > /dev/null
+    dnf_expect_asked yes "reuse: a change to $dbpart asks dnf again"
+    touch -t 200001010000 "$RW/w2/$dbpart"
+done
+dnf_reuse_run DNF_REUSE_WATCH="$RW/w2" > /dev/null
+touch -t 209912312359 "$RW/w2/updated.repo"
+dnf_reuse_run DNF_REUSE_WATCH="$RW/w2" > /dev/null
+dnf_expect_asked yes "reuse: a change below DNF_REUSE_WATCH asks dnf again"
+
+touch -t 200001010000 "$TMP/dnf-reuse.dnf"
+dnf_reuse_run > /dev/null
+dnf_expect_asked yes "reuse: answers older than DNF_REUSE minutes are not reused"
+
+printf 'dnf-reuse 1\nkey garbage\n' > "$TMP/dnf-reuse.dnf"
+out=$(dnf_reuse_run)
+dnf_expect_asked yes "reuse: a damaged file asks dnf again"
+expect "$out" '^updates : 20$' "reuse: ... and reports normally"
+
+dnf_reuse_run DNF_REUSE=0 > /dev/null
+dnf_expect_asked yes "reuse: DNF_REUSE=0 always asks dnf"
+
+# A failing dnf leaves no answers to reuse.
+rm -f "$TMP"/dnf-reuse.*
+dnf_cache nocache
+dnf_run nocache DNF_REUSE=60 DNF_REUSE_WATCH="$RW/w1" DNF_BOOTID="$TMP/dnf-bootid" > /dev/null
+if [ -e "$TMP/dnf-reuse.dnf" ]; then
+    echo "FAIL: reuse: the answers of a failed dnf call were saved"; FAIL=1
+else
+    echo "ok:   reuse: the answers of a failed dnf call are not saved"
+fi
+rm -f "$TMP"/dnf-reuse.*
 
 out=$(dnf_run clean DNF_CFG="$TESTDIR/dnf/dnf_test_nodnf.cfg")
 expect "$out" '^status\+30 testhost\.dnf clear ' "missing dnf reports clear, not red"
@@ -4629,6 +4873,60 @@ else
 fi
 
 # --- the server package ------------------------------------------------
+# Run the source-install recipe itself against a disposable server tree.
+# Only its example installation path changes; the commands come from README.
+recipe="$TMP/source-install"
+export RECIPE_SERVER="$TMP/source server"
+awk '/^#### Recipe: a server without the Debian package$/ { section = 1 }
+     section && /^```sh$/ { code = 1; next }
+     code && /^```$/ { exit }
+     code && /^    SRV=/ { print "    SRV=\"$RECIPE_SERVER\""; next }
+     code { print }' "$REPO/README.md" > "$recipe"
+run_server_recipe() {
+    # shellcheck disable=SC2086  # TESTSH may be multi-word
+    (cd "$REPO" && $TESTSH "$recipe")
+}
+check_server_recipe() {
+    rs_etc="$RECIPE_SERVER/etc"
+    rs_graph="$rs_etc/graphs.d/smart.cfg"
+    rs_task="$rs_etc/tasks.d/powerline.cfg"
+    mkdir -p "$rs_etc" && touch "$rs_etc/tasks.cfg" || return 1
+    run_server_recipe >/dev/null || return 1
+    [ -s "$rs_graph" ] && [ -s "$rs_task" ] || return 1
+    cp "$rs_graph" "$TMP/stock-graph" && cp "$rs_task" "$TMP/stock-task" || return 1
+    find "$rs_etc" -type f > "$TMP/recipe-expected" || return 1
+    printf '%s\n' "$rs_graph.rpmnew" >> "$TMP/recipe-expected"
+    rm "$rs_task" && printf 'local graph\n' > "$rs_graph" || return 1
+    # Simulate pasting the recipe into a shell with interactive RHEL
+    # aliases. With stdin closed, a prompt could silently skip an update.
+    {
+        printf '%s\n' "alias rm='rm -i'" "alias mv='mv -i'" "alias cp='cp -i'"
+        cat "$recipe"
+    } > "$recipe.aliases" || return 1
+    recipe="$recipe.aliases"
+    printf 'outdated program\n' > "$RECIPE_SERVER/ext/powerline.sh" || return 1
+    printf 'outdated documentation\n' > "$RECIPE_SERVER/share/doc/my-xymon-extensions-server/README.md" || return 1
+    printf 'older candidate\n' > "$rs_graph.rpmnew" || return 1
+    run_server_recipe </dev/null > "$TMP/recipe-output" 2> "$TMP/recipe-errors" || return 1
+    if [ -s "$TMP/recipe-errors" ]; then cat "$TMP/recipe-errors" >&2; return 1; fi
+    cmp -s "$REPO/extensions/powerline/powerline.sh" "$RECIPE_SERVER/ext/powerline.sh" &&
+        cmp -s "$REPO/README.md" "$RECIPE_SERVER/share/doc/my-xymon-extensions-server/README.md" || return 1
+    # All other configurations were identical. Only the changed graph
+    # gets a sibling, and its exact suffix must be one stackio ignores.
+    find "$rs_etc" -type f | sort > "$TMP/recipe-files"
+    sort "$TMP/recipe-expected" > "$TMP/recipe-sorted"
+    cmp -s "$TMP/recipe-sorted" "$TMP/recipe-files" &&
+        cmp -s "$TMP/stock-task" "$rs_task" &&
+        cmp -s "$TMP/stock-graph" "$rs_graph.rpmnew" &&
+        grep -Fxq 'local graph' "$rs_graph" &&
+        grep -Fq "$rs_graph.rpmnew" "$TMP/recipe-output"
+}
+if check_server_recipe; then
+    echo "ok:   README server update installs missing files and offers only changed configs as .rpmnew"
+else
+    echo "FAIL: README server update"; FAIL=1
+fi
+
 # Same idea for stage-server.sh: it must install every drop-in file, and
 # the deb conffiles list must name exactly the installed config files.
 
@@ -5213,6 +5511,8 @@ scriptlet() { # scriptlet NAME OUT
     awk -v want="%$1" '/^%/ { on = ($1 == want); next } on' "$SPEC_FILE" \
         | sed -e "s|%{xymonhome}|$RPMROOT/client|g" \
               -e "s|%{_localstatedir}|$RPMROOT/var|g" \
+              -e "s|%{_sysconfdir}|$RPMROOT/etc|g" \
+              -e "s|%{_libexecdir}|/usr/libexec|g" \
               -e "s|%{name}|my-xymon-extensions|g" > "$2"
 }
 SPEC_FILE="$REPO/packaging/rpm/my-xymon-extensions.spec"
@@ -5263,7 +5563,7 @@ expect "$out" 'WARNING: .*la\.cfg' "rpm: both files edited is reported"
 # ships a clientlaunch.cfg without that line. The scriptlet must say so
 # (it never edits the file) and stay quiet once the line is there.
 scriptlet post "$TMP/rpm-post"
-rm -rf "$RPMROOT"; mkdir -p "$RE"
+rm -rf "$RPMROOT"; mkdir -p "$RE/clientlaunch.d"
 # shellcheck disable=SC2016  # the literal text of a clientlaunch.cfg
 printf '[client]\n\tCMD $XYMONCLIENTHOME/bin/xymonclient.sh\n\tINTERVAL 5m\n' \
     > "$RE/clientlaunch.cfg"
@@ -5287,6 +5587,79 @@ expect "$out" 'The "dnf" extension is active out of the box' \
 rm -f "$RE/clientlaunch.cfg"
 out=$($TESTSH "$TMP/rpm-post" 1)
 expect_not "$out" 'TODO' "rpm post: no claim about a clientlaunch.cfg that does not exist"
+
+# Server and client from one source build ($XYMONTOPDIR/server and
+# $XYMONTOPDIR/client): the server's tasks.cfg starts the client, and
+# clientlaunch.cfg is never read. The line belongs into tasks.cfg.
+RS="$RPMROOT/server/etc"
+mkdir -p "$RS" "$RPMROOT/client/bin"
+rs_real=$(cd "$RS" && pwd -P)
+# shellcheck disable=SC2016  # the literal text of a clientlaunch.cfg
+printf '[client]\n\tCMD $XYMONCLIENTHOME/bin/xymonclient.sh\n' > "$RE/clientlaunch.cfg"
+printf 'XYMONSERVERROOT="%s"\nXYMONCLIENTHOME="%s/client"\t\t# client\n' \
+    "$RPMROOT" "$RPMROOT" > "$RS/xymonserver.cfg"
+rpm_tasks() { # rpm_tasks CMD [extra line] - a tasks.cfg like the source build's
+    printf '[xymond]\n\tCMD xymond\n\n[xymonclient]\n\tENVFILE %s/client/etc/xymonclient.cfg\n\tNEEDS xymond\n\tCMD %s\n\tINTERVAL 5m\n%s\n\n# Include add-on modules.\ndirectory %s/server/etc/tasks.d\n' \
+        "$RPMROOT" "$1" "${2:-}" "$RPMROOT" > "$RS/tasks.cfg"
+}
+rpm_tasks "$RPMROOT/client/bin/xymonclient.sh"
+cp "$RS/tasks.cfg" "$TMP/tasks.before"
+cp "$RE/clientlaunch.cfg" "$TMP/clientlaunch.before"
+out=$($TESTSH "$TMP/rpm-post" 1)
+expect "$out" '^ TODO: on this host the Xymon SERVER starts the client' \
+    "rpm post: a server tasks.cfg that starts this client is detected"
+expect "$out" "^   $rs_real/tasks\\.cfg\$" "rpm post: names tasks.cfg with its real path"
+expect "$out" "^   directory $RE/clientlaunch\\.d\$" \
+    "rpm post: the line for tasks.cfg points at the client's clientlaunch.d"
+expect "$out" 'not into both files' "rpm post: warns against the line in both files"
+expect_not "$out" 'TODO: clientlaunch\.cfg' \
+    "rpm post: no advice for a clientlaunch.cfg nothing reads"
+if cmp -s "$RS/tasks.cfg" "$TMP/tasks.before" &&
+   cmp -s "$RE/clientlaunch.cfg" "$TMP/clientlaunch.before"; then
+    echo "ok:   rpm post: tasks.cfg and clientlaunch.cfg are left alone"
+else
+    echo "FAIL: rpm post edited tasks.cfg or clientlaunch.cfg"
+    FAIL=1
+fi
+echo "directory $RE/clientlaunch.d" >> "$RE/clientlaunch.cfg"
+out=$($TESTSH "$TMP/rpm-post" 1)
+expect "$out" '^ TODO: on this host the Xymon SERVER' \
+    "rpm post: the line in clientlaunch.cfg does not help on a combined host"
+expect "$out" '^ NOTE: .*clientlaunch\.cfg$' "rpm post: the line in clientlaunch.cfg is pointed out"
+# stackio treats variables literally; a similarly named directory is
+# not the packaged one either, even if it exists.
+mkdir -p "$RE/clientlaunch.d.old"
+# shellcheck disable=SC2016
+printf 'directory $XYMONCLIENTHOME/etc/clientlaunch.d\ndirectory %s/clientlaunch.d.old\n' "$RE" >> "$RS/tasks.cfg"
+out=$($TESTSH "$TMP/rpm-post" 1)
+expect "$out" '^ TODO: on this host the Xymon SERVER' "rpm post: wrong drop-in paths still need a TODO"
+echo "optional directory ../../client/etc/clientlaunch.d/" >> "$RS/tasks.cfg"
+out=$($TESTSH "$TMP/rpm-post" 1)
+expect_not "$out" 'TODO' "rpm post: quiet once tasks.cfg reads the directory"
+expect "$out" '^ NOTE: ' "rpm post: still asks to drop the second copy of the line"
+cp "$TMP/clientlaunch.before" "$RE/clientlaunch.cfg"
+out=$($TESTSH "$TMP/rpm-post" 1)
+expect_not "$out" '^ (TODO|NOTE): ' "rpm post: silent with the line in tasks.cfg only"
+# shellcheck disable=SC2016  # $XYMONCLIENTHOME as written in tasks.cfg
+rpm_tasks '$XYMONCLIENTHOME/bin/xymonclient.sh'
+out=$($TESTSH "$TMP/rpm-post" 1)
+expect "$out" '^ TODO: on this host the Xymon SERVER' \
+    "rpm post: \$XYMONCLIENTHOME in tasks.cfg is resolved through xymonserver.cfg"
+rpm_tasks "$RPMROOT/client/bin/xymonclient.sh" '	DISABLED'
+out=$($TESTSH "$TMP/rpm-post" 1)
+expect "$out" '^ TODO: clientlaunch\.cfg does not read' \
+    "rpm post: a disabled client task leaves clientlaunch.cfg in charge"
+rpm_tasks "$RPMROOT/client/bin/xymonclient.sh"
+printf '[xymonclient]\nDISABLED # managed by a separate launcher\n' >> "$RS/tasks.cfg"
+out=$($TESTSH "$TMP/rpm-post" 1)
+expect "$out" '^ TODO: clientlaunch\.cfg does not read' \
+    "rpm post: a later section can disable the same server task"
+rpm_tasks "/opt/other/client/bin/xymonclient.sh"
+out=$($TESTSH "$TMP/rpm-post" 1)
+expect "$out" '^ TODO: clientlaunch\.cfg does not read' \
+    "rpm post: a server that starts another client changes nothing here"
+expect_not "$out" 'Xymon SERVER starts' "rpm post: ... and is not mentioned"
+rm -rf "$RPMROOT/server"
 
 # dnf: the shared snippet ships disabled (deb and FreeBSD hosts have no
 # dnf), and the rpm - the one package whose hosts all have dnf - enables
@@ -5319,6 +5692,110 @@ if $TESTSH -e "$TMP/rpm-install-dnf" 2>/dev/null; then
 else
     echo "ok:   the rpm build fails if the snippet has no DISABLED line"
 fi
+
+# claude: the rpm moves the sudo helper out of ext/ into a root-only
+# directory and makes that the default of claude.sh. Run that step of
+# %install against copies of the two scripts.
+CB="$TMP/rpm-buildroot-claude"
+rm -rf "$CB"; mkdir -p "$CB$RPMROOT/client/ext"
+cp "$REPO/extensions/claude/claude.sh" "$REPO/extensions/claude/claude-expiry.sh" \
+    "$CB$RPMROOT/client/ext/"
+awk '/^%install/ { on = 1; next } /^%/ { on = 0 }
+     on && /^claudehelper=/ { take = 1 } on && take && /^$/ { exit } on && take' \
+    "$SPEC_FILE" | sed -e "s|%{buildroot}|$CB|g" -e "s|%{xymonhome}|$RPMROOT/client|g" \
+        -e "s|%{_libexecdir}|/usr/libexec|g" -e "s|%{name}|my-xymon-extensions|g" \
+    > "$TMP/rpm-install-claude"
+# shellcheck disable=SC2016  # literal shell text in claude.sh
+if $TESTSH -e "$TMP/rpm-install-claude" &&
+   [ -x "$CB/usr/libexec/my-xymon-extensions/claude-expiry.sh" ] &&
+   [ ! -e "$CB$RPMROOT/client/ext/claude-expiry.sh" ] &&
+   [ -x "$CB$RPMROOT/client/ext/claude.sh" ] &&
+   grep -q '^CLAUDE_HELPER="${CLAUDE_HELPER:-/usr/libexec/my-xymon-extensions/claude-expiry\.sh}"' \
+       "$CB$RPMROOT/client/ext/claude.sh"; then
+    echo "ok:   rpm: the claude helper moves to libexec and becomes the default"
+else
+    echo "FAIL: rpm: claude helper not moved to libexec, or claude.sh default not set"
+    FAIL=1
+fi
+if grep -qx '%{_libexecdir}/%{name}/claude-expiry.sh' "$SPEC_FILE" &&
+   ! grep -q '^%{xymonhome}/ext/claude-expiry\.sh' "$SPEC_FILE"; then
+    echo "ok:   rpm %files: the claude helper is packaged in libexec only"
+else
+    echo "FAIL: rpm %files: claude helper path"
+    FAIL=1
+fi
+# The step must fail rather than ship a claude.sh it could not change.
+cp "$REPO/extensions/claude/claude-expiry.sh" "$CB$RPMROOT/client/ext/"
+if $TESTSH -e "$TMP/rpm-install-claude" 2>/dev/null; then
+    echo "FAIL: the rpm build step accepts a claude.sh without the expected default"
+    FAIL=1
+else
+    echo "ok:   the rpm build fails if claude.sh has no empty CLAUDE_HELPER default"
+fi
+# With the default replaced, claude.sh uses the libexec helper; an
+# explicit CLAUDE_HELPER still wins.
+# shellcheck disable=SC2016  # literal shell text in claude.sh
+sed 's|^CLAUDE_HELPER="${CLAUDE_HELPER:-}"|CLAUDE_HELPER="${CLAUDE_HELPER:-/nonexistent/claude-expiry.sh}"|' \
+    "$REPO/extensions/claude/claude.sh" > "$TMP/claude-libexec.sh"
+# shellcheck disable=SC2086
+out=$(CLAUDE_HELPER='' CLAUDE_CFG=/dev/null XYMONHOME='' $TESTSH "$TMP/claude-libexec.sh" 2>&1)
+expect "$out" 'claude-expiry\.sh not found' \
+    "claude.sh with the rpm default looks only at that path"
+
+# temp: stage.sh ships the launch snippet as documentation only
+# (hobbit-plugins owns clientlaunch.d/temp.cfg on Debian); the rpm
+# copies it into place. Run that step of %install.
+TB="$TMP/rpm-buildroot-temp"
+rm -rf "$TB"; mkdir -p "$TB/usr/share/doc/my-xymon-extensions/temp/clientlaunch.d" \
+    "$TB$RPMROOT/client/etc/clientlaunch.d"
+cp "$REPO/packaging/common/clientlaunch.d/temp.cfg" "$TB/usr/share/doc/my-xymon-extensions/temp/clientlaunch.d/"
+awk '/^%install/ { on = 1; next } /^%/ { on = 0 }
+     on && /^tempsnippet=/ { take = 1 } on && take && /^$/ { exit } on && take' \
+    "$SPEC_FILE" | sed -e "s|%{buildroot}|$TB|g" -e "s|%{xymonhome}|$RPMROOT/client|g" \
+        -e "s|%{_docdir}|/usr/share/doc|g" -e "s|%{name}|my-xymon-extensions|g" \
+    > "$TMP/rpm-install-temp"
+if $TESTSH -e "$TMP/rpm-install-temp" &&
+   cmp -s "$REPO/packaging/common/clientlaunch.d/temp.cfg" \
+       "$TB$RPMROOT/client/etc/clientlaunch.d/temp.cfg" &&
+   grep -qx '%config(noreplace) %{xymonhome}/etc/clientlaunch.d/temp.cfg' "$SPEC_FILE"; then
+    echo "ok:   rpm: the temp launch snippet is installed (EL has no hobbit-plugins)"
+else
+    echo "FAIL: rpm: the temp launch snippet is not installed"
+    FAIL=1
+fi
+if grep -v '^share/doc/' "$REPO/packaging/freebsd/pkg-plist" | grep -q 'clientlaunch.d/temp.cfg'; then
+    echo "FAIL: FreeBSD: the temp launch snippet must stay documentation (no hwmon there)"
+    FAIL=1
+else
+    echo "ok:   FreeBSD ships the temp launch snippet as documentation only"
+fi
+
+# rpm post: a sudo rule must not name a script the xymon user can
+# replace. The test's client directory belongs to whoever runs the
+# suite: as root, a group-writable ext/ must be reported and a 0755 one
+# not; as anyone else, both are reported (not root's).
+scriptlet post "$TMP/rpm-post"
+rm -rf "$RPMROOT"; mkdir -p "$RPMROOT/client/ext" "$RPMROOT/etc/sudoers.d"
+chmod 0755 "$RPMROOT/client" "$RPMROOT/client/ext"
+printf 'xymon ALL=(root) NOPASSWD: %s/client/ext/claude-expiry.sh root\n' "$RPMROOT" \
+    > "$RPMROOT/etc/sudoers.d/xymon-claude"
+printf '#xymon ALL=(root) NOPASSWD: %s/client/ext/x.sh\n' "$RPMROOT" > "$RPMROOT/etc/sudoers.d/commented"
+if [ "$(id -u)" -eq 0 ]; then
+    out=$($TESTSH "$TMP/rpm-post" 1)
+    expect_not "$out" 'WARNING: not only root' "rpm post: silent about a root-owned 0755 client directory"
+    chmod 0775 "$RPMROOT/client/ext"
+fi
+out=$($TESTSH "$TMP/rpm-post" 1)
+expect "$out" "^ WARNING: not only root can write to.*$RPMROOT/client/ext" \
+    "rpm post: a client directory the xymon user can write is reported"
+expect "$out" '/usr/libexec/my-xymon-extensions/claude-expiry\.sh' \
+    "rpm post: names the root-owned helper path"
+expect "$out" "^   $RPMROOT/etc/sudoers\.d/xymon-claude has a rule naming a path below" \
+    "rpm post: names a sudoers file pointing below the client directory"
+expect_not "$out" 'sudoers\.d/commented has' "rpm post: commented-out rules are ignored"
+expect "$out" "^ NOTE: $RPMROOT/etc/sudoers\\.d/xymon-claude names ext/claude-expiry\\.sh" \
+    "rpm post: a claude rule for the old helper path is pointed out"
+rm -rf "$RPMROOT"
 
 # A Xymon client compiled by hand is in no rpm database: the dependency
 # on the client package must be optional, and build.sh must reject a
