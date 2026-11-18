@@ -151,8 +151,8 @@ owned by the xymon-client package). After installing, once per host:
    `smart/sudoers.example` in the docs directory, all of which ship
    commented out (see `extensions/smart/README.md`, "Privileges").
 2. Ensure `clientlaunch.cfg` reads the `clientlaunch.d` directory
-   shown in the table above, e.g. `directory
-   $XYMONHOME/etc/clientlaunch.d`. On Debian/Ubuntu this is already
+   using its literal path, e.g. `directory /usr/local/xymon/client/etc/clientlaunch.d`
+   for a source client in `/usr/local/xymon/client`. On Debian/Ubuntu this is already
    the case: the init script writes one `include` line per `*.cfg`
    into `/var/run/xymon/clientlaunch-include.cfg`, which both
    `clientlaunch.cfg` and the server's `tasks.cfg` read. Where a

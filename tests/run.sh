@@ -741,17 +741,25 @@ else
     echo "ok:   smart sudoers.example ships every rule commented out"
 fi
 sed 's/^#xymon /xymon /' "$SMSUDO" > "$TMP/smart-sudoers-active"
-if command -v visudo >/dev/null 2>&1; then
-    if visudo -c -f "$SMSUDO" >/dev/null 2>&1 &&
-       visudo -c -f "$TMP/smart-sudoers-active" >/dev/null 2>&1; then
-        echo "ok:   visudo accepts smart sudoers.example, also with every variant uncommented"
+# Variant B is portable. Variant A needs classic sudo >= 1.9.10;
+# sudo-rs also rejects the wildcard arguments in C. On Ubuntu both
+# parsers can be installed, with visudo.ws providing classic sudo.
+sed -n '/^# --- Variant B:/,/^# --- Variant C:/s/^#xymon /xymon /p' "$SMSUDO" > "$TMP/smart-sudoers-B"
+for parser in visudo visudo.ws; do
+    command -v "$parser" >/dev/null 2>&1 || continue
+    fixture="$TMP/smart-sudoers-B"
+    if "$parser" -V | awk '$1 ~ /^visudo([.]ws)?$/ && $2 == "version" { split($3,v,"[.]")
+        classic = (v[1] == 1 && (v[2]+0 > 9 || (v[2]+0 == 9 && v[3]+0 >= 10))) }
+        END { exit !classic }'; then
+        fixture="$TMP/smart-sudoers-active"
+    fi
+    if [ -s "$fixture" ] && "$parser" -c -f "$SMSUDO" && "$parser" -c -f "$fixture"; then
+        echo "ok:   $parser accepts the shipped example and ${fixture##*/}"
     else
-        echo "FAIL: visudo rejects smart sudoers.example"
+        echo "FAIL: $parser rejects smart sudoers.example or ${fixture##*/}"
         FAIL=1
     fi
-else
-    echo "skip: visudo not available - smart sudoers.example syntax not checked"
-fi
+done
 # smart_re <command path> -> the argument regexes of variant A for it
 smart_re() {
     awk -v cmd="$1" '$1 == "xymon" && $4 == cmd && $5 ~ /^\^/ {
@@ -2172,6 +2180,23 @@ touch -t 209912312359 "$FAKEDNF_CACHE/baseos-0123456789abcdef/repodata/primary.x
 dnf_reuse_run > /dev/null
 dnf_expect_asked yes "reuse: refreshed repository metadata asks dnf again"
 
+# A repository can publish new advisory data for the same packages.
+index="$FAKEDNF_CACHE/baseos-0123456789abcdef/repodata/repomd.xml"
+echo index-before > "$index"
+dnf_reuse_run > /dev/null
+echo index-after > "$index"
+dnf_reuse_run > /dev/null
+dnf_expect_asked yes "reuse: changed advisory index with unchanged primary asks dnf again"
+
+# A shared temporary directory must not be a source of saved answers.
+mkdir -p "$TMP/shared"
+chmod 1777 "$TMP/shared"
+dnf_reuse_run XYMONTMP="$TMP/shared" > /dev/null
+dnf_reuse_run XYMONTMP="$TMP/shared" > /dev/null
+dnf_expect_asked yes "reuse: shared temporary directory always queries dnf"
+[ ! -e "$TMP/shared/dnf-reuse.dnf" ] || { echo "FAIL: shared cache written"; FAIL=1; }
+
+dnf_reuse_run DNF_REUSE_WATCH="$RW/w2" > /dev/null
 touch -t 209912312359 "$RW/w2/updated.repo"
 dnf_reuse_run DNF_REUSE_WATCH="$RW/w2" > /dev/null
 dnf_expect_asked yes "reuse: a change below DNF_REUSE_WATCH asks dnf again"
@@ -5471,7 +5496,7 @@ expect "$out" 'WARNING: .*la\.cfg' "rpm: both files edited is reported"
 # ships a clientlaunch.cfg without that line. The scriptlet must say so
 # (it never edits the file) and stay quiet once the line is there.
 scriptlet post "$TMP/rpm-post"
-rm -rf "$RPMROOT"; mkdir -p "$RE"
+rm -rf "$RPMROOT"; mkdir -p "$RE/clientlaunch.d"
 # shellcheck disable=SC2016  # the literal text of a clientlaunch.cfg
 printf '[client]\n\tCMD $XYMONCLIENTHOME/bin/xymonclient.sh\n\tINTERVAL 5m\n' \
     > "$RE/clientlaunch.cfg"
@@ -5534,7 +5559,14 @@ out=$($TESTSH "$TMP/rpm-post" 1)
 expect "$out" '^ TODO: on this host the Xymon SERVER' \
     "rpm post: the line in clientlaunch.cfg does not help on a combined host"
 expect "$out" '^ NOTE: .*clientlaunch\.cfg$' "rpm post: the line in clientlaunch.cfg is pointed out"
-echo "directory $RE/clientlaunch.d" >> "$RS/tasks.cfg"
+# stackio treats variables literally; a similarly named directory is
+# not the packaged one either, even if it exists.
+mkdir -p "$RE/clientlaunch.d.old"
+# shellcheck disable=SC2016
+printf 'directory $XYMONCLIENTHOME/etc/clientlaunch.d\ndirectory %s/clientlaunch.d.old\n' "$RE" >> "$RS/tasks.cfg"
+out=$($TESTSH "$TMP/rpm-post" 1)
+expect "$out" '^ TODO: on this host the Xymon SERVER' "rpm post: wrong drop-in paths still need a TODO"
+echo "optional directory ../../client/etc/clientlaunch.d/" >> "$RS/tasks.cfg"
 out=$($TESTSH "$TMP/rpm-post" 1)
 expect_not "$out" 'TODO' "rpm post: quiet once tasks.cfg reads the directory"
 expect "$out" '^ NOTE: ' "rpm post: still asks to drop the second copy of the line"
@@ -5550,6 +5582,11 @@ rpm_tasks "$RPMROOT/client/bin/xymonclient.sh" '	DISABLED'
 out=$($TESTSH "$TMP/rpm-post" 1)
 expect "$out" '^ TODO: clientlaunch\.cfg does not read' \
     "rpm post: a disabled client task leaves clientlaunch.cfg in charge"
+rpm_tasks "$RPMROOT/client/bin/xymonclient.sh"
+printf '[xymonclient]\nDISABLED # managed by a separate launcher\n' >> "$RS/tasks.cfg"
+out=$($TESTSH "$TMP/rpm-post" 1)
+expect "$out" '^ TODO: clientlaunch\.cfg does not read' \
+    "rpm post: a later section can disable the same server task"
 rpm_tasks "/opt/other/client/bin/xymonclient.sh"
 out=$($TESTSH "$TMP/rpm-post" 1)
 expect "$out" '^ TODO: clientlaunch\.cfg does not read' \

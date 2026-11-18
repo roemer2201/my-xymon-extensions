@@ -362,7 +362,22 @@ EOF
 # sources does not. Neither file is ours to edit (they belong to the
 # xymon-client package or to the admin), so say exactly what is
 # missing.
-dropin='^[[:space:]]*(optional[[:space:]]+)?directory[[:space:]]+[^[:space:]]*clientlaunch\.d'
+# stackio.c resolves relative directory names against the main config
+# file. It does not expand variables or strip trailing comments.
+reads_dropin() {
+    wanted=$(cd "%{xymonhome}/etc/clientlaunch.d" 2>/dev/null && pwd -P) || return 1
+    awk '{
+        sub(/^[ \t]*/, ""); sub(/^optional[ \t]+/, "")
+        if (sub(/^directory[ \t]+/, "")) { sub(/[[:space:]]+$/, ""); print }
+    }' "$1" | (
+        while IFS= read -r dir; do
+            case "$dir" in /*) ;; *) dir="${1%/*}/$dir" ;; esac
+            actual=$(cd "$dir" 2>/dev/null && pwd -P) || continue
+            [ "$actual" != "$wanted" ] || exit 0
+        done
+        exit 1
+    )
+}
 launchcfg=%{xymonhome}/etc/clientlaunch.cfg
 # Server and client from one source build: the server's xymonlaunch
 # starts the client itself (tasks.cfg, task [xymonclient], CMD
@@ -379,12 +394,13 @@ if [ -f "$servetc/tasks.cfg" ]; then
     xch=$(sed -n 's/^[[:space:]]*XYMONCLIENTHOME="\{0,1\}\([^"[:space:]]*\).*/\1/p' \
         "$servetc/xymonserver.cfg" 2>/dev/null | tail -n 1)
     clientcmds=$(awk '
-        function done() { if (!off && cmd ~ /(^|\/)xymonclient\.sh$/) print cmd }
-        /^[[:space:]]*\[/ { done(); cmd = ""; off = 0; next }
-        toupper($1) == "CMD" { cmd = $2 }
-        NF == 1 && toupper($1) == "DISABLED" { off = 1 }
-        NF == 1 && toupper($1) == "ENABLED" { off = 0 }
-        END { done() }' "$servetc/tasks.cfg")
+        /^[[:space:]]*\[[^]]*\]/ {
+            task = $0; sub(/^[[:space:]]*\[/, "", task); sub(/\].*/, "", task); next
+        }
+        task != "" && toupper($1) == "CMD" && $2 !~ /^[+-]/ { cmd[task] = $2 }
+        task != "" && toupper($0) ~ /^[[:space:]]*DISABLED[[:space:]]*(#.*)?$/ { off[task] = 1 }
+        task != "" && toupper($0) ~ /^[[:space:]]*ENABLED[[:space:]]*(#.*)?$/ { off[task] = 0 }
+        END { for (t in cmd) if (!off[t] && cmd[t] ~ /(^|\/)xymonclient\.sh$/) print cmd[t] }' "$servetc/tasks.cfg")
     for cmd in $clientcmds; do
         case "$cmd" in
             '$XYMONCLIENTHOME/'*|'${XYMONCLIENTHOME}/'*)
@@ -398,7 +414,7 @@ if [ -f "$servetc/tasks.cfg" ]; then
     done
 fi
 if [ -n "$taskscfg" ]; then
-    if ! grep -Eq "$dropin" "$taskscfg"; then
+    if ! reads_dropin "$taskscfg"; then
         cat <<EOF
  TODO: on this host the Xymon SERVER starts the client: a task in
    $taskscfg
@@ -413,14 +429,14 @@ if [ -n "$taskscfg" ]; then
  them to the server's tasks.d.
 EOF
     fi
-    if [ -f "$launchcfg" ] && grep -Eq "$dropin" "$launchcfg"; then
+    if [ -f "$launchcfg" ] && reads_dropin "$launchcfg"; then
         cat <<EOF
  NOTE: $launchcfg
  reads the drop-in directory as well. The server's tasks.cfg starts the
- client on this host, so remove the line there: one file only.
+ client on this host. Keep the line in tasks.cfg; remove it from clientlaunch.cfg.
 EOF
     fi
-elif [ -f "$launchcfg" ] && ! grep -Eq "$dropin" "$launchcfg"; then
+elif [ -f "$launchcfg" ] && ! reads_dropin "$launchcfg"; then
     cat <<'EOF'
  TODO: clientlaunch.cfg does not read the drop-in directory yet, so
  NONE of these extensions is started. Add this line at the end of

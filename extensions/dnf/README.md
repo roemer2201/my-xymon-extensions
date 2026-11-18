@@ -221,12 +221,13 @@ reboots. So a run reuses the answers of `check-update` and
 (60) - while all of this holds:
 
 - same dnf version, same enabled repositories, same mtime of each
-  repository's primary metadata (a refresh touches it, see "The
+  repository's primary metadata and unchanged `repomd.xml` contents
+  (a refresh touches the primary metadata, see "The
   metadata age"), same dnf binary and cache directory;
 - same boot id (`/proc/sys/kernel/random/boot_id`), so dnf's
   running-kernel check is redone after a reboot;
 - nothing below `DNF_REUSE_WATCH` - the dnf configuration, the repo
-  files and the rpm database - is newer than the saved answers; a new
+  files and the rpm database - is newer than the start of the saved query; a new
   or deleted file changes its directory's mtime.
 
 On the Rocky Linux 10.3 host above, a run that reuses the answers
@@ -236,9 +237,10 @@ package reinstall made the next run ask dnf again, as they should.
 Only the answers are reused: `--version` and `repolist` still run, and
 the report - colors, metadata age, overview, `data` message - is built
 anew every time. A reused run says so at the end of the status. The
-answers are kept in `$XYMONTMP/dnf-reuse.<column>`, written under a
-temporary name and renamed; a failed dnf call leaves nothing to reuse,
-and a missing or damaged file just means dnf is asked. Set
+answers are kept in `$XYMONTMP/dnf-reuse.<column>` only when the
+directory belongs to the running user and is not group- or world-writable.
+A manual run in shared `/tmp` always queries dnf. Only a successful
+query replaces the saved answers, by atomic rename. Set
 `DNF_REUSE=0` to ask dnf on every run.
 
 If even that is too much for a compute node, raise `INTERVAL` in

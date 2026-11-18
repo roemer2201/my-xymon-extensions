@@ -406,7 +406,8 @@ and `mmc extcsd read /dev/mmcblk*` accepts any trailing text after the
 device name. sudo-rs knows neither wildcards inside the arguments nor
 regular expressions (`sudoers-rs(5)`). The sudo versions per platform
 are listed in the file; check yours with `sudo -V`. `tests/run.sh`
-checks the file with `visudo -c` (every variant uncommented) and the
+checks the shipped file and the compatible rules with `visudo -c`
+(variant B on sudo-rs; all variants on classic sudo 1.9.10+) and the
 regular expressions of variant A against the calls smart.sh makes and
 against writing commands such as `-s off` — with `grep -E` the way
 sudoers(5) describes the matching, not with sudo itself, which would

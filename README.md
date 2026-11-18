@@ -196,7 +196,7 @@ say so.
   with the path written out, e.g.
   `optional directory /home/xymon/server/etc/xymonserver.d`. A single
   `include /home/xymon/server/etc/xymonserver.d/<name>.cfg` per file
-  works too. The recipe below does all of it.
+  works too. The recipe below shows the lines to check.
 
 The **end** matters for `xymonserver.cfg`: the snippets extend the
 stock settings with `NAME+="…"`, which appends verbatim (hence the
@@ -207,54 +207,63 @@ already.
 
 There is no server package for EL or FreeBSD, but its file list,
 `packaging/common/stage-server.sh`, takes the target paths as
-arguments. Stage into an empty directory, copy the tree over, then
-wire up the drop-in directories. Run as root in a checkout of this
-repository; `SRV` is the server's `$XYMONHOME` (a source build:
-`$XYMONTOPDIR/server`):
+arguments. For a source build, run the following in a checkout as the
+account that owns the server tree (normally `xymon`). Set `SRV` to the
+server's home. The example installs the documentation inside that tree
+and keeps any existing configuration files, including edited task and
+graph snippets.
 
 ```sh
-SRV=/home/xymon/server
-STAGE=$(mktemp -d)
-sh packaging/common/stage-server.sh "$STAGE" "$SRV/ext" "$SRV/etc" \
-    /usr/share/doc/my-xymon-extensions-server -
-cp -R "$STAGE"/. /
-rm -rf "$STAGE"
-for f in xymonserver graphs rrddefinitions; do
-    grep -q "^optional directory $SRV/etc/$f\.d\$" "$SRV/etc/$f.cfg" ||
-        printf 'optional directory %s/etc/%s.d\n' "$SRV" "$f" >> "$SRV/etc/$f.cfg"
-done
-grep -n 'tasks\.d' "$SRV/etc/tasks.cfg"
+(
+    set -e
+    SRV=/home/xymon/server
+    test -f "$SRV/etc/tasks.cfg"
+    STAGE=$(mktemp -d)
+    trap 'rm -rf "$STAGE"' EXIT
+    sh packaging/common/stage-server.sh "$STAGE" "$SRV/ext" "$SRV/etc" \
+        "$SRV/share/doc/my-xymon-extensions-server" -
+    for src in "$STAGE$SRV"/etc/*/*; do
+        dest=${src#"$STAGE"}
+        if [ -e "$dest" ] || [ -L "$dest" ]; then
+            printf 'Keeping %s\n' "$dest"
+            rm "$src"
+        fi
+    done
+    cp -R "$STAGE$SRV/." "$SRV/"
+    for f in xymonserver graphs rrddefinitions tasks; do
+        printf 'Check %s/etc/%s.cfg for: directory %s/etc/%s.d\n' "$SRV" "$f" "$SRV" "$f"
+    done
+)
 ```
 
-Then restart Xymon (`$SRV/xymon.sh restart`, as the xymon user).
-Notes:
+Add each missing line once; an existing `optional directory` for the
+same path also counts. Then restart Xymon (e.g.
+`/home/xymon/server/xymon.sh restart` as the xymon user). Notes:
 
 - The lines go at the **end** of each file (`NAME+=` needs the stock
   value first) and name the path literally, see above.
 - The stock 4.3.30 `tasks.cfg` already ends with
-  `directory $SRV/etc/tasks.d` (written out at build time); the last
-  command shows it. Add it if it is missing.
+  `directory $SRV/etc/tasks.d` (written out at build time).
 - The fifth argument `-` installs no sudo rule. `powerline` needs one
   once it is enabled: take `powerline/powerline.sudoers` from the doc
   directory (see `extensions/powerline/server/README.md`). On a source
   build `$SRV` belongs to the xymon user (`make install` chowns it), so
   a rule on `$SRV/ext/powerline-read.sh` would let that user replace
-  the helper and run anything as root: copy the helper to a directory
-  only root can write, name the copy in the rule and set
+  the helper and run anything as root: install the helper as root **from a trusted checkout** into a
+  directory only root can write, name that copy in the rule and set
   `POWERLINE_HELPER` to it.
 - The server-only collectors `powerline`, `fritzbox` and `fritz-wifi`
   are installed with their tasks in `tasks.d`, but stay off until
   `*_ENABLED=1` is set in `$SRV/etc/my-xymon-extensions-server/`;
   until then each run exits at once.
-- On an update the copy overwrites those config files as well: delete
-  `"$STAGE$SRV/etc/my-xymon-extensions-server"` before the `cp` if you
-  have edited them.
+- On updates, compare the configuration files reported as kept with the
+  new examples and apply any wanted changes.
 - The `temp` drop-ins only land in the doc directory (their names
   clash with hobbit-plugins on Debian); copy them into place by hand,
   see [extensions/temp/server/README.md](extensions/temp/server/README.md).
 
-Tested on Rocky Linux 10.3 with Xymon 4.3.30 built from the sources
-(server and client below `/home/xymon`).
+The source-build layout above is from Rocky Linux 10.3 with Xymon
+4.3.30 (server and client below `/home/xymon`).
 
 ## Design principles
 

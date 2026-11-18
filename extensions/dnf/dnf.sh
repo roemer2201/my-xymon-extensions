@@ -364,6 +364,14 @@ hours() {
     printf '%s.%s' "$(( h_tenths / 10 ))" "$(( h_tenths % 10 ))"
 }
 
+# The manual fallback may be a shared /tmp. Only keep persistent
+# answers in a directory owned by this uid and writable by it alone.
+if [ "${DNF_REUSE}" -gt 0 ]; then
+    if [ -z "$(find -H "${XYMONTMP}" -prune -type d -user "$(id -u)" ! -perm -0020 ! -perm -0002 -print 2>/dev/null)" ] ||
+       ! reuse_boot=$(cat "${DNF_BOOTID}" 2>/dev/null) || [ -z "${reuse_boot}" ]; then
+        DNF_REUSE=0
+    fi
+fi
 : > "${WORKDIR}/fingerprint"
 while IFS='|' read -r r_id r_name; do
     [ -n "${r_id}" ] || continue
@@ -373,17 +381,21 @@ while IFS='|' read -r r_id r_name; do
         r_suffix=${r_dir#"${DNF_CACHEDIR}/${r_id}-"}
         case "${r_suffix}" in ''|*[!0-9a-f]*) continue ;; esac
         [ "${#r_suffix}" -eq 16 ] || continue
+        # The small repository index also covers updateinfo: an advisory
+        # can change without replacing the primary package list.
+        if [ "${DNF_REUSE}" -gt 0 ] && [ -f "${r_dir}/repodata/repomd.xml" ]; then
+            cksum "${r_dir}/repodata/repomd.xml" >> "${WORKDIR}/fingerprint" || DNF_REUSE=0
+        fi
         for r_file in "${r_dir}"/repodata/*primary.xml*; do
             [ -f "${r_file}" ] || continue
             r_mtime=$(date -r "${r_file}" +%s 2>/dev/null) || continue
             case "${r_mtime}" in ''|*[!0-9]*) continue ;; esac
+            printf '%s %s\n' "${r_file}" "${r_mtime}" >> "${WORKDIR}/fingerprint"
             if [ -z "${r_newest}" ] || [ "${r_mtime}" -gt "${r_newest}" ]; then
                 r_newest=${r_mtime}
             fi
         done
     done
-
-    printf '%s %s\n' "${r_id}" "${r_newest:-none}" >> "${WORKDIR}/fingerprint"
 
     if [ -z "${r_newest}" ]; then
         NNOCACHE=$((NNOCACHE + 1))
@@ -426,7 +438,7 @@ NREPOPROBLEMS=$((NSTALE + NNOCACHE))
 # check). So the answers - not the report, which is built anew every
 # time - are kept in one file and reused while all of this holds:
 #   - the key matches: dnf version, enabled repositories, the mtime of
-#     each repository's primary metadata (step 4), the boot id, and the
+#     each primary metadata file (step 4), repomd.xml, the boot id, and the
 #     dnf binary and cache directory used;
 #   - nothing below DNF_REUSE_WATCH (dnf configuration, repo files, rpm
 #     database) is newer than the file - a new or deleted file changes
@@ -437,11 +449,12 @@ NREPOPROBLEMS=$((NSTALE + NNOCACHE))
 REUSEFILE="${XYMONTMP}/dnf-reuse.${COLUMN}"
 REUSED=no
 REUSE_AGE=0
-REUSEKEY=$({
-    printf 'dnf-reuse 1\n%s\n%s\n%s\n' "${DNF_VERSION}" "${DNF_BIN}" "${DNF_CACHEDIR}"
-    cat "${WORKDIR}/repos" "${WORKDIR}/fingerprint"
-    cat "${DNF_BOOTID}" 2>/dev/null
-} | cksum | tr -d ' ')
+if [ "${DNF_REUSE}" -gt 0 ]; then
+    REUSEKEY=$({
+        printf '%s\n' "${DNF_VERSION}" "${DNF_BIN}" "${DNF_CACHEDIR}" "${DNF_REUSE_WATCH}" "${reuse_boot}"
+        cat "${WORKDIR}/repos" "${WORKDIR}/fingerprint"
+    } | cksum)
+fi
 
 # reuse_load -> true if the answers of a recent run were restored
 reuse_load() {
@@ -452,9 +465,10 @@ reuse_load() {
     [ "${REUSE_AGE}" -ge 0 ] && [ "${REUSE_AGE}" -lt $((DNF_REUSE * 60)) ] || return 1
     for rl_path in ${DNF_REUSE_WATCH}; do
         [ -e "${rl_path}" ] || continue
-        if [ -n "$(find "${rl_path}" -newer "${REUSEFILE}" 2>/dev/null | head -n 1)" ]; then
-            return 1
-        fi
+        # Follow linked .repo files and rpmdb directories. An unreadable
+        # subtree is not evidence that the inputs are unchanged.
+        rl_new=$(find -L "${rl_path}" -newer "${REUSEFILE}" -print -quit 2>/dev/null) || return 1
+        [ -z "${rl_new}" ] || return 1
     done
     mkdir "${WORKDIR}/reuse" || return 1
     awk -v key="${REUSEKEY}" -v dir="${WORKDIR}/reuse" '
@@ -485,22 +499,23 @@ reuse_load() {
 # reuse_save -- keep the answers of this run for the next ones
 reuse_save() {
     [ "${DNF_REUSE}" -gt 0 ] || return 0
-    rs_tmp="${REUSEFILE}.$$"
-    if {
-        printf 'dnf-reuse 1\nkey %s\n' "${REUSEKEY}"
-        for rs_name in check summary list cve; do
-            rs_rc=0
-            [ "${rs_name}" = check ] && rs_rc=${CHECK_RC}
-            printf 'file %s %s %s\n' "${rs_name}" "${rs_rc}" \
-                "$(awk 'END { print NR }' "${WORKDIR}/${rs_name}.out")"
-            awk '{ print }' "${WORKDIR}/${rs_name}.out"
-        done
-        printf 'end\n'
-    } > "${rs_tmp}" 2>/dev/null; then
-        mv -f "${rs_tmp}" "${REUSEFILE}" 2>/dev/null || rm -f "${rs_tmp}"
-    else
-        rm -f "${rs_tmp}"
-    fi
+    # WORKDIR is private and on the same filesystem as REUSEFILE.
+    rs_tmp="${WORKDIR}/answers"
+    write_answers > "${rs_tmp}" && chmod 600 "${rs_tmp}" &&
+        touch -r "${WORKDIR}/query-start" "${rs_tmp}" &&
+        mv -f "${rs_tmp}" "${REUSEFILE}"
+}
+
+write_answers() {
+    printf 'dnf-reuse 1\nkey %s\n' "${REUSEKEY}" || return 1
+    for rs_name in check summary list cve; do
+        rs_rc=0
+        [ "${rs_name}" = check ] && rs_rc=${CHECK_RC}
+        rs_count=$(awk 'END { print NR }' "${WORKDIR}/${rs_name}.out") || return 1
+        printf 'file %s %s %s\n' "${rs_name}" "${rs_rc}" "${rs_count}" || return 1
+        awk '{ print }' "${WORKDIR}/${rs_name}.out" || return 1
+    done
+    printf 'end\n'
 }
 
 # --- 5. pending updates ------------------------------------------------
@@ -512,6 +527,9 @@ reuse_save() {
 if reuse_load; then
     REUSED=yes
 else
+    # Use the beginning of the query as the reference: an rpm transaction
+    # before the last updateinfo call must invalidate this batch too.
+    : > "${WORKDIR}/query-start"
     run_dnf check -q check-update
     CHECK_RC=$?
     case "${CHECK_RC}" in
