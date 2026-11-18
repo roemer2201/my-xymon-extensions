@@ -397,6 +397,30 @@ fi
 exit 0
 
 %changelog
+* Wed Nov 18 2026 roemer2201 <r.oliver@web.de> - 0.35.2-1
+- post-install: on a host where Xymon server and client were built
+  from one source tree, the server's tasks.cfg starts the client and
+  clientlaunch.cfg is never read. The check now finds such a tasks.cfg
+  next to the client (an enabled task running this client's
+  xymonclient.sh) and asks for the drop-in line there - in that file
+  only - instead of in clientlaunch.cfg, where it changed nothing. It
+  still edits neither file
+- smart: sudoers.example claimed its rule allowed only read-only
+  queries; a rule without arguments allows ANY smartctl arguments. The
+  file now offers restricted rules for exactly the calls smart.sh
+  makes - regular expressions (sudo 1.9.10+) or exact lines per disk
+  (older sudo, sudo-rs on Ubuntu 26.04) - next to the old broad rule.
+  Every rule ships commented out: pick a variant when installing it
+- claude: sudoers.example had the Debian path on its Rocky/EL line;
+  the rpm installs below /usr/lib64/xymon/client. One line per
+  platform now, and a warning not to point a sudo rule into a
+  directory the xymon user owns (a source build's ext/)
+- docs: installing the server drop-ins without the Debian package
+  (stage-server.sh recipe), what was checked in Xymon 4.3.30 (and that
+  include/directory lines expand no variables), how soon a new dnf
+  advisory shows up and how to verify the dnf test on a real host;
+  EPEL has no Xymon package
+
 * Tue Nov 17 2026 roemer2201 <r.oliver@web.de> - 0.35.1-1
 - dnf: a package that obsoletes older builds of its own name (the kmod
   packages of the CentOS Kmods SIG) is no longer reported as an update.
