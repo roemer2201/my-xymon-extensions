@@ -51,9 +51,10 @@ then pairs installed builds with themselves and exits with 100,
 although `dnf upgrade` has nothing to do. Each pair is therefore
 checked on its own: it is no update if the obsoleting package is
 already installed (repository `@…`) or identical to the package below
-it (same `name.arch` and `[epoch:]version-release`). A package counts
-once as soon as one of its pairs is an update. If only such pairs are
-listed, the column reports "packages up to date".
+it (same `name.arch` and `[epoch:]version-release`). Wrapped rows are
+reassembled before comparison. A package counts once as soon as one of
+its pairs is an update. If all pairs are skipped and no other updates
+are found, the column reports "packages up to date".
 
 ### Why `-C` on every call
 

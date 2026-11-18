@@ -465,8 +465,8 @@ fi
 # installed already or identical to the package below it (same
 # name.arch and [epoch:]version-release). A head counts once as soon
 # as one of its pairs is an update; the indented packages never count.
-# Only unwrapped lines are read in this section: a head whose pair
-# cannot be read counts as an update, unless it is installed.
+# DNF indents the start of the installed row by four spaces, and
+# continued fields start further to the right.
 #
 # updateinfo list: "ID  Severity/Sec.  name-[epoch:]version-release.arch",
 # one line per advisory and package build - a package that is several
@@ -509,36 +509,41 @@ function addupd(na, v, r) {
     ver[na] = v
     repo[na] = r
 }
-# obsflush -- done with the current "Obsoleting Packages" head line. A
-# head without any readable pair (e.g. a wrapped line below it) cannot
-# be compared and counts as an update, unless it is installed already.
+# obsflush -- finish a head without a readable installed row. Keep
+# the candidate unless the head itself is already installed.
 function obsflush() {
-    if (ohead && !opaired && orepo !~ /^@/) addupd(ona, over, orepo)
+    if (ohead && orepo !~ /^@/) addupd(ona, over, orepo)
     ohead = 0
+}
+# checkrow -- handle a complete logical row from check-update.
+function checkrow(na, v, r) {
+    if (!obsoleting) {
+        addupd(na, v, r)
+    } else if (!installed_row) {
+        ohead = 1; ona = na; over = v; orepo = r
+    } else if (ohead) {
+        if (orepo ~ /^@/ || (na == ona && v == over)) nnoupd++
+        else addupd(ona, over, orepo)
+        ohead = 0
+    }
 }
 kind == "check" {
     if ($0 ~ /^Obsoleting Packages/) { obsoleting = 1; nbuf = 0; next }
     if ($0 ~ /^Security: /) next
     if ($0 ~ /^[ \t]*$/) { obsflush(); nbuf = 0; next }
-    if (obsoleting) {
-        if ($0 !~ /^[ \t]/) {
-            obsflush()
-            if (NF == 3 && isrow($1, $2)) {
-                ohead = 1; opaired = 0; ona = $1; over = $2; orepo = $3
-            }
-            next
-        }
-        # the package the head line replaces, decided pair by pair
-        if (!ohead || NF != 3) next
-        opaired = 1
-        if (orepo ~ /^@/ || ($1 == ona && $2 == over)) nnoupd++
-        else addupd(ona, over, orepo)
+    if ($0 !~ /^[ \t]/) {
+        obsflush()
+        nbuf = 0
+        installed_row = 0
+    } else if (obsoleting && $0 ~ /^    [^ \t]/) {
+        nbuf = 0
+        installed_row = 1
+    } else if (nbuf == 0) {
         next
     }
-    if ($0 !~ /^[ \t]/) nbuf = 0
     for (i = 1; i <= NF; i++) buf[++nbuf] = $i
     if (nbuf < 3) next
-    if (nbuf == 3 && isrow(buf[1], buf[2])) addupd(buf[1], buf[2], buf[3])
+    if (nbuf == 3 && isrow(buf[1], buf[2])) checkrow(buf[1], buf[2], buf[3])
     nbuf = 0
     next
 }

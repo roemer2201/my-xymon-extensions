@@ -1902,6 +1902,25 @@ expect "$out" '^    kmod-x\.x86_64 1:2\.0-1\.el10 \(centos-kmods\)$' \
     "a newer build obsoleting an older one of its own name is an update"
 expect "$out" '^updates : 2$' "a head listed in several pairs is counted once"
 
+# DNF can start version and repository on continuation lines. Only the
+# first line of the installed package starts at the four-space indent.
+{
+    echo 'Obsoleting Packages'
+    echo 'newpkg-with-a-long-name.x86_64'
+    echo '                               2.0-1.el10'
+    echo '                                                  baseos'
+    echo '    oldpkg.x86_64             1.0-1.el10          @System'
+    echo 'kmod-x.x86_64                 1:2.0-1.el10        centos-kmods'
+    echo '    kmod-x.x86_64             1:2.0-1.el10'
+    echo '                                                  @centos-kmods'
+} > "$TMP/dnf-selfobs/check.out"
+out=$(dnf_run "$TMP/dnf-selfobs")
+expect "$out" '^    newpkg-with-a-long-name\.x86_64 2\.0-1\.el10 \(baseos\)$' \
+    "a wrapped obsoleting package is still reported as an update"
+expect_not "$out" '^    (kmod-x|oldpkg)\.x86_64' \
+    "a wrapped self pair and the replaced package are excluded"
+expect "$out" '^updates : 1$' "wrapped pairs produce the same count as unwrapped pairs"
+
 mkdir -p "$TMP/dnf-output"
 cp "$TESTDIR/dnf/data/clean/repolist.out" "$TMP/dnf-output/repolist.out"
 dnf_cache clean
