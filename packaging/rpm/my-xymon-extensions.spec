@@ -405,7 +405,7 @@ if [ -n "$taskscfg" ]; then
  runs xymonclient.sh, and clientlaunch.cfg is not read at all. NONE
  of these extensions is started until tasks.cfg reads the drop-in
  directory. Add this line at the end of that file and restart Xymon
- (xymon.sh restart):
+ (xymon.sh restart, or the service unit that starts it):
    directory %{xymonhome}/etc/clientlaunch.d
  Put the line into tasks.cfg only, not into both files: should
  clientlaunch.cfg ever be started too (runclient.sh), every extension

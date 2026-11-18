@@ -410,7 +410,11 @@ checks the file with `visudo -c` (every variant uncommented) and the
 regular expressions of variant A against the calls smart.sh makes and
 against writing commands such as `-s off` — with `grep -E` the way
 sudoers(5) describes the matching, not with sudo itself, which would
-need root.
+need root. With sudo itself, variant A was checked on Rocky Linux 10.3
+(sudo 1.9.17p2, `sudo -l -U xymon /usr/sbin/smartctl …`): the calls of
+smart.sh - also with `-d sat` and `-d megaraid,0` - are allowed;
+`-s off`, `-t long`, `-X`, `--set=…`, a second device, `/dev/../…`
+and `-d "sat -s off"` as one argument are refused.
 
 ### Manual test run
 

@@ -229,6 +229,10 @@ reboots. So a run reuses the answers of `check-update` and
   files and the rpm database - is newer than the saved answers; a new
   or deleted file changes its directory's mtime.
 
+On the Rocky Linux 10.3 host above, a run that reuses the answers
+took 1.1 s CPU instead of 7.2 s (`xymonext`); `dnf makecache` and a
+package reinstall made the next run ask dnf again, as they should.
+
 Only the answers are reused: `--version` and `repolist` still run, and
 the report - colors, metadata age, overview, `data` message - is built
 anew every time. A reused run says so at the end of the status. The
