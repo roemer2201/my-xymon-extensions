@@ -28,7 +28,9 @@
 #      from the cache directory -> age, compared with DNF_MAXAGE; a
 #      repository without it makes the result incomplete
 #   5. dnf -C check-update            -> packages with updates, and
-#      dnf's own "Security: kernel ..." lines (reboot pending)
+#      dnf's own "Security: kernel ..." lines (reboot pending) -
+#      or, while nothing it depends on has changed, the answers of
+#      steps 5 and 6 from a run at most DNF_REUSE minutes ago
 #   6. only if there are updates:
 #      dnf -C updateinfo summary --updates --security
 #                                     -> advisory counts per severity
@@ -63,7 +65,7 @@
 # $XYMONHOME/etc/my-xymon-extensions/dnf.cfg (see the shipped dnf.cfg;
 # the config file wins over the environment).
 
-# Version: 1.0.1 (2026-11-17)
+# Version: 1.1.0 (2026-11-18)
 
 set -u
 
@@ -99,6 +101,9 @@ DNF_SEC_UNKNOWN_COLOR="${DNF_SEC_UNKNOWN_COLOR:-yellow}"
 DNF_REBOOT_COLOR="${DNF_REBOOT_COLOR:-yellow}"  # or "off": no check
 DNF_SHOW_CVES="${DNF_SHOW_CVES:-no}"            # yes: list every CVE id
 DNF_OSRELEASE="${DNF_OSRELEASE:-/etc/os-release}"
+DNF_REUSE="${DNF_REUSE:-60}"                    # minutes; 0 = always ask dnf
+DNF_REUSE_WATCH="${DNF_REUSE_WATCH:-/etc/dnf /etc/yum.repos.d /etc/distro.repos.d /var/lib/rpm /usr/lib/sysimage/rpm}"
+DNF_BOOTID="${DNF_BOOTID:-/proc/sys/kernel/random/boot_id}"
 
 # Own subdirectory since 0.20.0 ($XYMONHOME/etc is shared with the
 # Xymon server and hobbit-plugins); the old place is the fallback all
@@ -131,6 +136,7 @@ decimal_or_default() {
 DNF_MAXAGE=$(decimal_or_default "${DNF_MAXAGE}" 72)
 DNF_TIMEOUT=$(decimal_or_default "${DNF_TIMEOUT}" 120)
 DNF_LIFETIME=$(decimal_or_default "${DNF_LIFETIME}" 30)
+DNF_REUSE=$(decimal_or_default "${DNF_REUSE}" 60)
 [ "${DNF_LIFETIME}" -ne 0 ] || DNF_LIFETIME=30
 
 # valid_color <value> <default> -> the value if it is a color a finding
@@ -358,6 +364,7 @@ hours() {
     printf '%s.%s' "$(( h_tenths / 10 ))" "$(( h_tenths % 10 ))"
 }
 
+: > "${WORKDIR}/fingerprint"
 while IFS='|' read -r r_id r_name; do
     [ -n "${r_id}" ] || continue
     r_newest=""
@@ -375,6 +382,8 @@ while IFS='|' read -r r_id r_name; do
             fi
         done
     done
+
+    printf '%s %s\n' "${r_id}" "${r_newest:-none}" >> "${WORKDIR}/fingerprint"
 
     if [ -z "${r_newest}" ]; then
         NNOCACHE=$((NNOCACHE + 1))
@@ -409,18 +418,107 @@ done < "${WORKDIR}/repos"
 NREPOPROBLEMS=$((NSTALE + NNOCACHE))
 [ "${NREPOPROBLEMS}" -eq 0 ] || raise yellow
 
+# --- reuse of dnf's answers --------------------------------------------
+# Steps 5 and 6 load the metadata of every enabled repository, several
+# seconds of CPU per run, although their answers only change when root
+# refreshes the cache, a package is installed or removed, the
+# configuration changes or the host reboots (dnf's running-kernel
+# check). So the answers - not the report, which is built anew every
+# time - are kept in one file and reused while all of this holds:
+#   - the key matches: dnf version, enabled repositories, the mtime of
+#     each repository's primary metadata (step 4), the boot id, and the
+#     dnf binary and cache directory used;
+#   - nothing below DNF_REUSE_WATCH (dnf configuration, repo files, rpm
+#     database) is newer than the file - a new or deleted file changes
+#     its directory's mtime;
+#   - the file is younger than DNF_REUSE minutes.
+# The file is written to a temporary name and renamed, so a reader
+# never sees half of it; answers of a failed dnf call are never kept.
+REUSEFILE="${XYMONTMP}/dnf-reuse.${COLUMN}"
+REUSED=no
+REUSE_AGE=0
+REUSEKEY=$({
+    printf 'dnf-reuse 1\n%s\n%s\n%s\n' "${DNF_VERSION}" "${DNF_BIN}" "${DNF_CACHEDIR}"
+    cat "${WORKDIR}/repos" "${WORKDIR}/fingerprint"
+    cat "${DNF_BOOTID}" 2>/dev/null
+} | cksum | tr -d ' ')
+
+# reuse_load -> true if the answers of a recent run were restored
+reuse_load() {
+    [ "${DNF_REUSE}" -gt 0 ] && [ -f "${REUSEFILE}" ] || return 1
+    rl_mtime=$(date -r "${REUSEFILE}" +%s 2>/dev/null) || return 1
+    case "${rl_mtime}" in ''|*[!0-9]*) return 1 ;; esac
+    REUSE_AGE=$((NOW - rl_mtime))
+    [ "${REUSE_AGE}" -ge 0 ] && [ "${REUSE_AGE}" -lt $((DNF_REUSE * 60)) ] || return 1
+    for rl_path in ${DNF_REUSE_WATCH}; do
+        [ -e "${rl_path}" ] || continue
+        if [ -n "$(find "${rl_path}" -newer "${REUSEFILE}" 2>/dev/null | head -n 1)" ]; then
+            return 1
+        fi
+    done
+    mkdir "${WORKDIR}/reuse" || return 1
+    awk -v key="${REUSEKEY}" -v dir="${WORKDIR}/reuse" '
+        NR == 1 { if ($0 != "dnf-reuse 1") { bad = 1; exit } next }
+        NR == 2 { if ($0 != "key " key) { bad = 1; exit } next }
+        left > 0 { print > (dir "/" name ".out"); left--; next }
+        $1 == "file" && NF == 4 && $2 ~ /^(check|summary|list|cve)$/ &&
+        $3 ~ /^[0-9]+$/ && $4 ~ /^[0-9]+$/ {
+            name = $2; left = $4; seen[name] = 1
+            print $3 > (dir "/" name ".rc")
+            printf "" > (dir "/" name ".out")
+            next
+        }
+        $1 == "end" && NF == 1 { complete = 1; exit }
+        { bad = 1; exit }
+        END {
+            if (bad || !complete || left > 0) exit 1
+            if (!("check" in seen) || !("summary" in seen) || !("list" in seen) || !("cve" in seen)) exit 1
+        }' "${REUSEFILE}" || return 1
+    for rl_name in check summary list cve; do
+        cp "${WORKDIR}/reuse/${rl_name}.out" "${WORKDIR}/${rl_name}.out" || return 1
+    done
+    CHECK_RC=$(cat "${WORKDIR}/reuse/check.rc") || return 1
+    case "${CHECK_RC}" in 0|100) ;; *) return 1 ;; esac
+    return 0
+}
+
+# reuse_save -- keep the answers of this run for the next ones
+reuse_save() {
+    [ "${DNF_REUSE}" -gt 0 ] || return 0
+    rs_tmp="${REUSEFILE}.$$"
+    if {
+        printf 'dnf-reuse 1\nkey %s\n' "${REUSEKEY}"
+        for rs_name in check summary list cve; do
+            rs_rc=0
+            [ "${rs_name}" = check ] && rs_rc=${CHECK_RC}
+            printf 'file %s %s %s\n' "${rs_name}" "${rs_rc}" \
+                "$(awk 'END { print NR }' "${WORKDIR}/${rs_name}.out")"
+            awk '{ print }' "${WORKDIR}/${rs_name}.out"
+        done
+        printf 'end\n'
+    } > "${rs_tmp}" 2>/dev/null; then
+        mv -f "${rs_tmp}" "${REUSEFILE}" 2>/dev/null || rm -f "${rs_tmp}"
+    else
+        rm -f "${rs_tmp}"
+    fi
+}
+
 # --- 5. pending updates ------------------------------------------------
 # Exit code 100: updates available, 0: none, anything else: error
 # (dnf(8), "check-update"). A repository without cache makes dnf fail
 # here - unless it is marked skip_if_unavailable, in which case dnf
 # carries on without it and, with -q, without a word. Step 4 has
 # already reported such a repository by name.
-run_dnf check -q check-update
-CHECK_RC=$?
-case "${CHECK_RC}" in
-    0|100) ;;
-    *) fail_report check "${CHECK_RC}" "check-update" ;;
-esac
+if reuse_load; then
+    REUSED=yes
+else
+    run_dnf check -q check-update
+    CHECK_RC=$?
+    case "${CHECK_RC}" in
+        0|100) ;;
+        *) fail_report check "${CHECK_RC}" "check-update" ;;
+    esac
+fi
 
 # dnf prints these two lines itself when the running kernel is older
 # than an installed kernel that fixes a security issue
@@ -433,19 +531,22 @@ fi
 # --- 6. advisories -----------------------------------------------------
 # Without a pending update there is no advisory "--updates" could
 # list, so the three calls are only made when check-update found some.
-: > "${WORKDIR}/summary.out"
-: > "${WORKDIR}/list.out"
-: > "${WORKDIR}/cve.out"
-if [ "${CHECK_RC}" -eq 100 ]; then
-    run_dnf summary -q updateinfo summary --updates --security
-    RC=$?
-    [ "${RC}" -eq 0 ] || fail_report summary "${RC}" "updateinfo summary --updates --security"
-    run_dnf list -q updateinfo list --updates --security
-    RC=$?
-    [ "${RC}" -eq 0 ] || fail_report list "${RC}" "updateinfo list --updates --security"
-    run_dnf cve -q updateinfo list --updates --security --with-cve
-    RC=$?
-    [ "${RC}" -eq 0 ] || fail_report cve "${RC}" "updateinfo list --updates --security --with-cve"
+if [ "${REUSED}" = no ]; then
+    : > "${WORKDIR}/summary.out"
+    : > "${WORKDIR}/list.out"
+    : > "${WORKDIR}/cve.out"
+    if [ "${CHECK_RC}" -eq 100 ]; then
+        run_dnf summary -q updateinfo summary --updates --security
+        RC=$?
+        [ "${RC}" -eq 0 ] || fail_report summary "${RC}" "updateinfo summary --updates --security"
+        run_dnf list -q updateinfo list --updates --security
+        RC=$?
+        [ "${RC}" -eq 0 ] || fail_report list "${RC}" "updateinfo list --updates --security"
+        run_dnf cve -q updateinfo list --updates --security --with-cve
+        RC=$?
+        [ "${RC}" -eq 0 ] || fail_report cve "${RC}" "updateinfo list --updates --security --with-cve"
+    fi
+    reuse_save
 fi
 
 # Join the three lists per package.
@@ -771,6 +872,13 @@ fi
         "${NREPOS}" "${DNF_CACHEDIR}"
     printf 'which root keeps current (dnf-makecache.timer); this test downloads nothing.\n'
     cat "${REPOTXT}"
+
+    if [ "${REUSED}" = yes ]; then
+        printf '\nPackage and advisory lists: dnf'"'"'s answers from %s minute(s) ago, reused -\n' \
+            "$((REUSE_AGE / 60))"
+        printf 'no repository refresh, package, configuration or boot since (DNF_REUSE=%s).\n' \
+            "${DNF_REUSE}"
+    fi
 } > "${WORKDIR}/body"
 
 {

@@ -1682,7 +1682,10 @@ export DNF_CFG="$TESTDIR/dnf/dnf_test.cfg"
 unset DNF_COLUMN DNF_MAXAGE DNF_TIMEOUT DNF_LIFETIME DNF_UPDATES_COLOR \
     DNF_SEC_CRITICAL_COLOR DNF_SEC_IMPORTANT_COLOR DNF_SEC_MODERATE_COLOR \
     DNF_SEC_LOW_COLOR DNF_SEC_UNKNOWN_COLOR DNF_REBOOT_COLOR DNF_SHOW_CVES \
-    FAKEDNF_VERSION 2>/dev/null || true
+    DNF_REUSE_WATCH DNF_BOOTID FAKEDNF_VERSION 2>/dev/null || true
+# The scenarios share $XYMONTMP and repository lists, so reusing dnf's
+# answers would mix them up: off here, tested on its own below.
+export DNF_REUSE=0
 
 # dnf_cache <scenario> -- a fresh fake system cache: one directory per
 # repository of the scenario, named like libdnf names them
@@ -2100,6 +2103,101 @@ out=$(dnf_run "$TMP/dnf-output")
 expect "$out" '^&yellow "dnf -C --version" did not finish within 120 second' \
     "the dnf version probe is also subject to the timeout"
 expect_not "$out" '^data ' "a failed version probe sends no data"
+
+# --- reuse of dnf's answers --------------------------------------------
+# The answers of check-update and updateinfo are reused while the key
+# (repositories, primary metadata mtimes, boot id, ...) is unchanged,
+# nothing below DNF_REUSE_WATCH is newer than the saved file and that
+# file is younger than DNF_REUSE minutes. Changes are made with
+# "touch -t" into the future or the past: comparisons by the second
+# (BusyBox find -newer) must not decide a test.
+RW="$TMP/dnf-reuse-watch"
+rm -rf "$RW"; mkdir -p "$RW/w1" "$RW/w2"
+printf 'boot-1\n' > "$TMP/dnf-bootid"
+rm -f "$TMP"/dnf-reuse.*
+dnf_cache updates
+# dnf_reuse_run [VAR=value ...] -> dnf.sh on "updates" with reuse on
+dnf_reuse_run() {
+    dnf_run updates DNF_REUSE=60 DNF_REUSE_WATCH="$RW/w1" DNF_BOOTID="$TMP/dnf-bootid" "$@"
+}
+# dnf_asked -> true if the last run called check-update
+dnf_asked() {
+    grep -q 'check-update' "$FAKEDNF_LOG"
+}
+# dnf_expect_asked yes|no <description> -- did the last run ask dnf?
+dnf_expect_asked() {
+    if dnf_asked; then dea_got=yes; else dea_got=no; fi
+    if [ "$dea_got" = "$1" ]; then
+        echo "ok:   $2"
+    else
+        echo "FAIL: $2 (dnf asked: $dea_got)"
+        FAIL=1
+    fi
+}
+# dnf_comparable <output> -> the messages without date and reuse note
+dnf_comparable() {
+    printf '%s\n' "$1" | sed -e 's/^\(status+[0-9]* [^ ]* [a-z]*\) .* - dnf:/\1 - dnf:/' \
+        -e '/^Package and advisory lists: /,/^no repository refresh/d' -e '/^$/d'
+}
+out1=$(dnf_reuse_run)
+dnf_expect_asked yes "reuse: the first run asks dnf"
+if [ -f "$TMP/dnf-reuse.dnf" ]; then
+    echo "ok:   reuse: the answers are saved in \$XYMONTMP/dnf-reuse.<column>"
+else
+    echo "FAIL: reuse: no saved answers"; FAIL=1
+fi
+out2=$(dnf_reuse_run)
+if ! dnf_asked && ! grep -q 'updateinfo' "$FAKEDNF_LOG" && grep -q 'repolist' "$FAKEDNF_LOG"; then
+    echo "ok:   reuse: the second run lists the repositories but asks nothing else"
+else
+    echo "FAIL: reuse: the second run asked dnf again"; FAIL=1
+fi
+if [ "$(dnf_comparable "$out1")" = "$(dnf_comparable "$out2")" ]; then
+    echo "ok:   reuse: status and data message are the same as from dnf itself"
+else
+    echo "FAIL: reuse: the reused result differs"; FAIL=1
+fi
+expect "$out2" "^Package and advisory lists: dnf's answers from 0 minute\\(s\\) ago, reused" \
+    "reuse: the status says that the answers were reused"
+expect_not "$out1" '^Package and advisory lists:' "reuse: no such note after asking dnf"
+expect "$out2" '^updates : 20$' "reuse: the graphs get the same values"
+
+printf 'boot-2\n' > "$TMP/dnf-bootid"
+dnf_reuse_run > /dev/null
+dnf_expect_asked yes "reuse: a reboot (new boot id) asks dnf again"
+dnf_reuse_run > /dev/null
+dnf_expect_asked no "reuse: ... and reuses that run's answers afterwards"
+
+touch -t 209912312359 "$FAKEDNF_CACHE/baseos-0123456789abcdef/repodata/primary.xml.gz"
+dnf_reuse_run > /dev/null
+dnf_expect_asked yes "reuse: refreshed repository metadata asks dnf again"
+
+touch -t 209912312359 "$RW/w2/updated.repo"
+dnf_reuse_run DNF_REUSE_WATCH="$RW/w2" > /dev/null
+dnf_expect_asked yes "reuse: a change below DNF_REUSE_WATCH asks dnf again"
+
+touch -t 200001010000 "$TMP/dnf-reuse.dnf"
+dnf_reuse_run > /dev/null
+dnf_expect_asked yes "reuse: answers older than DNF_REUSE minutes are not reused"
+
+printf 'dnf-reuse 1\nkey garbage\n' > "$TMP/dnf-reuse.dnf"
+out=$(dnf_reuse_run)
+dnf_expect_asked yes "reuse: a damaged file asks dnf again"
+expect "$out" '^updates : 20$' "reuse: ... and reports normally"
+
+dnf_reuse_run DNF_REUSE=0 > /dev/null
+dnf_expect_asked yes "reuse: DNF_REUSE=0 always asks dnf"
+
+# A failing dnf leaves no answers to reuse.
+rm -f "$TMP"/dnf-reuse.*
+dnf_cache nocache
+dnf_run nocache DNF_REUSE=60 DNF_REUSE_WATCH="$RW/w1" DNF_BOOTID="$TMP/dnf-bootid" > /dev/null
+if [ -e "$TMP/dnf-reuse.dnf" ]; then
+    echo "FAIL: reuse: the answers of a failed dnf call were saved"; FAIL=1
+else
+    echo "ok:   reuse: the answers of a failed dnf call are not saved"
+fi
+rm -f "$TMP"/dnf-reuse.*
 
 out=$(dnf_run clean DNF_CFG="$TESTDIR/dnf/dnf_test_nodnf.cfg")
 expect "$out" '^status\+30 testhost\.dnf clear ' "missing dnf reports clear, not red"

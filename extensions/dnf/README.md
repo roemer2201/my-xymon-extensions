@@ -198,6 +198,8 @@ See the shipped [dnf.cfg](dnf.cfg).
 | `DNF_SEC_UNKNOWN_COLOR` | `yellow` | security advisories without a severity (EPEL) |
 | `DNF_REBOOT_COLOR` | `yellow` | running kernel older than an installed security update; `off` = no check |
 | `DNF_SHOW_CVES` | `no` | `yes`: list every CVE id below its package |
+| `DNF_REUSE` | `60` | minutes dnf's answers may be reused while nothing changed (see below); `0` = ask dnf every run |
+| `DNF_REUSE_WATCH` | `/etc/dnf /etc/yum.repos.d /etc/distro.repos.d /var/lib/rpm /usr/lib/sysimage/rpm` | a change below these paths means "ask dnf again" |
 
 ## Poll interval and cost
 
@@ -205,14 +207,40 @@ The task runs every 5 minutes, like the `apt` and `yum` checks of
 hobbit-plugins. That is what the graphs need: Xymon's RRD files expect
 a value at least every 10 minutes, a longer interval leaves gaps.
 
-A run starts dnf three times while nothing is pending (`--version`,
-`repolist`, `check-update`) and six times while updates are pending
-(the three `updateinfo` queries on top). Each start loads the cached
-metadata of all enabled repositories. If that is too much for a
-compute node, raise `INTERVAL` in `clientlaunch.d/dnf.cfg` **and**
-`DNF_LIFETIME` to more than the new interval — the column works as
-before, only the graphs get gaps. The `xymonext` column shows what the
-test actually costs on a host.
+A run that asks dnf starts it three times while nothing is pending
+(`--version`, `repolist`, `check-update`) and six times while updates
+are pending (the three `updateinfo` queries on top); `check-update`
+and `updateinfo` load the cached metadata of all enabled repositories.
+On a Rocky Linux 10.3 host with 9 repositories including EPEL that
+took about 8 s wall clock and 7.6 s CPU (`xymonext`).
+
+Their answers only change when root refreshes the cache, a package is
+installed or removed, the dnf configuration changes or the host
+reboots. So a run reuses the answers of `check-update` and
+`updateinfo` from an earlier run - at most `DNF_REUSE` minutes old
+(60) - while all of this holds:
+
+- same dnf version, same enabled repositories, same mtime of each
+  repository's primary metadata (a refresh touches it, see "The
+  metadata age"), same dnf binary and cache directory;
+- same boot id (`/proc/sys/kernel/random/boot_id`), so dnf's
+  running-kernel check is redone after a reboot;
+- nothing below `DNF_REUSE_WATCH` - the dnf configuration, the repo
+  files and the rpm database - is newer than the saved answers; a new
+  or deleted file changes its directory's mtime.
+
+Only the answers are reused: `--version` and `repolist` still run, and
+the report - colors, metadata age, overview, `data` message - is built
+anew every time. A reused run says so at the end of the status. The
+answers are kept in `$XYMONTMP/dnf-reuse.<column>`, written under a
+temporary name and renamed; a failed dnf call leaves nothing to reuse,
+and a missing or damaged file just means dnf is asked. Set
+`DNF_REUSE=0` to ask dnf on every run.
+
+If even that is too much for a compute node, raise `INTERVAL` in
+`clientlaunch.d/dnf.cfg` **and** `DNF_LIFETIME` to more than the new
+interval — the column works as before, only the graphs get gaps. The
+`xymonext` column shows what the test actually costs on a host.
 
 ## Graphing (Xymon server setup)
 

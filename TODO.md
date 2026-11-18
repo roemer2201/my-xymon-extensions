@@ -52,37 +52,6 @@ config file) without a package manager's help. If non-Debian servers
 become common, a server rpm is the better answer (source: installation
 on a Xymon 4.3.30 source build, Rocky Linux 10.3).
 
-## dnf: reuse the previous result while nothing changed
-
-A dnf run costs about 8 s wall clock and 7.6 s CPU (measured with
-`xymonext` on Rocky Linux 10.3, 9 enabled repositories including
-EPEL), every 5 minutes - about 2.5 % of one core for a result that
-changes rarely: its inputs only change when root's cache is refreshed
-(`dnf makecache --timer`, effectively every 3 hours or more, see
-`extensions/dnf/README.md`, "How soon a new advisory shows up") or a
-package is installed or removed. A longer `INTERVAL` is no way out: the
-graphs need a value at least every 600 s (plain NCV heartbeat, see the
-smart entry above).
-
-Idea: keep the last status and data message in a state file together
-with a fingerprint of everything they depend on, and send them again
-unchanged while the fingerprint is the same, recomputing only the
-metadata age (step 4) and with it the repository lines and colors:
-
-- mtime of every `primary.xml*` of the enabled repositories (already
-  collected in step 4);
-- the rpm database - `/var/lib/rpm/rpmdb.sqlite` on EL 9 and 10,
-  `/var/lib/rpm/Packages` (Berkeley DB) on EL 8; verify per release,
-  e.g. with `rpm -E '%_dbpath'`;
-- the boot id (`/proc/sys/kernel/random/boot_id`), for the reboot hint;
-- `dnf.cfg` of this extension, `/etc/dnf/dnf.conf` and
-  `/etc/yum.repos.d/*.repo` (excludes, enabled repositories).
-
-Open: a full run at least every N hours anyway, where the state file
-lives (`$XYMONTMP` may be a tmpfs) and how a reused result is marked in
-the status. Not implemented (source: installation on a Xymon 4.3.30
-source build, Rocky Linux 10.3).
-
 ## Unverified without hardware
 
 - powerline: a plcrate response whose MAC differs from the queried
