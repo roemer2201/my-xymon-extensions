@@ -56,8 +56,14 @@ run
 has '^\[nfsrdma.rrd\]'; has '^\[nfsfiles.rrd\]'
 awk -v rate="$(value nfsserver read)" 'BEGIN {exit !(rate>1.88 && rate<=2)}' || exit 1
 [ "$(value nfsexport,+home read)" = U ] || exit 1
+# If v4 disappears, the current v3 rate alone cannot represent the total.
+awk '$1 != "proc4ops"' "$p/net/rpc/nfsd" > "$tmp/v3"
+mv "$tmp/v3" "$p/net/rpc/nfsd"
 age; export_sample 92 62914660; run
+[ "$(value nfsserver read)" = U ] && [ "$(value nfsmeta open)" = U ] || exit 1
 awk -v rate="$(value nfsexport,+home read)" 'BEGIN {exit !(rate>0.94 && rate<=1)}' || exit 1
+age; run
+[ "$(value nfsserver read)" = 0 ] && [ "$(value nfsmeta close)" = U ] || exit 1
 age; export_sample 105 62914660; run
 [ "$(value nfsexport,+home read)" = U ] || exit 1
 printf '# Version 1.1\n' > "$p/fs/nfsd/export_stats"

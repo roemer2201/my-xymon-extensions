@@ -59,8 +59,13 @@ function collect_ops(proto,indices,    i,k,idx) {
 }
 function op(k,    p,v,total) {
     if (!("v3" in protocols) && !("v4" in protocols)) return "U"
+    # OPEN and CLOSE exist only in v4. For shared operations, dropping
+    # either protocol invalidates the aggregate for this interval.
+    if (k == "open" || k == "close")
+        return ("v4" in protocols) ? ops["v4",k] : "U"
+    if (("v3." k in prev && !("v3" in protocols)) ||
+        ("v4." k in prev && !("v4" in protocols))) return "U"
     for (p in protocols) {
-        if (p == "v3" && (k == "open" || k == "close")) continue
         v = ops[p,k]
         if (v == "" || v == "U") return "U"
         total += v

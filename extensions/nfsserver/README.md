@@ -14,8 +14,9 @@ stays green. Optional kernel statistics may be absent. An export registered
 in etab describes the local server; measuring client latency needs a client.
 Problems are listed first in the status, followed by the threads, the etab
 exports and the listeners. Reading the portlist and filecache files takes
-the kernel's nfsd mutex and can hang while nfsd is stuck; the next run then
-reports yellow instead of waiting behind it.
+the kernel's nfsd mutex and can hang while nfsd is stuck; an overlapping invocation
+reports yellow immediately. If the scheduler suppresses overlapping runs,
+the previous status expires when no fresh report arrives.
 
 ## Configuration
 
@@ -53,9 +54,9 @@ rocky8_6, rocky8_8, rocky8_10):
 
 * The "io" byte counters in /proc/net/rpc/nfsd are 32 bit (`unsigned int
   io_read, io_write` in fs/nfsd/stats.h) and wrap at 4 GiB. No counter
-  records the wraps. A single wrap per poll only costs one unknown sample,
-  but from an average of about 14 MB/s a 5-minute poll can see several,
-  and the rate is then silently too low.
+  records the wraps. At 13.65 MiB/s a five-minute interval transfers a full counter range.
+  A decreasing counter produces an unknown sample; an increase after a
+  full counter cycle can silently understate throughput.
 * They are increased with a plain `+=` on a global variable
   (fs/nfsd/vfs.c), neither atomic nor locked, so nfsd threads running at
   the same time on different CPUs can lose increments.
@@ -69,8 +70,7 @@ The 8.10 kernel has neither /proc/fs/nfsd/filecache nor export_stats
 (fs/nfsd/nfsctl.c), so the nfsfiles and nfsexport graphs do not appear;
 the other graphs do.
 
-For throughput on Rocky 8, use counters that are 64 bit there, none of
-which counts NFS payload alone:
+For throughput on Rocky 8, choose a measurement point based on scope:
 
 * Interface counters, /sys/class/net/IF/statistics/rx_bytes and tx_bytes:
   all traffic of the interface, protocol overhead included, so only a good
