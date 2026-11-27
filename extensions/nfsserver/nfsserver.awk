@@ -95,13 +95,14 @@ source == "configured" {
 source == "etab" && NF && $1 !~ /^#/ {
     if ($1 !~ /^\// || NF < 2 || $2 !~ /\(.*\)$/) { bad["etab"] = 1; next }
     live[$1] = 1
-    print "Export " html($1) "  " html($2) > details
+    # Listed after the problems (END), so an alert mail starts with them.
+    info = info "Export " html($1) "  " html($2) "\n"
     next
 }
 source == "ports" && NF {
     if (NF != 2 || !number($2)) { bad["ports"] = 1; next }
     port = $1 ":" $2
-    if (!(port in active)) print "Listener " html(port) > details
+    if (!(port in active)) info = info "Listener " html(port) "\n"
     active[port] = 1; next
 }
 source == "rpc" {
@@ -149,13 +150,17 @@ END {
     for (k in bad) note("yellow","Cannot read or parse " k)
     if (!number(threads)) note("yellow","NFS thread count unavailable")
     else if (threads+0 == 0) note("red","No NFS server threads")
-    else print "NFS threads: " threads > details
+    else info = "NFS threads: " threads "\n" info
     if (!sawrpc && !bad["rpc"]) note("yellow","RPC counters unavailable")
     if (!bad["etab"]) for (p in required) if (!(p in live)) note("red","Missing export " p)
     if (!bad["ports"]) {
         count=0; for (p in active) count++
         if (!count) note("red","No NFS listeners")
         for (p in requiredport) if (!(p in active)) note("red","Missing listener " p)
+    }
+    if (info != "") {
+        if (color != "green") print "" > details
+        printf "%s", info > details
     }
     print color > (out "/color")
     print (color == "green" ? "NFS server running (" threads " threads)" : html(first[color])) > (out "/summary")
@@ -179,8 +184,11 @@ END {
         section("nfscachemem"); mem=cache["cache","mem usage"]
         gauge("mib",number(mem) ? mem/1048576 : "U")
     }
-    if (("filecache","total inodes") in cache) {
-        section("nfsfiles"); gauge("inodes",cache["filecache","total inodes"])
+    # Up to Linux 5.x the file cache reports "total entries" and no LRU
+    # count; 6.x reports "total inodes" and "lru entries".
+    if ((("filecache","total inodes") in cache) || (("filecache","total entries") in cache)) {
+        files = (("filecache","total inodes") in cache) ? cache["filecache","total inodes"] : cache["filecache","total entries"]
+        section("nfsfiles"); gauge("inodes",files)
         gauge("lru",raw(cache["filecache","lru entries"]))
     }
     if (have_rdma) {

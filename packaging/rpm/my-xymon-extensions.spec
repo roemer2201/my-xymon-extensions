@@ -83,6 +83,13 @@ Included extensions:
   socket: red when a required guest is missing or not running, or the
   query fails, with RRD graphs of CPU, QEMU resident memory, network
   and disk throughput per guest. Ships disabled.
+* nfsserver - Linux kernel NFS server (nfsd), read from /proc and
+  /var/lib/nfs/etab without root rights: red without nfsd threads or
+  listeners, or when a required listener or a configured or required
+  export is missing, with RRD graphs of NFSv3/v4 operation rates, RPC
+  calls and errors, payload throughput, reply and file cache and,
+  where the kernel provides them, per-export throughput and
+  RPC-over-RDMA counters. Ships disabled.
 * xymonext - what the extensions above cost this host: wall clock
   time, CPU time and the number of bytes each test sends to the
   Xymon server, measured on every run and reported in one

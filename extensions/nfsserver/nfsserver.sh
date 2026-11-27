@@ -66,9 +66,17 @@ case "$compare:$bytes" in
     *) status yellow 'Invalid CHECK_CONFIGURED or GLOBAL_BYTES setting'; exit "$?" ;;
 esac
 if [ "$bytes" = auto ]; then
+    # Upstream nfsd prints the "io" byte counters as 64 bit since Linux
+    # 5.12 (fs/nfsd/stats.c: "%u" up to 5.11, "%lld" from 5.12 on).
     kernel=$(uname -r)
     major=${kernel%%.*}
-    if [ "$major" -ge 6 ] 2>/dev/null; then bytes=yes; else bytes=no; fi
+    minor=${kernel#*.}
+    minor=${minor%%[!0-9]*}
+    bytes=no
+    if [ "$major" -gt 5 ] 2>/dev/null ||
+       { [ "$major" -eq 5 ] 2>/dev/null && [ "${minor:-0}" -ge 12 ] 2>/dev/null; }; then
+        bytes=yes
+    fi
 fi
 
 # Serialize the baseline and both sends. Use private state even when the
@@ -88,7 +96,13 @@ if ! command -v flock >/dev/null 2>&1; then
     exit "$?"
 fi
 exec 9< "$state" || exit 1
-flock -x 9 || exit 1
+# Reading portlist and filecache takes the kernel's nfsd_mutex, so a run
+# can hang while nfsd is stuck. Never queue behind it: every later run
+# would wait as well and no status would arrive at all.
+if ! flock -n 9; then
+    status yellow 'A previous nfsserver run is still active (nfsd interfaces blocked?)'
+    exit "$?"
+fi
 # Stage complete reads: a failed read must never look like an empty table.
 # Diagnostics use controlled labels (export filenames can contain HTML).
 : > "$work/problems"

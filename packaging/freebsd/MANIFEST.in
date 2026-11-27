@@ -51,6 +51,9 @@ Included extensions:
 * libvirt - QEMU/KVM guest states and per-guest CPU, memory, network
   and disk graphs over the read-only qemu:///system connection; clear
   without virsh, ships disabled.
+* nfsserver - Linux kernel NFS server health and graphs. It reads
+  Linux-only kernel interfaces, so on FreeBSD the column would report
+  a clear status; ships disabled.
 
 Requires net-mgmt/xymon-client and sysutils/smartmontools (>= 7.0).
 Activation steps (sudoers rule, clientlaunch.d include, server-side

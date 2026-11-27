@@ -12,6 +12,10 @@ a missing required listener/export. It is yellow when required information
 cannot be read or validated. Non-Linux hosts are clear. A valid idle server
 stays green. Optional kernel statistics may be absent. An export registered
 in etab describes the local server; measuring client latency needs a client.
+Problems are listed first in the status, followed by the threads, the etab
+exports and the listeners. Reading the portlist and filecache files takes
+the kernel's nfsd mutex and can hang while nfsd is stuck; the next run then
+reports yellow instead of waiting behind it.
 
 ## Configuration
 
@@ -29,8 +33,10 @@ whitespace in these settings. The task ships with no site-specific paths.
 * Server-wide NFSv3/v4 data and metadata operation rates, RPC calls, bad RPCs
   and stale file handles. NFSv4 COMPOUND can contain several operations.
 * Global payload read/write MiB/s. GLOBAL_BYTES=auto enables these on Linux
-  6 and later; older vendor kernels require explicit GLOBAL_BYTES=yes after
-  confirming wide byte counters. Multiple 32-bit wraps per poll lose data.
+  5.12 and later (Rocky 9 and 10), where nfsd prints its byte counters as
+  64 bit (fs/nfsd/stats.c). Older kernels (Rocky 8: 4.18) require explicit
+  GLOBAL_BYTES=yes after confirming that the vendor backported the wide
+  counters. Multiple 32-bit wraps per poll lose data.
 * Reply-cache entries, occupancy and reported memory; file-cache inodes/LRU
   when available. Transport events/s and send queue starvation when an RDMA
   listener and readable transport statistics are present.

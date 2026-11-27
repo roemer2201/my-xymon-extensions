@@ -66,6 +66,8 @@ age; run
 has '^status nfstest.nfsserver green'
 printf '/scratchtemp *(rw)\n' > "$tmp/etc/exports.d/test.exports"
 run; has '^status nfstest.nfsserver red'; has 'Missing export /scratchtemp'
+# Problems come first, before the long export and listener list.
+sed -n 2p "$tmp/output" | grep -q '^&red Missing export /scratchtemp$' || { cat "$tmp/output"; exit 1; }
 rm "$tmp/etab"; run
 has '^status nfstest.nfsserver yellow'; lacks 'Missing export'
 printf '/home *(rw)\n' > "$tmp/etab"
@@ -73,4 +75,36 @@ NFSSERVER_CHECK_CONFIGURED=no NFSSERVER_REQUIRED_LISTENERS=rdma:333 run
 has 'Missing listener rdma:333'
 printf 'th 0\nrpc 0 0 0 0 0\n' > "$p/net/rpc/nfsd"
 run; has 'No NFS server threads'
+
+# Linux 5.x file cache: "total entries" and no LRU count.
+rpc 100
+printf 'total entries: 7\nlongest chain: 1\ncache hits: 0\n' > "$p/fs/nfsd/filecache"
+run
+if [ "$(value nfsfiles inodes)" != 7 ] || [ "$(value nfsfiles lru)" != U ]; then
+    cat "$tmp/output"; exit 1
+fi
+
+# GLOBAL_BYTES=auto: 64-bit byte counters from Linux 5.12 on (Rocky 9).
+mkdir -p "$tmp/bin"
+cat > "$tmp/bin/uname" <<'EOF'
+#!/bin/sh
+case "$1" in -r) printf '%s\n' "$FAKE_KERNEL" ;; *) echo Linux ;; esac
+EOF
+chmod +x "$tmp/bin/uname" || exit 1
+for kernel in 5.14.0-503.el9.x86_64:yes 6.12.0-55.el10.x86_64:yes 5.11.0:no 4.18.0-553.el8_10.x86_64:no; do
+    (
+        PATH="$tmp/bin:$PATH" FAKE_KERNEL=${kernel%:*} NFSSERVER_GLOBAL_BYTES=auto
+        export PATH FAKE_KERNEL NFSSERVER_GLOBAL_BYTES
+        run
+        if [ "${kernel#*:}" = yes ]; then has '^\[nfsbytes\.rrd\]$'; else lacks '^\[nfsbytes\.rrd\]$'; fi
+    ) || { echo "GLOBAL_BYTES=auto wrong for ${kernel%:*}" >&2; exit 1; }
+done
+
+# A run that hangs in the kernel must not make the next ones queue up.
+(
+    exec 9< "$tmp/nfsserver-nfstest" || exit 1
+    flock -n 9 || exit 1
+    run
+    has '^status nfstest.nfsserver yellow .* previous nfsserver run is still active'
+) || exit 1
 echo 'ok: NFS server service, permissions, transport, export generation and rates'
