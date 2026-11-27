@@ -504,7 +504,8 @@ exit 0
   (or 0.5 s), counts their wraps and publishes 64-bit totals; with
   GLOBAL_BYTES=auto nfsserver graphs the byte rates from them. Intervals
   in which a wrap could go unnoticed at SAMPLER_MAX_GBIT make the rate of
-  their window unknown. The task ships disabled, stops with xymonlaunch
+  their window unknown. Stale detection follows the publication cadence,
+  and a stopped sampler leaves a gap. The task ships disabled, stops with xymonlaunch
   and is skipped by the standalone runner.
 
 * Fri Nov 27 2026 roemer2201 <r.oliver@web.de> - 0.37.0-1

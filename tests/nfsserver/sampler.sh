@@ -44,6 +44,19 @@ printf '%s\n' "$pos" > "$FAKE_DIR/pos"
 if [ "$line" = - ]; then rm -f "$FAKE_DIR/proc/net/rpc/nfsd"; exit 0; fi
 set -- $line
 printf '%d.%02d 1.00\n' $(($1 / 100)) $(($1 % 100)) > "$FAKE_DIR/proc/uptime"
+# On the second sample the FIFO rendezvous advances uptime after the
+# sampler has read its opening timestamp but before it gets the counters.
+if [ "$pos" -eq 2 ] && [ -n "${FAKE_RPC_DELAY_CS:-}" ]; then
+    rpc="$FAKE_DIR/proc/net/rpc/nfsd"
+    rm -f "$rpc" && mkfifo "$rpc" || exit 1
+    (
+        exec 3>"$rpc" || exit 1
+        late=$(($1 + FAKE_RPC_DELAY_CS))
+        printf '%d.%02d 1.00\n' $((late / 100)) $((late % 100)) > "$FAKE_DIR/proc/uptime"
+        printf 'io %s %s\nrpc %s 0 0 0 0\n' "$2" "$3" "$4" >&3
+    ) </dev/null >/dev/null 2>&1 &
+    exit 0
+fi
 printf 'rc 0 0 0\nfh 0 0 0 0 0\nio %s %s\nth 8 0\nrpc %s 0 0 0 0\n' "$2" "$3" "$4" \
     > "$FAKE_DIR/proc/net/rpc/nfsd"
 EOF
@@ -54,6 +67,7 @@ state="$tmp/nfsserver-nfstest"
 fail() { echo "FAIL: nfsserver sampler: $1" >&2; cat "$tmp/log" >&2; exit 1; }
 scenario() { # scenario LINE... - the first line is the state at the start
     rm -rf "$state"
+    rm -f "$tmp/proc/net/rpc/nfsd"
     printf '%s\n' "$@" > "$tmp/scenario"
     printf '0\n' > "$tmp/pos"
     FAKE_FRACTION_RC=0 "$tmp/bin/sleep" 1
@@ -83,6 +97,12 @@ scenario '100000 0 0 1' '100150 100 100 2'
 run 2 || fail 'exit status'
 expect gen 1; expect read 100
 
+# A delay inside a sample can hide a wrap even when the opening
+# timestamps are only a second apart.
+scenario '100000 0 0 1' '100100 100 100 2'
+run 2 FAKE_RPC_DELAY_CS=50 || fail 'exit status'
+expect gen 1; expect time 100150
+
 # Faster than SAMPLER_MAX_GBIT: the limit is too low to rule out a wrap.
 scenario '100000 0 0 1' '100100 4000000000 0 2'
 run 2 || fail 'exit status'
@@ -103,10 +123,18 @@ scenario '100000 0 0 1' - '100200 50 50 3'
 run 3 || fail 'exit status'
 expect epoch 100200; expect read 0; logs 'totals dropped'
 
+# A killed predecessor may leave state. A new owner must remove it
+# even if its very first sample cannot read nfsd.
+scenario -
+mkdir -m 700 "$state" || exit 1
+printf 'old state\n' > "$state/sampler"
+run 1 || fail 'exit status after interrupted sampler'
+[ ! -e "$state/sampler" ] || fail 'stale state survived sampler startup'
+
 # Every SAMPLER_SAVE seconds, not on every sample.
 scenario '100000 0 0 1' '100100 1 1 2' '100200 2 2 3'
 run 3 NFSSERVER_SAMPLER_SAVE=2 || fail 'exit status'
-expect time 100200
+expect time 100200; expect save 2
 scenario '100000 0 0 1' '100100 1 1 2'
 run 2 NFSSERVER_SAMPLER_SAVE=2 || fail 'exit status'
 expect time 100000

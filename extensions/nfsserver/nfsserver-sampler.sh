@@ -1,14 +1,15 @@
 #!/bin/sh
 # Count the wraps of Linux nfsd's 32-bit byte counters (kernels before 5.12).
 # 1. Check platform, kernel, parent process and the private state directory.
-# 2. Every SAMPLER_STEP seconds read /proc/uptime and /proc/net/rpc/nfsd,
+# 2. Every SAMPLER_STEP seconds read /proc/net/rpc/nfsd between two
+#    uptime reads,
 #    add the 32-bit increments to 64-bit totals and count every interval in
 #    which a second wrap would have been possible at SAMPLER_MAX_GBIT.
 # 3. Publish the totals for nfsserver.sh every SAMPLER_SAVE seconds.
 # A long-running xymonlaunch task: it stops when xymonlaunch is gone and
 # removes its totals when it stops.
 # Usage: nfsserver-sampler.sh [--help]
-# Version: 1.0.0 (2026-11-28)
+# Version: 1.0.1 (2026-11-28)
 set -u
 export LC_ALL=C
 
@@ -122,7 +123,7 @@ if [ "$major" -gt 5 ] 2>/dev/null ||
    { [ "$major" -eq 5 ] 2>/dev/null && [ "${minor:-0}" -ge 12 ] 2>/dev/null; }; then
     # Idle instead of exiting, or xymonlaunch would restart it every minute.
     log "Linux $kernel has 64-bit nfsd byte counters - nothing to sample"
-    while pass && alive; do pause 60; done
+    while pass && alive; do pause 5 || sleep 1; done
     exit 0
 fi
 
@@ -147,6 +148,9 @@ if ! flock -n 8; then
     log 'another sampler is running'
     exit 0
 fi
+# A former owner may have been killed without a chance to clean up.
+# Never reuse its state while waiting for a first readable sample.
+rm -f "$state/sampler" "$state/sampler.new" || exit 1
 boot=
 read -r boot < "$proc/sys/kernel/random/boot_id" || boot=
 if [ -z "$boot" ]; then
@@ -155,8 +159,8 @@ if [ -z "$boot" ]; then
 fi
 
 stop() { # stop REASON - totals are only valid while this process runs
+    rm -f "$state/sampler" "$state/sampler.new" || exit 1
     log "$1 - stopping"
-    rm -f "$state/sampler" "$state/sampler.new"
     exit 0
 }
 trap 'stop terminated' TERM INT HUP
@@ -167,7 +171,7 @@ two32=4294967296
 rmax=$((maxgbit * 1250000))
 callmax=100000
 
-sample() { # sets now (1/100 s), cr, cw, cc; false when a value is missing
+read_uptime() { # sets stamp (1/100 s)
     up=
     read -r up _ < "$proc/uptime" || return 1
     case "$up" in
@@ -175,7 +179,14 @@ sample() { # sets now (1/100 s), cr, cw, cc; false when a value is missing
         *) return 1 ;;
     esac
     case "${up%.*}" in *[!0-9]*) return 1 ;; esac
-    now=$(( ${up%.*} * 100 + 1${up#*.} - 100 ))
+    stamp=$(( ${up%.*} * 100 + 1${up#*.} - 100 ))
+}
+sample() { # sets first/now and cr, cw, cc; false when a value is missing
+    # The kernel formats the counters during the read. If the sampler
+    # is delayed anywhere around it, use both timestamps to bound the
+    # interval instead of assuming the counters were read at its start.
+    read_uptime || return 1
+    first=$stamp
     cr='' cw='' cc=''
     [ -r "$proc/net/rpc/nfsd" ] || return 1
     while read -r key a b _; do
@@ -183,7 +194,11 @@ sample() { # sets now (1/100 s), cr, cw, cc; false when a value is missing
             io) cr=$a; cw=$b ;;
             rpc) cc=$a ;;
         esac
-    done < "$proc/net/rpc/nfsd"
+        [ -z "$cr" ] || [ -z "$cw" ] || [ -z "$cc" ] || break
+    done < "$proc/net/rpc/nfsd" || return 1
+    read_uptime || return 1
+    now=$stamp
+    [ "$now" -ge "$first" ] || return 1
     for value in "$cr" "$cw" "$cc"; do
         case "$value" in ''|*[!0-9]*) return 1 ;; esac
     done
@@ -191,8 +206,8 @@ sample() { # sets now (1/100 s), cr, cw, cc; false when a value is missing
     [ $(( cr < two32 && cw < two32 && cc < two32 )) -eq 1 ]
 }
 save_state() {
-    if printf 'version 1\nboot %s\nepoch %s\ngen %s\ntime %s\nread %s\nwrite %s\nstep %s\n' \
-            "$boot" "$epoch" "$gen" "$last" "$tr" "$tw" "$step" > "$state/sampler.new" &&
+    if printf 'version 1\nboot %s\nepoch %s\ngen %s\ntime %s\nread %s\nwrite %s\nstep %s\nsave %s\n' \
+            "$boot" "$epoch" "$gen" "$last" "$tr" "$tw" "$step" "$save" > "$state/sampler.new" &&
        mv -f "$state/sampler.new" "$state/sampler"; then
         :
     else
@@ -202,7 +217,7 @@ save_state() {
 }
 new_epoch() { # new_epoch REASON - totals restart at 0
     epoch=$now gen=0 tr=0 tw=0
-    pr=$cr pw=$cw pc=$cc last=$now
+    pr=$cr pw=$cw pc=$cc last=$now prev_first=$first
     log "counting from 0: $1"
     save_state
 }
@@ -220,26 +235,32 @@ while :; do
     elif [ -z "$epoch" ]; then
         new_epoch 'sampler started'
     elif [ "$now" -gt "$last" ]; then
-        dt=$((now - last))
+        # Add one centisecond for /proc/uptime rounding. At 1 Gbit/s
+        # even the largest modulo delta could hide a wrap after 70 s.
+        # Capping the bound there also keeps byte-rate arithmetic safe
+        # after a very long suspend.
+        dt=$((now - prev_first + 1))
+        bdt=$dt
+        [ "$bdt" -le 7000 ] || bdt=7000
         # A reset (only on loading the nfsd module) sets every counter to
         # 0. The RPC call counter can only wrap from just below 2^32.
-        if [ $(( cc < pc && pc < two32 - callmax * dt )) -eq 1 ]; then
+        if [ $(( cc < pc && dt < 42950 && pc < two32 - callmax * dt )) -eq 1 ]; then
             new_epoch 'nfsd statistics were reset'
         else
             dr=$(( (cr - pr + two32) % two32 ))
             dw=$(( (cw - pw + two32) % two32 ))
             # Ambiguous: one more wrap would have fitted into this interval.
-            if [ $(( dr + two32 <= rmax * dt || dw + two32 <= rmax * dt )) -eq 1 ]; then
+            if [ $(( dr + two32 <= rmax * bdt || dw + two32 <= rmax * bdt )) -eq 1 ]; then
                 gen=$((gen + 1))
             # Faster than SAMPLER_MAX_GBIT (10 % for timing jitter): the
             # limit is too low, so a second wrap could go unnoticed.
-            elif [ $(( dr * 10 > rmax * dt * 11 || dw * 10 > rmax * dt * 11 )) -eq 1 ]; then
+            elif [ $(( dr * 10 > rmax * bdt * 11 || dw * 10 > rmax * bdt * 11 )) -eq 1 ]; then
                 gen=$((gen + 1))
                 [ -n "${fast:-}" ] || log "traffic above SAMPLER_MAX_GBIT=$maxgbit - raise it"
                 fast=yes
             fi
             tr=$((tr + dr)) tw=$((tw + dw))
-            pr=$cr pw=$cw pc=$cc last=$now
+            pr=$cr pw=$cw pc=$cc last=$now prev_first=$first
             # awk, which computes the rates, is exact up to 2^53.
             if [ $(( tr > 4503599627370496 || tw > 4503599627370496 )) -eq 1 ]; then
                 new_epoch 'the totals reached 2^52'

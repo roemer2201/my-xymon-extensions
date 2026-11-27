@@ -130,19 +130,31 @@ bytes() { # bytes READ WRITE - the MiB/s in nfsbytes.rrd
 # The first run in an epoch has nothing to compare with.
 sampled 50000 0 0; rocky8
 has '^status nfstest.nfsserver green'
-has '^Byte counters: 32 bit, sampled every 1 s for 6 min, 0 ambiguous intervals$'
+has '^Byte counters: 32 bit, sampled every 1 s for 6 min, 0 ambiguous intervals \(last published sample 1 s ago\)$'
 bytes U U
 # 300 s later on the sampler's clock: 300 MiB read, 600 MiB written.
 sampled 80000 314572800 629145600; rocky8; bytes 1 2
 # An ambiguous interval in between: no rate for this window, then again.
 sampled 110000 629145600 1258291200 1; rocky8; bytes U U
 sampled 140000 943718400 1887436800 1; rocky8; bytes 1 2
+# The 60 s publication interval is legal. A 40 s old state still
+# belongs to a healthy sampler and can be used to compute a rate.
+sampled 170000 1258291200 2516582400 1
+printf 'save 60\n' >> "$sstate"
+printf '1740.00 1.00\n' > "$p/uptime"
+rocky8; has '^status nfstest.nfsserver green'; bytes 1 2
+printf '1821.00 1.00\n' > "$p/uptime"
+rocky8; has '^status nfstest.nfsserver yellow .* NFS byte sampler stopped updating'; bytes U U
 # A sampler that stopped updating.
 sampled 140000 943718400 1887436800 1
 printf '2000.00 1.00\n' > "$p/uptime"
 rocky8; has '^status nfstest.nfsserver yellow .* NFS byte sampler stopped updating'; bytes U U
 printf 'version 2\n' > "$sstate"
 rocky8; has '^status nfstest.nfsserver yellow .* Cannot parse the byte sampler state'
+# A clean stop removes the state; send one explicit gap and drop the
+# baseline, so a stopped or disabled sampler is not used again.
+rm "$sstate"; rocky8; bytes U U
+rocky8; lacks '^\[nfsbytes\.rrd\]$'
 # 64-bit kernel counters win over a sampler; without one, no byte graph.
 sampled 170000 0 0; rocky8 6.12.0-55.el10.x86_64
 has '^\[nfsbytes\.rrd\]$'; lacks '^Byte counters'

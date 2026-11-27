@@ -97,8 +97,9 @@ it logs once that there is nothing to sample and idles. It reads the
 same nfsserver.cfg and needs no other rights than nfsserver.sh.
 
 * Every SAMPLER_STEP seconds (1, or 0.5 where sleep accepts fractions) it
-  reads /proc/uptime (1/100 s) and the io and rpc counters, and adds the
-  32-bit increments to 64-bit totals.
+  reads the io and rpc counters between two /proc/uptime timestamps
+  (1/100 s), then adds the 32-bit increments to 64-bit totals. The two
+  timestamps bound the interval even if a read or the process is delayed.
 * An interval is ambiguous when one more wrap would have fitted into it at
   SAMPLER_MAX_GBIT (default 25, per direction, the sum of all links that
   carry NFS), or when it counted faster than that plus 10 %. Such an
@@ -113,17 +114,19 @@ same nfsserver.cfg and needs no other rights than nfsserver.sh.
   and reports unknown; the next one, five minutes later, has the rate.
 * The totals go to $XYMONTMP/nfsserver-HOST/sampler every SAMPLER_SAVE
   seconds (default 10) and are removed when the sampler stops. A state
-  older than 30 s turns the column yellow ("NFS byte sampler stopped
-  updating"). The status lists the step, the age of the totals and the
-  number of ambiguous intervals.
+  older than twice SAMPLER_SAVE (at least 30 s) turns the column yellow
+  ("NFS byte sampler stopped updating"). When a previously seen state
+  disappears, the next check publishes one unknown sample to mark the
+  gap. The status lists the step, the age of the published sample and
+  the number of ambiguous intervals.
 * It runs only under xymonlaunch, which starts it directly, and stops as
-  soon as its parent process changes, i.e. when xymonlaunch is gone, or
-  on TERM. A second instance exits at once (lock file). INTERVAL 1m in
+  soon as it notices its parent process has changed, i.e. when
+  xymonlaunch is gone, or on TERM. A second instance exits at once (lock file). INTERVAL 1m in
   the task only restarts it should it ever stop; it has no MAXTIME and
   does not run through xymonext.sh. The standalone runner skips it.
 * Lost increments of the kernel's plain `+=` remain: the totals are a
   lower bound.
-* Cost: one sleep process per step and two small reads in /proc; a few
+* Cost: one sleep process per step and three small reads in /proc; a few
   bytes written every SAMPLER_SAVE seconds.
 
 For a manual test, run it as the Xymon user with a separate XYMONTMP and

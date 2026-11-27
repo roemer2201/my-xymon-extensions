@@ -5,7 +5,7 @@
 # On kernels with 32-bit byte counters (before 5.12) the byte rates come
 # from the totals of nfsserver-sampler.sh, if that task runs.
 # Usage: nfsserver.sh [--help]
-# Version: 1.1.0 (2026-11-28)
+# Version: 1.1.1 (2026-11-28)
 set -u
 export LC_ALL=C
 
@@ -158,14 +158,14 @@ fi
 : > "$work/sampler"
 uptime=
 if [ "$bytes" = auto32 ]; then
-    bytes=no
     if [ -e "$state/sampler" ]; then
         bytes=sampler
         cat "$state/sampler" > "$work/sampler" || : > "$work/sampler"
         up=
         read -r up _ < "$proc/uptime" || up=
         case "$up" in
-            [0-9]*.[0-9][0-9]) uptime=${up%.*}${up#*.} ;;
+            [0-9]*.[0-9][0-9])
+                case "${up%.*}" in *[!0-9]*) ;; *) uptime=${up%.*}${up#*.} ;; esac ;;
         esac
     fi
 fi
