@@ -33,10 +33,9 @@ whitespace in these settings. The task ships with no site-specific paths.
 * Server-wide NFSv3/v4 data and metadata operation rates, RPC calls, bad RPCs
   and stale file handles. NFSv4 COMPOUND can contain several operations.
 * Global payload read/write MiB/s. GLOBAL_BYTES=auto enables these on Linux
-  5.12 and later (Rocky 9 and 10), where nfsd prints its byte counters as
-  64 bit (fs/nfsd/stats.c). Older kernels (Rocky 8: 4.18) require explicit
-  GLOBAL_BYTES=yes after confirming that the vendor backported the wide
-  counters. Multiple 32-bit wraps per poll lose data.
+  5.12 and later (Rocky 9 and 10), where nfsd keeps its byte counters as
+  64-bit per-CPU counters (fs/nfsd/stats.c). Leave them off on older
+  kernels; see "Rocky 8 (Linux 4.18)" below.
 * Reply-cache entries, occupancy and reported memory; file-cache inodes/LRU
   when available. Transport events/s and send queue starvation when an RDMA
   listener and readable transport statistics are present.
@@ -45,6 +44,47 @@ whitespace in these settings. The task ships with no site-specific paths.
   counter reset, reboot, first observation or gap over ten minutes produces
   unknown. An empty statistics table is valid. An absent optional interface
   creates no RRD. Names in per-export graphs encode '/' as '+'.
+
+## Rocky 8 (Linux 4.18)
+
+The Rocky 8 kernel still has nfsd's old statistics code. Checked in the
+Rocky 8.6, 8.8 and 8.10 kernel sources (ctrliq/kernel-src-tree, branches
+rocky8_6, rocky8_8, rocky8_10):
+
+* The "io" byte counters in /proc/net/rpc/nfsd are 32 bit (`unsigned int
+  io_read, io_write` in fs/nfsd/stats.h) and wrap at 4 GiB. No counter
+  records the wraps. A single wrap per poll only costs one unknown sample,
+  but from an average of about 14 MB/s a 5-minute poll can see several,
+  and the rate is then silently too low.
+* They are increased with a plain `+=` on a global variable
+  (fs/nfsd/vfs.c), neither atomic nor locked, so nfsd threads running at
+  the same time on different CPUs can lose increments.
+
+Leave GLOBAL_BYTES at auto there (it stays off on 4.18); yes gives no
+reliable throughput. Polling more often does not help either: one wrap
+per 10 seconds is already reached at about 430 MB/s. The operation and
+RPC counters are 32 bit too, but wrap only after 2^32 operations.
+
+The 8.10 kernel has neither /proc/fs/nfsd/filecache nor export_stats
+(fs/nfsd/nfsctl.c), so the nfsfiles and nfsexport graphs do not appear;
+the other graphs do.
+
+For throughput on Rocky 8, use counters that are 64 bit there, none of
+which counts NFS payload alone:
+
+* Interface counters, /sys/class/net/IF/statistics/rx_bytes and tx_bytes:
+  all traffic of the interface, protocol overhead included, so only a good
+  estimate on dedicated storage interfaces. The stock Xymon Linux client
+  already sends them in its [ifstat] section (read with /sbin/ifconfig
+  from net-tools) for the ifstat graphs. NFS over RDMA bypasses the
+  network stack and is not counted on IPoIB interfaces.
+* InfiniBand port counters for RDMA,
+  /sys/class/infiniband/HCA/ports/N/counters/port_rcv_data and
+  port_xmit_data: 64 bit when the HCA reports the extended width
+  (drivers/infiniband/core/sysfs.c), otherwise 32 bit; in units of
+  4 bytes, all traffic of the port.
+* On the clients, the bytes: line of /proc/self/mountstats: exact NFS
+  payload per mount, but per client.
 
 Use nfsserver.sh --help for environment overrides. With XYMON or XYMSRV
 unset, the collector prints its messages; use a separate XYMONTMP when
