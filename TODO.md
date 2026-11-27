@@ -12,11 +12,13 @@ the changelog that upgrades preserve locally edited task files, so those
 hosts keep the old interval.
 
 The standalone runner's example schedule
-([crontab.example](standalone/crontab.example), repeated in
-[standalone/README.md](standalone/README.md) and the opkg postinst) runs
-every extension every 10 minutes as well. cron starts on time, but the
-samples still arrive after a varying run time, so its graphs probably
-sit at the same limit; check them before choosing the new default.
+([crontab.example](standalone/crontab.example), also shown in the
+[standalone README](standalone/README.md) and
+[opkg setup instructions](packaging/opkg/postinst)) runs the extensions
+selected by `TESTS` every 10 minutes, including SMART by default. Even
+if cron starts on time, varying runtimes can push SMART samples past the
+heartbeat. Check the graphs on OpenWrt/TurrisOS separately: changing the
+Xymon client task interval does not change an installed crontab.
 
 ## Maintainer decisions
 
