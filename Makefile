@@ -11,7 +11,7 @@ test: shellcheck unittest
 shellcheck:
 	shellcheck --shell=sh extensions/*/*.sh standalone/*.sh tests/run.sh tests/smart/fakesmartctl tests/smart/fakemmc tests/disk/fakedf tests/procs/fakeps tests/opkg/fakeopkg tests/dnf/fakednf tests/wifi/fakeiw tests/wifi/fakeubus tests/wifi/fakeiwinfo tests/lxc/fakelxc-ls tests/lxc/fakelxc-info tests/lxc/fakelxc-autostart tests/systemd/fakesystemctl tests/btrfs/fakebtrfs packaging/*/*.sh packaging/deb/postinst packaging/deb-server/postinst packaging/opkg/postinst packaging/opkg/preinst packaging/freebsd/post-install
 	shellcheck --shell=sh tests/review/run.sh
-	shellcheck --shell=sh tests/libvirt/fakevirsh
+	shellcheck --shell=sh tests/libvirt/fakevirsh tests/nfsserver/run.sh
 	shellcheck --shell=sh tests/powerline/run.sh tests/powerline/bin/*
 	shellcheck --shell=sh tests/fritz-wifi/run.sh tests/fritz-wifi/fakecurl tests/fritz-wifi/bin/*
 	shellcheck --shell=sh tests/fritzbox/run.sh tests/fritzbox/fakecurl tests/fritzbox/bin/*
@@ -23,6 +23,7 @@ unittest:
 # Optional real-RRD smoke test; collector runtime does not require Python.
 graphcheck:
 	python3 tests/powerline/check-graphs.py
+	python3 tests/nfsserver/check-graphs.py
 
 # Packaging targets only work on the matching platform (see CLAUDE.md
 # and packaging/README.md). Output lands in build/.

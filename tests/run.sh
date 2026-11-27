@@ -4794,7 +4794,7 @@ expect "$out" 'yellow >= 1\.5' "without any config file the built-in defaults ap
 for script in "$REPO"/extensions/*/*.sh; do
     ext=$(basename "$script" .sh)
     # libvirt has always used the package-specific config directory.
-    [ "$ext" != libvirt ] || continue
+    case "$ext" in libvirt|nfsserver) continue ;; esac
     grep -q 'CFGFILE=' "$script" || continue
     if grep -q "etc/my-xymon-extensions/$ext.cfg" "$script" &&
        grep -q "CFGFILE=\"\$XYMONHOME/etc/$ext.cfg\"" "$script"; then
@@ -5398,7 +5398,7 @@ expect_not "$out" '.' "postinst: silent for actions other than configure"
 # mv_conffile). Each script is run here against a fake root.
 echo "--- config migration ---"
 # libvirt has no pre-0.20.0 config to migrate.
-sed -n '/\/libvirt\.cfg$/d; s|^/etc/xymon/my-xymon-extensions/\(.*\)\.cfg$|\1|p' "$TMP/client-etc" \
+sed -n '/\/libvirt\.cfg$/d; /\/nfsserver\.cfg$/d; s|^/etc/xymon/my-xymon-extensions/\(.*\)\.cfg$|\1|p' "$TMP/client-etc" \
     | sort > "$TMP/cfg-names"
 cfglist() { # cfglist FILE - config names of every "for cfg in" loop in FILE
     awk '/for cfg in/ { on = 1; sub(/.*for cfg in/, "") }
@@ -5983,6 +5983,7 @@ expect "$(libvirt_metric "${output}" vm-running_rss)" '^U$' 'libvirt: stopped VM
 expect "$(libvirt_metric "${output}" vm-running_read)" '^U$' 'libvirt: stopped VM marks old disk rates unknown'
 
 # Cross-extension failure and collision regressions.
+if ! sh "$TESTDIR/nfsserver/run.sh"; then FAIL=1; fi
 if ! sh "$TESTDIR/review/run.sh"; then FAIL=1; fi
 
 # The server-only collectors have their own isolated replay tests.

@@ -83,6 +83,13 @@ Included extensions:
   socket: red when a required guest is missing or not running, or the
   query fails, with RRD graphs of CPU, QEMU resident memory, network
   and disk throughput per guest. Ships disabled.
+* nfsserver - Linux kernel NFS server (nfsd), read from /proc and
+  /var/lib/nfs/etab without root rights: red without nfsd threads or
+  listeners, or when a required listener or a configured or required
+  export is missing, with RRD graphs of NFSv3/v4 operation rates, RPC
+  calls and errors, payload throughput, reply and file cache and,
+  where the kernel provides them, per-export throughput and
+  RPC-over-RDMA counters. Ships disabled.
 * xymonext - what the extensions above cost this host: wall clock
   time, CPU time and the number of bytes each test sends to the
   Xymon server, measured on every run and reported in one
@@ -192,8 +199,12 @@ chmod 0644 "$dnfsnippet"
 %config(noreplace) %{xymonhome}/etc/my-xymon-extensions/dnf.cfg
 %config(noreplace) %{xymonhome}/etc/clientlaunch.d/dnf.cfg
 %{xymonhome}/ext/libvirt.sh
+%{xymonhome}/ext/nfsserver.sh
+%{xymonhome}/ext/nfsserver.awk
 %config(noreplace) %{xymonhome}/etc/my-xymon-extensions/libvirt.cfg
+%config(noreplace) %{xymonhome}/etc/my-xymon-extensions/nfsserver.cfg
 %config(noreplace) %{xymonhome}/etc/clientlaunch.d/libvirt.cfg
+%config(noreplace) %{xymonhome}/etc/clientlaunch.d/nfsserver.cfg
 %{xymonhome}/ext/xymonext.sh
 %{xymonhome}/ext/xymonext-send.sh
 %config(noreplace) %{xymonhome}/etc/my-xymon-extensions/xymonext.cfg
@@ -484,6 +495,9 @@ done
 exit 0
 
 %changelog
+* Fri Nov 27 2026 roemer2201 <r.oliver@web.de> - 0.37.0-1
+- Add opt-in Linux kernel NFS server monitoring and performance graphs.
+
 * Wed Nov 18 2026 roemer2201 <r.oliver@web.de> - 0.36.1-1
 - dnf: validate cached answers against repomd.xml and changes since the
   query started; publish them atomically and disable reuse in shared
