@@ -4382,6 +4382,9 @@ cp "$REPO/extensions/xymonext/xymonext-send.sh" "$STAGE/ext/xymonext-send.sh"
 # this tree on purpose: it would read the credentials of a real
 # account on the machine running the tests.)
 cp "$REPO/extensions/claude/claude-expiry.sh" "$STAGE/ext/claude-expiry.sh"
+# The long-running nfsserver sampler sits in ext/ too and would never
+# return: the runner has to skip it as well.
+cp "$REPO/extensions/nfsserver/nfsserver-sampler.sh" "$STAGE/ext/nfsserver-sampler.sh"
 cp "$TESTDIR/smart/smart_test.cfg" "$STAGE/etc/my-xymon-extensions/smart.cfg"
 # The extensions must pick these up via
 # $XYMONHOME/etc/my-xymon-extensions/<name>.cfg
@@ -4448,6 +4451,8 @@ expect "$captured" '^ARGS: 127\.0\.0\.1 1984$' \
     "runner sends to the configured XYMSRV"
 expect_not "$captured" 'claude-expiry' \
     "the claude helper is not run as an extension of its own"
+expect_not "$captured" 'nfsserver-sampler' \
+    "the nfsserver sampler is not run as an extension of its own"
 expect "$captured" '^status turris,example,org\.smart yellow ' \
     "status message with comma-encoded FQDN from MACHINEDOTS"
 expect "$captured" '^data turris,example,org\.smart$' \
@@ -5910,6 +5915,19 @@ expect "${output}" '^status testhost\.libvirt red .*Unexpected output' 'libvirt:
 output=$(LIBVIRT_TIMEOUT=1 libvirt_report timeout)
 expect "${output}" '^status testhost\.libvirt red .*timed out after 1s' 'libvirt: timed-out query is red'
 expect "$(cat "${PKGSTAGE}/etc/clientlaunch.d/libvirt.cfg")" '^[[:space:]]+DISABLED$' 'libvirt: client launch task ships disabled'
+# Both nfsserver tasks ship disabled; the sampler runs on its own, not
+# through the measurement wrapper, and must not be cut short by MAXTIME.
+nfssnippet="${PKGSTAGE}/etc/clientlaunch.d/nfsserver.cfg"
+nfssampler=$(awk '/^\[/ {on = ($0 == "[nfsserver-sampler]")} on' "${nfssnippet}")
+expect "$(grep -c '^[[:space:]]*DISABLED$' "${nfssnippet}")" '^2$' 'nfsserver: both launch tasks ship disabled'
+# shellcheck disable=SC2016 # the literal $XYMONCLIENTHOME of the snippet
+expect "${nfssampler}" '^[[:space:]]+CMD \$XYMONCLIENTHOME/ext/nfsserver-sampler\.sh$' 'nfsserver: the sampler task runs the sampler directly'
+expect_not "${nfssampler}" 'MAXTIME|xymonext' 'nfsserver: no MAXTIME and no wrapper for the long-running sampler'
+if [ -x "${PKGSTAGE}/ext/nfsserver-sampler.sh" ]; then
+    echo "ok:   nfsserver: the sampler is installed executable"
+else
+    echo "FAIL: nfsserver: the sampler is not installed executable"; FAIL=1
+fi
 
 # Use two samples one minute apart, then simulate a counter reset and a stop.
 # vdb carries no counters, as libvirt reports a vhost-user disk or a disk
@@ -5984,6 +6002,7 @@ expect "$(libvirt_metric "${output}" vm-running_read)" '^U$' 'libvirt: stopped V
 
 # Cross-extension failure and collision regressions.
 if ! sh "$TESTDIR/nfsserver/run.sh"; then FAIL=1; fi
+if ! sh "$TESTDIR/nfsserver/sampler.sh"; then FAIL=1; fi
 if ! sh "$TESTDIR/review/run.sh"; then FAIL=1; fi
 
 # The server-only collectors have their own isolated replay tests.

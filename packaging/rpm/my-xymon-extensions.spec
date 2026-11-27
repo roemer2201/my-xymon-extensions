@@ -89,7 +89,9 @@ Included extensions:
   export is missing, with RRD graphs of NFSv3/v4 operation rates, RPC
   calls and errors, payload throughput, reply and file cache and,
   where the kernel provides them, per-export throughput and
-  RPC-over-RDMA counters. Ships disabled.
+  RPC-over-RDMA counters. Ships disabled. On kernels before 5.12 (EL8),
+  whose nfsd byte counters are 32 bit, an optional sampler task reads
+  them every second and counts their wraps for the throughput graph.
 * xymonext - what the extensions above cost this host: wall clock
   time, CPU time and the number of bytes each test sends to the
   Xymon server, measured on every run and reported in one
@@ -201,6 +203,7 @@ chmod 0644 "$dnfsnippet"
 %{xymonhome}/ext/libvirt.sh
 %{xymonhome}/ext/nfsserver.sh
 %{xymonhome}/ext/nfsserver.awk
+%{xymonhome}/ext/nfsserver-sampler.sh
 %config(noreplace) %{xymonhome}/etc/my-xymon-extensions/libvirt.cfg
 %config(noreplace) %{xymonhome}/etc/my-xymon-extensions/nfsserver.cfg
 %config(noreplace) %{xymonhome}/etc/clientlaunch.d/libvirt.cfg
@@ -495,6 +498,15 @@ done
 exit 0
 
 %changelog
+* Sat Nov 28 2026 roemer2201 <r.oliver@web.de> - 0.38.0-1
+- nfsserver: nfsserver-sampler, an optional long-running task for kernels
+  before 5.12 (EL8) that samples nfsd's 32-bit byte counters every second
+  (or 0.5 s), counts their wraps and publishes 64-bit totals; with
+  GLOBAL_BYTES=auto nfsserver graphs the byte rates from them. Intervals
+  in which a wrap could go unnoticed at SAMPLER_MAX_GBIT make the rate of
+  their window unknown. The task ships disabled, stops with xymonlaunch
+  and is skipped by the standalone runner.
+
 * Fri Nov 27 2026 roemer2201 <r.oliver@web.de> - 0.37.0-1
 - Add opt-in Linux kernel NFS server monitoring and performance graphs.
 

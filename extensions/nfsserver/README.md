@@ -35,8 +35,8 @@ whitespace in these settings. The task ships with no site-specific paths.
   and stale file handles. NFSv4 COMPOUND can contain several operations.
 * Global payload read/write MiB/s. GLOBAL_BYTES=auto enables these on Linux
   5.12 and later (Rocky 9 and 10), where nfsd keeps its byte counters as
-  64-bit per-CPU counters (fs/nfsd/stats.c). Leave them off on older
-  kernels; see "Rocky 8 (Linux 4.18)" below.
+  64-bit per-CPU counters (fs/nfsd/stats.c). On older kernels the
+  nfsserver-sampler task provides them; see "Byte sampler" below.
 * Reply-cache entries, occupancy and reported memory; file-cache inodes/LRU
   when available. Transport events/s and send queue starvation when an RDMA
   listener and readable transport statistics are present.
@@ -61,16 +61,18 @@ rocky8_6, rocky8_8, rocky8_10):
   (fs/nfsd/vfs.c), neither atomic nor locked, so nfsd threads running at
   the same time on different CPUs can lose increments.
 
-Leave GLOBAL_BYTES at auto there (it stays off on 4.18); yes gives no
-reliable throughput. Polling more often does not help either: one wrap
-per 10 seconds is already reached at about 430 MB/s. The operation and
-RPC counters are 32 bit too, but wrap only after 2^32 operations.
+Leave GLOBAL_BYTES at auto there: it uses the totals of the byte sampler
+below when that task runs, and stays off otherwise. GLOBAL_BYTES=yes reads
+the raw 32-bit counters every five minutes and gives no reliable
+throughput. The operation and RPC counters are 32 bit too, but wrap only
+after 2^32 operations.
 
 The 8.10 kernel has neither /proc/fs/nfsd/filecache nor export_stats
 (fs/nfsd/nfsctl.c), so the nfsfiles and nfsexport graphs do not appear;
 the other graphs do.
 
-For throughput on Rocky 8, choose a measurement point based on scope:
+Without the sampler, or to cross-check it, these counters are 64 bit on
+Rocky 8; choose one based on scope:
 
 * Interface counters, /sys/class/net/IF/statistics/rx_bytes and tx_bytes:
   all traffic of the interface, protocol overhead included, so only a good
@@ -85,6 +87,47 @@ For throughput on Rocky 8, choose a measurement point based on scope:
   4 bytes, all traffic of the port.
 * On the clients, the bytes: line of /proc/self/mountstats: exact NFS
   payload per mount, but per client.
+
+## Byte sampler (kernels before 5.12)
+
+nfsserver-sampler.sh is a second, long-running task in
+clientlaunch.d/nfsserver.cfg ([nfsserver-sampler], shipped disabled).
+Enable it only on kernels before 5.12, such as Rocky 8; on newer kernels
+it logs once that there is nothing to sample and idles. It reads the
+same nfsserver.cfg and needs no other rights than nfsserver.sh.
+
+* Every SAMPLER_STEP seconds (1, or 0.5 where sleep accepts fractions) it
+  reads /proc/uptime (1/100 s) and the io and rpc counters, and adds the
+  32-bit increments to 64-bit totals.
+* An interval is ambiguous when one more wrap would have fitted into it at
+  SAMPLER_MAX_GBIT (default 25, per direction, the sum of all links that
+  carry NFS), or when it counted faster than that plus 10 %. Such an
+  interval makes the nfsserver byte rate of its five-minute window
+  unknown; nothing is guessed. At 25 Gbit/s a 1 s sample may be about
+  0.37 s late, a 0.5 s sample about 0.87 s.
+* The totals start at 0 when the sampler starts (a restart of the Xymon
+  client included), when nfsd's statistics are reset (loading the nfsd
+  module; the RPC call counter drops without being near 2^32), while
+  nfsd's statistics are unavailable, and before they reach 2^52 bytes.
+  The first nfsserver run after such a start has nothing to compare with
+  and reports unknown; the next one, five minutes later, has the rate.
+* The totals go to $XYMONTMP/nfsserver-HOST/sampler every SAMPLER_SAVE
+  seconds (default 10) and are removed when the sampler stops. A state
+  older than 30 s turns the column yellow ("NFS byte sampler stopped
+  updating"). The status lists the step, the age of the totals and the
+  number of ambiguous intervals.
+* It runs only under xymonlaunch, which starts it directly, and stops as
+  soon as its parent process changes, i.e. when xymonlaunch is gone, or
+  on TERM. A second instance exits at once (lock file). INTERVAL 1m in
+  the task only restarts it should it ever stop; it has no MAXTIME and
+  does not run through xymonext.sh. The standalone runner skips it.
+* Lost increments of the kernel's plain `+=` remain: the totals are a
+  lower bound.
+* Cost: one sleep process per step and two small reads in /proc; a few
+  bytes written every SAMPLER_SAVE seconds.
+
+For a manual test, run it as the Xymon user with a separate XYMONTMP and
+NFSSERVER_SAMPLER_ANYPARENT=yes; it then stops with that shell.
 
 Use nfsserver.sh --help for environment overrides. With XYMON or XYMSRV
 unset, the collector prints its messages; use a separate XYMONTMP when

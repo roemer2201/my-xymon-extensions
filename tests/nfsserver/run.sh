@@ -97,14 +97,56 @@ cat > "$tmp/bin/uname" <<'EOF'
 case "$1" in -r) printf '%s\n' "$FAKE_KERNEL" ;; *) echo Linux ;; esac
 EOF
 chmod +x "$tmp/bin/uname" || exit 1
+fakepath="$tmp/bin:$PATH"
 for kernel in 5.14.0-503.el9.x86_64:yes 6.12.0-55.el10.x86_64:yes 5.11.0:no 4.18.0-553.el8_10.x86_64:no; do
     (
-        PATH="$tmp/bin:$PATH" FAKE_KERNEL=${kernel%:*} NFSSERVER_GLOBAL_BYTES=auto
+        PATH=$fakepath FAKE_KERNEL=${kernel%:*} NFSSERVER_GLOBAL_BYTES=auto
         export PATH FAKE_KERNEL NFSSERVER_GLOBAL_BYTES
         run
         if [ "${kernel#*:}" = yes ]; then has '^\[nfsbytes\.rrd\]$'; else lacks '^\[nfsbytes\.rrd\]$'; fi
     ) || { echo "GLOBAL_BYTES=auto wrong for ${kernel%:*}" >&2; exit 1; }
 done
+
+# Rocky 8: GLOBAL_BYTES=auto takes the 64-bit totals of nfsserver-sampler.sh.
+sstate="$tmp/nfsserver-nfstest/sampler"
+sampled() { # sampled TIME_CS READ WRITE [GEN] - its state; uptime 1 s later
+    printf 'version 1\nboot test-boot\nepoch 10000\ngen %s\ntime %s\nread %s\nwrite %s\nstep 1\n' \
+        "${4:-0}" "$1" "$2" "$3" > "$sstate"
+    printf '%d.%02d 1.00\n' $((($1 + 100) / 100)) $((($1 + 100) % 100)) > "$p/uptime"
+}
+rocky8() { # rocky8 [KERNEL] - one run with GLOBAL_BYTES=auto
+    (
+        PATH=$fakepath FAKE_KERNEL=${1:-4.18.0-553.el8_10.x86_64}
+        NFSSERVER_GLOBAL_BYTES=auto NFSSERVER_CHECK_CONFIGURED=no
+        export PATH FAKE_KERNEL NFSSERVER_GLOBAL_BYTES NFSSERVER_CHECK_CONFIGURED
+        run
+    ) || exit 1
+}
+bytes() { # bytes READ WRITE - the MiB/s in nfsbytes.rrd
+    if [ "$(value nfsbytes read)" != "$1" ] || [ "$(value nfsbytes write)" != "$2" ]; then
+        cat "$tmp/output"; echo "nfsbytes: expected $1 $2" >&2; exit 1
+    fi
+}
+# The first run in an epoch has nothing to compare with.
+sampled 50000 0 0; rocky8
+has '^status nfstest.nfsserver green'
+has '^Byte counters: 32 bit, sampled every 1 s for 6 min, 0 ambiguous intervals$'
+bytes U U
+# 300 s later on the sampler's clock: 300 MiB read, 600 MiB written.
+sampled 80000 314572800 629145600; rocky8; bytes 1 2
+# An ambiguous interval in between: no rate for this window, then again.
+sampled 110000 629145600 1258291200 1; rocky8; bytes U U
+sampled 140000 943718400 1887436800 1; rocky8; bytes 1 2
+# A sampler that stopped updating.
+sampled 140000 943718400 1887436800 1
+printf '2000.00 1.00\n' > "$p/uptime"
+rocky8; has '^status nfstest.nfsserver yellow .* NFS byte sampler stopped updating'; bytes U U
+printf 'version 2\n' > "$sstate"
+rocky8; has '^status nfstest.nfsserver yellow .* Cannot parse the byte sampler state'
+# 64-bit kernel counters win over a sampler; without one, no byte graph.
+sampled 170000 0 0; rocky8 6.12.0-55.el10.x86_64
+has '^\[nfsbytes\.rrd\]$'; lacks '^Byte counters'
+rm "$sstate"; rocky8; lacks '^\[nfsbytes\.rrd\]$'
 
 # A run that hangs in the kernel must not make the next ones queue up.
 (

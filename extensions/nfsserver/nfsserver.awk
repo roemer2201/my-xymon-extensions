@@ -78,6 +78,8 @@ source == "previous" {
     prev[$1] = $2; next
 }
 source == "problems" { bad[$1] = 1; next }
+# 64-bit totals of nfsserver-sampler.sh for kernels with 32-bit counters.
+source == "sampler" { if (NF == 2) sampler[$1] = $2; next }
 source == "configured" {
     # Only the first field of each logical exports(5) line is a path.
     if (continuation) { continuation = ($0 ~ /\\[[:space:]]*$/); next }
@@ -151,7 +153,39 @@ function export_rate(p,k,    m,a,v,total) {
     }
     return total/1048576
 }
+function span(s) {
+    return s >= 172800 ? int(s/86400) " days" : s >= 7200 ? int(s/3600) " h" : int(s/60) " min"
+}
+# Rates from the sampler's totals over the sampler's own clock. A new
+# epoch (sampler start, nfsd statistics reset) or an ambiguous interval
+# (gen) gives no common key with the previous run, so the rate is U.
+function sampled(    ok,key,sdt) {
+    rd = wr = "U"
+    ok = sampler["version"] == "1" && sampler["boot"] == boot
+    ok = ok && number(sampler["epoch"]) && number(sampler["gen"]) && number(sampler["time"])
+    ok = ok && number(sampler["read"]) && number(sampler["write"])
+    if (!ok) { note("yellow","Cannot parse the byte sampler state"); return }
+    if (!number(uptime) || uptime+0 < sampler["time"]+0 || uptime - sampler["time"] > 3000) {
+        note("yellow","NFS byte sampler stopped updating (nfsserver-sampler task)")
+        return
+    }
+    key = "sampler|" boot "|" sampler["epoch"] "|" sampler["gen"] "|"
+    print key "time", sampler["time"] > state
+    print key "read", sampler["read"] > state
+    print key "write", sampler["write"] > state
+    if ((key "time") in prev) {
+        sdt = (sampler["time"] - prev[key "time"]) / 100
+        if (sdt > 0 && sdt <= 600 && sampler["read"]+0 >= prev[key "read"]+0 &&
+            sampler["write"]+0 >= prev[key "write"]+0) {
+            rd = (sampler["read"] - prev[key "read"]) / sdt
+            wr = (sampler["write"] - prev[key "write"]) / sdt
+        }
+    }
+    info = "Byte counters: 32 bit, sampled every " sampler["step"] " s for " \
+        span((uptime - sampler["epoch"]) / 100) ", " sampler["gen"] " ambiguous intervals\n" info
+}
 END {
+    if (bytes == "sampler") sampled()
     for (k in bad) note("yellow","Cannot read or parse " k)
     if (!number(threads)) note("yellow","NFS thread count unavailable")
     else if (threads+0 == 0) note("red","No NFS server threads")
@@ -177,7 +211,7 @@ END {
     gauge("readdirplus",plus)
     section("nfsrpc"); gauge("calls",calls)
     section("nfserrors"); gauge("badcalls",errors); gauge("stale",stale)
-    if (bytes == "yes") {
+    if (bytes == "yes" || bytes == "sampler") {
         section("nfsbytes")
         gauge("read",rd == "U" || rd == "" ? "U" : rd/1048576)
         gauge("write",wr == "U" || wr == "" ? "U" : wr/1048576)

@@ -82,7 +82,9 @@ Description: Portable Xymon client extensions
     export is missing; RRD graphs of NFSv3/v4 operation rates, RPC
     calls and errors, payload throughput, reply and file cache and,
     where the kernel provides them, per-export throughput and
-    RPC-over-RDMA counters (task disabled by default).
+    RPC-over-RDMA counters (task disabled by default). On kernels
+    before 5.12, whose nfsd byte counters are 32 bit, an optional
+    sampler task reads them every second and counts their wraps.
   * xymonext - what the extensions above cost this host: wall clock
     time, CPU time and bytes sent to the server, measured on every
     run and reported in one "xymonext" column with RRD graphs per
