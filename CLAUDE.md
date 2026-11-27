@@ -223,8 +223,8 @@ make opkg       # build .ipk  (plain tar+gzip, builds anywhere)
 ```
 
 `make deb|rpm|freebsd` only work on the matching platform; see the
-[testing notes](README.md#testing) for current CI coverage. Never mark packaging
-work as verified unless the corresponding build actually ran.
+[testing notes](README.md#testing) for current CI coverage. Never mark
+packaging work as verified unless the corresponding build actually ran.
 
 ## Style
 
