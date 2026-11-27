@@ -192,8 +192,12 @@ chmod 0644 "$dnfsnippet"
 %config(noreplace) %{xymonhome}/etc/my-xymon-extensions/dnf.cfg
 %config(noreplace) %{xymonhome}/etc/clientlaunch.d/dnf.cfg
 %{xymonhome}/ext/libvirt.sh
+%{xymonhome}/ext/nfsserver.sh
+%{xymonhome}/ext/nfsserver.awk
 %config(noreplace) %{xymonhome}/etc/my-xymon-extensions/libvirt.cfg
+%config(noreplace) %{xymonhome}/etc/my-xymon-extensions/nfsserver.cfg
 %config(noreplace) %{xymonhome}/etc/clientlaunch.d/libvirt.cfg
+%config(noreplace) %{xymonhome}/etc/clientlaunch.d/nfsserver.cfg
 %{xymonhome}/ext/xymonext.sh
 %{xymonhome}/ext/xymonext-send.sh
 %config(noreplace) %{xymonhome}/etc/my-xymon-extensions/xymonext.cfg
@@ -484,6 +488,9 @@ done
 exit 0
 
 %changelog
+* Fri Nov 27 2026 roemer2201 <r.oliver@web.de> - 0.37.0-1
+- Add opt-in Linux kernel NFS server monitoring and performance graphs.
+
 * Wed Nov 18 2026 roemer2201 <r.oliver@web.de> - 0.36.1-1
 - dnf: validate cached answers against repomd.xml and changes since the
   query started; publish them atomically and disable reuse in shared
