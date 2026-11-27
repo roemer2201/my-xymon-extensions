@@ -366,12 +366,20 @@ See [packaging/README.md](packaging/README.md) for the details.
 ## Testing
 
 - `shellcheck` (with `--shell=sh`) must pass for all scripts.
-- The Ubuntu CI job runs the unit and graph tests. Rocky Linux 9 and 10
-  jobs build and install the RPM and run the DNF extension.
-- The native FreeBSD VM job is disabled; CI does not currently test
-  FreeBSD or build its package.
+- The Ubuntu CI job runs `make test` (shellcheck and the unit tests)
+  and `make graphcheck`.
 - OpenWrt/TurrisOS compatibility is enforced by running the test suite
   under BusyBox `sh` with BusyBox userland in CI.
+- CI builds the client and server `.deb` packages and installs both on the
+  same runner to check for file conflicts. It bypasses the Xymon dependencies
+  for this check, so it verifies the package layout. CI also builds the
+  `.ipk` and lists its contents.
+- Rocky Linux 9 and 10 jobs build the default RPM and a second RPM using
+  the source-build client layout (`RPM_XYMONHOME=/usr/local/xymon/client`,
+  `RPM_CLIENTDEP=no`). They install the second RPM and run the extension
+  against DNF in the container.
+- The native FreeBSD VM job is disabled; CI does not currently test
+  FreeBSD or build its package.
 
 ## Contributing
 
