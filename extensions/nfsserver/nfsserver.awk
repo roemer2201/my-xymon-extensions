@@ -184,8 +184,8 @@ END {
         section("nfscachemem"); mem=cache["cache","mem usage"]
         gauge("mib",number(mem) ? mem/1048576 : "U")
     }
-    # Up to Linux 5.x the file cache reports "total entries" and no LRU
-    # count; 6.x reports "total inodes" and "lru entries".
+    # Older file caches report "total entries" (upstream 5.x without an
+    # LRU count, Rocky 9.2 with one); 6.x and Rocky 9.4+ "total inodes".
     if ((("filecache","total inodes") in cache) || (("filecache","total entries") in cache)) {
         files = (("filecache","total inodes") in cache) ? cache["filecache","total inodes"] : cache["filecache","total entries"]
         section("nfsfiles"); gauge("inodes",files)

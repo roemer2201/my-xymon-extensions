@@ -23,6 +23,7 @@ unittest:
 # Optional real-RRD smoke test; collector runtime does not require Python.
 graphcheck:
 	python3 tests/powerline/check-graphs.py
+	python3 tests/nfsserver/check-graphs.py
 
 # Packaging targets only work on the matching platform (see CLAUDE.md
 # and packaging/README.md). Output lands in build/.
