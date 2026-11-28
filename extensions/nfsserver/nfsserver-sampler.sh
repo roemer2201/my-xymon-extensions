@@ -5,11 +5,12 @@
 #    uptime reads,
 #    add the 32-bit increments to 64-bit totals and count every interval in
 #    which a second wrap would have been possible at SAMPLER_MAX_GBIT.
-# 3. Publish the totals for nfsserver.sh every SAMPLER_SAVE seconds.
+# 3. Publish the totals for nfsserver.sh every SAMPLER_SAVE seconds, by
+#    default on /dev/shm (tmpfs), so sampling writes to no disk.
 # A long-running xymonlaunch task: it stops when xymonlaunch is gone and
 # removes its totals when it stops.
 # Usage: nfsserver-sampler.sh [--help]
-# Version: 1.0.1 (2026-11-28)
+# Version: 1.1.0 (2026-11-28)
 set -u
 export LC_ALL=C
 
@@ -22,10 +23,13 @@ Sample the 32-bit byte counters of Linux nfsd (kernels before 5.12) every
 second, count their wraps and publish 64-bit totals for nfsserver.sh.
 Started by xymonlaunch (clientlaunch.d/nfsserver.cfg, [nfsserver-sampler]);
 it exits when xymonlaunch is gone. SAMPLER_MAX_GBIT, SAMPLER_STEP and
-SAMPLER_SAVE in etc/my-xymon-extensions/nfsserver.cfg can be overridden with
-NFSSERVER_SAMPLER_MAX_GBIT, NFSSERVER_SAMPLER_STEP, NFSSERVER_SAMPLER_SAVE.
+SAMPLER_SAVE and SAMPLER_DIR in etc/my-xymon-extensions/nfsserver.cfg can be
+overridden with NFSSERVER_SAMPLER_MAX_GBIT, NFSSERVER_SAMPLER_STEP,
+NFSSERVER_SAMPLER_SAVE and NFSSERVER_SAMPLER_DIR. SAMPLER_DIR=auto keeps the
+totals on /dev/shm (tmpfs) for a system user, else in XYMONTMP.
 NFSSERVER_SAMPLER_ANYPARENT=yes runs it from a shell for a manual test; it
-then stops with that shell. Use a separate XYMONTMP for manual tests.
+then stops with that shell. Use a separate XYMONTMP and
+NFSSERVER_SAMPLER_DIR for manual tests.
 HELP
         exit 0 ;;
     *) printf 'Usage: nfsserver-sampler.sh [--help]\n' >&2; exit 2 ;;
@@ -93,6 +97,11 @@ fi
 maxgbit=${NFSSERVER_SAMPLER_MAX_GBIT-${SAMPLER_MAX_GBIT:-25}}
 step=${NFSSERVER_SAMPLER_STEP-${SAMPLER_STEP:-1}}
 save=${NFSSERVER_SAMPLER_SAVE-${SAMPLER_SAVE:-10}}
+dirset=${NFSSERVER_SAMPLER_DIR-${SAMPLER_DIR:-auto}}
+case "$dirset" in
+    auto|/*) ;;
+    *) log 'SAMPLER_DIR must be auto or an absolute path'; exit 1 ;;
+esac
 upto() { # upto VALUE MAX - a positive integer up to MAX
     case "$1" in ''|0*|*[!0-9]*) return 1 ;; esac
     [ "${#1}" -le 5 ] && [ "$1" -le "$2" ]
@@ -127,9 +136,29 @@ if [ "$major" -gt 5 ] 2>/dev/null ||
     exit 0
 fi
 
-# The same private directory as nfsserver.sh, with the same checks.
+# The totals live on tmpfs where possible, so sampling never writes to a
+# disk. nfsserver.sh and nfsserver-sampler.sh carry this function alike.
+sampler_dir() { # sampler_dir SETTING FALLBACK - prints the directory
+    case "$1" in
+        auto)
+            shm=${NFSSERVER_SHM:-/dev/shm}
+            # systemd-logind's RemoveIPC (default yes) deletes every
+            # /dev/shm entry of a non-system user at its last logout
+            # (logind.conf(5), src/shared/clean-ipc.c): only a system
+            # user (UID up to 999) keeps its totals there.
+            if [ "$(id -u)" -le 999 ] && [ -d "$shm" ] && [ -w "$shm" ] &&
+               awk -v d="$shm" '$2 == d && ($3 == "tmpfs" || $3 == "ramfs") {f = 1} END {exit !f}' \
+                   "$proc/mounts" 2>/dev/null; then
+                printf '%s\n' "$shm/nfsserver-$machine"
+            else
+                printf '%s\n' "$2"
+            fi ;;
+        *) printf '%s\n' "${1%/}/nfsserver-$machine" ;;
+    esac
+}
 case "$machine" in ''|*[!a-zA-Z0-9._,-]*) log 'invalid machine name'; exit 1 ;; esac
-state="${XYMONTMP:-${TMPDIR:-/tmp}}/nfsserver-$machine"
+# A private directory, with the same checks as nfsserver.sh's own.
+state=$(sampler_dir "$dirset" "${XYMONTMP:-${TMPDIR:-/tmp}}/nfsserver-$machine") || exit 1
 umask 077
 if ! mkdir -m 700 "$state" 2>/dev/null; then
     if [ -L "$state" ] || [ ! -d "$state" ] ||
@@ -148,6 +177,7 @@ if ! flock -n 8; then
     log 'another sampler is running'
     exit 0
 fi
+log "totals in $state"
 # A former owner may have been killed without a chance to clean up.
 # Never reuse its state while waiting for a first readable sample.
 rm -f "$state/sampler" "$state/sampler.new" || exit 1

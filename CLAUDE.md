@@ -55,6 +55,9 @@ MAXTIME, not through xymonext.sh) that samples the 32-bit nfsd byte
 counters of kernels before 5.12 every second for nfsserver.sh. It stops
 as soon as its parent process changes, so it refuses any parent but
 xymonlaunch, and the standalone runner skips it (pinned in tests/run.sh).
+Its totals live on /dev/shm for a system user (SAMPLER_DIR=auto), so the
+1 s sampling writes to no disk; both scripts carry the same
+sampler_dir() (pinned in tests/nfsserver/run.sh).
 
 ## Hard portability rules
 

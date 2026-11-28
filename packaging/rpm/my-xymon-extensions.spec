@@ -498,6 +498,15 @@ done
 exit 0
 
 %changelog
+* Sat Nov 28 2026 roemer2201 <r.oliver@web.de> - 0.39.0-1
+- nfsserver-sampler: the totals live on /dev/shm (tmpfs) by default
+  (SAMPLER_DIR=auto), so the 1 s sampling writes to no disk; XYMONTMP
+  stays the fallback when /dev/shm is no tmpfs or ramfs, or the Xymon
+  user is no system user (systemd-logind's RemoveIPC would delete its
+  /dev/shm entries at its last logout). nfsserver reads them only from a
+  directory of the Xymon user with mode 700. A sampler started by 0.38
+  keeps writing to XYMONTMP: restart the Xymon client after upgrading.
+
 * Sat Nov 28 2026 roemer2201 <r.oliver@web.de> - 0.38.0-1
 - nfsserver: nfsserver-sampler, an optional long-running task for kernels
   before 5.12 (EL8) that samples nfsd's 32-bit byte counters every second
