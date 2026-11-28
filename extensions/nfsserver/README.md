@@ -105,7 +105,9 @@ same nfsserver.cfg and needs no other rights than nfsserver.sh.
   carry NFS), or when it counted faster than that plus 10 %. Such an
   interval makes the nfsserver byte rate of its five-minute window
   unknown; nothing is guessed. At 25 Gbit/s a 1 s sample may be about
-  0.37 s late, a 0.5 s sample about 0.87 s.
+  0.36 s late, a 0.5 s sample about 0.86 s (2^32 bytes take 1.37 s; the
+  bound counts from the opening timestamp of one sample to the closing
+  one of the next, plus 1/100 s for rounding).
 * The totals start at 0 when the sampler starts (a restart of the Xymon
   client included), when nfsd's statistics are reset (loading the nfsd
   module; the RPC call counter drops without being near 2^32), while
@@ -121,12 +123,14 @@ same nfsserver.cfg and needs no other rights than nfsserver.sh.
   the number of ambiguous intervals.
 * It runs only under xymonlaunch, which starts it directly, and stops as
   soon as it notices its parent process has changed, i.e. when
-  xymonlaunch is gone, or on TERM. A second instance exits at once (lock file). INTERVAL 1m in
-  the task only restarts it should it ever stop; it has no MAXTIME and
-  does not run through xymonext.sh. The standalone runner skips it.
+  xymonlaunch is gone (checked on every sample, every 5 s while idle), or
+  on TERM. A second instance exits at once (lock file). INTERVAL 1m in the
+  task only restarts it should it ever stop; it has no MAXTIME and does
+  not run through xymonext.sh. The standalone runner skips it.
 * Lost increments of the kernel's plain `+=` remain: the totals are a
   lower bound.
-* Cost: one sleep process per step and three small reads in /proc; a few
+* Cost: one sleep process per step and four small reads in /proc (two of
+  uptime, the nfsd counters, its own stat for the parent check); a few
   bytes written every SAMPLER_SAVE seconds.
 
 For a manual test, run it as the Xymon user with a separate XYMONTMP and

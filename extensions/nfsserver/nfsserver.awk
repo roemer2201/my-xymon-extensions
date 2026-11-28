@@ -167,7 +167,8 @@ function sampled(    ok,key,sdt,age,publish,stale_after) {
     ok = ok && sampler["epoch"]+0 <= sampler["time"]+0
     ok = ok && (sampler["step"] == "0.5" || sampler["step"] == "1")
     # Older state files omit save; the original default was 10 seconds.
-    publish = ("save" in sampler ? sampler["save"] : "10")
+    # A number, not "10": awk compares a string constant as a string.
+    publish = ("save" in sampler ? sampler["save"] : 10)
     ok = ok && number(publish) && publish >= 1 && publish <= 60
     if (!ok) { note("yellow","Cannot parse the byte sampler state"); return }
     # Allow two publication intervals, with a 30 s minimum for the
