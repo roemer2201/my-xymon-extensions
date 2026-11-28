@@ -49,6 +49,12 @@ Every dnf call uses -C, so the extension reads root's system cache and
 never downloads metadata; tests/dnf/fakednf refuses any other call. The
 column is not called yum because hobbit-plugins owns
 clientlaunch.d/yum.cfg.
+nfsserver-sampler.sh is the one long-running client task: a second
+section of clientlaunch.d/nfsserver.cfg (INTERVAL only restarts it, no
+MAXTIME, not through xymonext.sh) that samples the 32-bit nfsd byte
+counters of kernels before 5.12 every second for nfsserver.sh. It stops
+as soon as its parent process changes, so it refuses any parent but
+xymonlaunch, and the standalone runner skips it (pinned in tests/run.sh).
 
 ## Hard portability rules
 

@@ -78,6 +78,8 @@ source == "previous" {
     prev[$1] = $2; next
 }
 source == "problems" { bad[$1] = 1; next }
+# 64-bit totals of nfsserver-sampler.sh for kernels with 32-bit counters.
+source == "sampler" { if (NF == 2) sampler[$1] = $2; next }
 source == "configured" {
     # Only the first field of each logical exports(5) line is a path.
     if (continuation) { continuation = ($0 ~ /\\[[:space:]]*$/); next }
@@ -151,7 +153,53 @@ function export_rate(p,k,    m,a,v,total) {
     }
     return total/1048576
 }
+function span(s) {
+    return s >= 172800 ? int(s/86400) " days" : s >= 7200 ? int(s/3600) " h" : int(s/60) " min"
+}
+# Rates from the sampler's totals over the sampler's own clock. A new
+# epoch (sampler start, nfsd statistics reset) or an ambiguous interval
+# (gen) gives no common key with the previous run, so the rate is U.
+function sampled(    ok,key,sdt,age,publish,stale_after) {
+    rd = wr = "U"
+    ok = sampler["version"] == "1" && sampler["boot"] == boot
+    ok = ok && number(sampler["epoch"]) && number(sampler["gen"]) && number(sampler["time"])
+    ok = ok && number(sampler["read"]) && number(sampler["write"])
+    ok = ok && sampler["epoch"]+0 <= sampler["time"]+0
+    ok = ok && (sampler["step"] == "0.5" || sampler["step"] == "1")
+    # Older state files omit save; the original default was 10 seconds.
+    # A number, not "10": awk compares a string constant as a string.
+    publish = ("save" in sampler ? sampler["save"] : 10)
+    ok = ok && number(publish) && publish >= 1 && publish <= 60
+    if (!ok) { note("yellow","Cannot parse the byte sampler state"); return }
+    # Allow two publication intervals, with a 30 s minimum for the
+    # default cadence. A legal 60 s cadence must not trigger warnings.
+    stale_after = (publish <= 15 ? 3000 : 200 * publish)
+    age = uptime - sampler["time"]
+    if (!number(uptime) || age < 0 || age > stale_after) {
+        note("yellow","NFS byte sampler stopped updating (nfsserver-sampler task)")
+        return
+    }
+    key = "sampler|" boot "|" sampler["epoch"] "|" sampler["gen"] "|"
+    print key "time", sampler["time"] > state
+    print key "read", sampler["read"] > state
+    print key "write", sampler["write"] > state
+    if ((key "time") in prev) {
+        sdt = (sampler["time"] - prev[key "time"]) / 100
+        if (sdt > 0 && sdt <= 600 && sampler["read"]+0 >= prev[key "read"]+0 &&
+            sampler["write"]+0 >= prev[key "write"]+0) {
+            rd = (sampler["read"] - prev[key "read"]) / sdt
+            wr = (sampler["write"] - prev[key "write"]) / sdt
+        }
+    }
+    info = "Byte counters: 32 bit, sampled every " sampler["step"] " s for " \
+        span((uptime - sampler["epoch"]) / 100) ", " sampler["gen"] " ambiguous intervals" \
+        " (last published sample " int(age / 100) " s ago)\n" info
+}
 END {
+    if (bytes == "sampler") {
+        print "sampler_seen", 1 > state
+        sampled()
+    }
     for (k in bad) note("yellow","Cannot read or parse " k)
     if (!number(threads)) note("yellow","NFS thread count unavailable")
     else if (threads+0 == 0) note("red","No NFS server threads")
@@ -177,7 +225,9 @@ END {
     gauge("readdirplus",plus)
     section("nfsrpc"); gauge("calls",calls)
     section("nfserrors"); gauge("badcalls",errors); gauge("stale",stale)
-    if (bytes == "yes") {
+    # Publish one explicit gap when a previously used sampler goes away.
+    # A host that never ran it still does not get a byte graph in auto.
+    if (bytes == "yes" || bytes == "sampler" || (bytes == "auto32" && "sampler_seen" in prev)) {
         section("nfsbytes")
         gauge("read",rd == "U" || rd == "" ? "U" : rd/1048576)
         gauge("write",wr == "U" || wr == "" ? "U" : wr/1048576)

@@ -136,6 +136,11 @@ run_ext() {
                  "test - remove it from TESTS" >&2
             return 1
             ;;
+        nfsserver-sampler)
+            echo "$0: $r_ext is the long-running sampler of nfsserver," \
+                 "not a test - remove it from TESTS" >&2
+            return 1
+            ;;
     esac
     r_script="$XYMONHOME/ext/$r_ext.sh"
     if [ ! -x "$r_script" ]; then
@@ -178,6 +183,9 @@ if [ "$1" = "all" ]; then
                 # called by claude.sh with an account name, and on its
                 # own it does nothing but print its usage.
                 */claude-expiry.sh) continue ;;
+                # Long-running sampler of nfsserver (xymonlaunch only):
+                # it would never return to this loop.
+                */nfsserver-sampler.sh) continue ;;
             esac
             found=yes
             ext=$(basename "$script" .sh)

@@ -17,6 +17,7 @@ www/xymon/client/ext/dnf.sh
 www/xymon/client/ext/libvirt.sh
 www/xymon/client/ext/nfsserver.sh
 www/xymon/client/ext/nfsserver.awk
+www/xymon/client/ext/nfsserver-sampler.sh
 www/xymon/client/ext/xymonext.sh
 www/xymon/client/ext/xymonext-send.sh
 @sample www/xymon/client/etc/my-xymon-extensions/smart.cfg.sample

@@ -80,6 +80,9 @@ for ext in smart temp la memory disk opkg wifi if_link lxc claude systemd bcache
 done
 
 inst 0644 extensions/nfsserver/nfsserver.awk "$DESTDIR$EXTDIR/nfsserver.awk" || exit 1
+# The 1 s sampler for 32-bit nfsd byte counters: a long-running task of
+# the same snippet (clientlaunch.d/nfsserver.cfg), not an extension.
+inst 0755 extensions/nfsserver/nfsserver-sampler.sh "$DESTDIR$EXTDIR/nfsserver-sampler.sh" || exit 1
 
 # fritzdsl and fritzwan were client extensions up to 0.28; since 0.29
 # they are modules of the server-only fritzbox collector

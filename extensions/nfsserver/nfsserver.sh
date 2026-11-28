@@ -2,8 +2,10 @@
 # Monitor a local Linux kernel NFS server without root privileges.
 # 1. Snapshot readable kernel and export data. 2. Compare with requirements.
 # 3. Send the status and rate graphs, then publish the new counter baseline.
+# On kernels with 32-bit byte counters (before 5.12) the byte rates come
+# from the totals of nfsserver-sampler.sh, if that task runs.
 # Usage: nfsserver.sh [--help]
-# Version: 1.0.0 (2026-11-27)
+# Version: 1.1.1 (2026-11-28)
 set -u
 export LC_ALL=C
 
@@ -17,6 +19,8 @@ NFSSERVER_CFG selects the shell config in etc/my-xymon-extensions.
 NFSSERVER_REQUIRED_EXPORTS, NFSSERVER_REQUIRED_LISTENERS,
 NFSSERVER_CHECK_CONFIGURED and NFSSERVER_GLOBAL_BYTES override its settings.
 NFSSERVER_PROC, NFSSERVER_ETC and NFSSERVER_ETAB override the input paths.
+GLOBAL_BYTES=auto uses the 64-bit kernel counters (Linux 5.12+) or, before
+that, the totals of the nfsserver-sampler task when it runs.
 Example: NFSSERVER_REQUIRED_EXPORTS=/home nfsserver.sh
 HELP
         exit 0 ;;
@@ -68,11 +72,12 @@ esac
 if [ "$bytes" = auto ]; then
     # Upstream nfsd prints the "io" byte counters as 64 bit since Linux
     # 5.12 (fs/nfsd/stats.c: "%u" up to 5.11, "%lld" from 5.12 on).
+    # Before that, the totals of nfsserver-sampler.sh are used if it runs.
     kernel=$(uname -r)
     major=${kernel%%.*}
     minor=${kernel#*.}
     minor=${minor%%[!0-9]*}
-    bytes=no
+    bytes=auto32
     if [ "$major" -gt 5 ] 2>/dev/null ||
        { [ "$major" -eq 5 ] 2>/dev/null && [ "${minor:-0}" -ge 12 ] 2>/dev/null; }; then
         bytes=yes
@@ -148,6 +153,23 @@ if grep -Eq '^rdma[[:space:]]' "$work/ports"; then
     done
 fi
 
+# 32-bit byte counters: nfsserver-sampler.sh publishes 64-bit totals with
+# the time of its last sample on the uptime clock (1/100 s).
+: > "$work/sampler"
+uptime=
+if [ "$bytes" = auto32 ]; then
+    if [ -e "$state/sampler" ]; then
+        bytes=sampler
+        cat "$state/sampler" > "$work/sampler" || : > "$work/sampler"
+        up=
+        read -r up _ < "$proc/uptime" || up=
+        case "$up" in
+            [0-9]*.[0-9][0-9])
+                case "${up%.*}" in *[!0-9]*) ;; *) uptime=${up%.*}${up#*.} ;; esac ;;
+        esac
+    fi
+fi
+
 # Compare consecutive samples only within the same kernel boot.
 previous="$state/previous"
 [ -f "$previous" ] || previous=/dev/null
@@ -155,8 +177,9 @@ boot=$(cat "$proc/sys/kernel/random/boot_id") || exit 1
 now=$(date +%s) || exit 1
 export NFS_REQUIRED_PATHS="$exports" NFS_REQUIRED_PORTS="$listeners"
 awk -v machine="$machine" -v out="$work" -v now="$now" -v boot="$boot" -v bytes="$bytes" \
-    -f "$(dirname "$0")/nfsserver.awk" \
+    -v uptime="$uptime" -f "$(dirname "$0")/nfsserver.awk" \
     source=previous "$previous" source=problems "$work/problems" \
+    source=sampler "$work/sampler" \
     source=configured "$work/configured" source=etab "$work/etab" \
     source=ports "$work/ports" source=rpc "$work/rpc" \
     source=cache "$work/cache" source=filecache "$work/filecache" \
