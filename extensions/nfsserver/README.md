@@ -114,8 +114,22 @@ same nfsserver.cfg and needs no other rights than nfsserver.sh.
   nfsd's statistics are unavailable, and before they reach 2^52 bytes.
   The first nfsserver run after such a start has nothing to compare with
   and reports unknown; the next one, five minutes later, has the rate.
-* The totals go to $XYMONTMP/nfsserver-HOST/sampler every SAMPLER_SAVE
-  seconds (default 10) and are removed when the sampler stops. A state
+* The totals go to SAMPLER_DIR every SAMPLER_SAVE seconds (default 10)
+  and are removed when the sampler stops. Only these writes touch a file
+  system; the samples themselves stay in memory. With the default
+  SAMPLER_DIR=auto the totals live in /dev/shm/nfsserver-HOST when
+  /proc/mounts lists /dev/shm as tmpfs or ramfs and the Xymon user is a
+  system user (UID up to 999), so no disk is written at all; otherwise in
+  $XYMONTMP/nfsserver-HOST, usually on disk. A user with a higher UID
+  stays out of /dev/shm because systemd-logind (RemoveIPC=yes, the
+  default) deletes a user's /dev/shm entries at its last logout and
+  spares only system users (logind.conf(5)). An absolute SAMPLER_DIR is
+  used as given, with nfsserver-HOST below it. nfsserver.sh resolves the
+  same directory and reads the totals only if it belongs to the Xymon
+  user with mode 700 ("Cannot read or parse SAMPLER_DIR" otherwise); the
+  sampler logs where it keeps them. A sampler started by 0.38 keeps
+  writing to XYMONTMP until it is restarted: restart the Xymon client
+  after upgrading. A state
   older than twice SAMPLER_SAVE (at least 30 s) turns the column yellow
   ("NFS byte sampler stopped updating"). When a previously seen state
   disappears, the next check publishes one unknown sample to mark the
@@ -133,8 +147,9 @@ same nfsserver.cfg and needs no other rights than nfsserver.sh.
   uptime, the nfsd counters, its own stat for the parent check); a few
   bytes written every SAMPLER_SAVE seconds.
 
-For a manual test, run it as the Xymon user with a separate XYMONTMP and
-NFSSERVER_SAMPLER_ANYPARENT=yes; it then stops with that shell.
+For a manual test, run it as the Xymon user with a separate XYMONTMP, a
+NFSSERVER_SAMPLER_DIR of its own and NFSSERVER_SAMPLER_ANYPARENT=yes; it
+then stops with that shell.
 
 Use nfsserver.sh --help for environment overrides. With XYMON or XYMSRV
 unset, the collector prints its messages; use a separate XYMONTMP when

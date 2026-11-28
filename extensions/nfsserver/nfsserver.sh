@@ -5,7 +5,7 @@
 # On kernels with 32-bit byte counters (before 5.12) the byte rates come
 # from the totals of nfsserver-sampler.sh, if that task runs.
 # Usage: nfsserver.sh [--help]
-# Version: 1.1.1 (2026-11-28)
+# Version: 1.2.0 (2026-11-28)
 set -u
 export LC_ALL=C
 
@@ -20,7 +20,8 @@ NFSSERVER_REQUIRED_EXPORTS, NFSSERVER_REQUIRED_LISTENERS,
 NFSSERVER_CHECK_CONFIGURED and NFSSERVER_GLOBAL_BYTES override its settings.
 NFSSERVER_PROC, NFSSERVER_ETC and NFSSERVER_ETAB override the input paths.
 GLOBAL_BYTES=auto uses the 64-bit kernel counters (Linux 5.12+) or, before
-that, the totals of the nfsserver-sampler task when it runs.
+that, the totals of the nfsserver-sampler task when it runs, found through
+SAMPLER_DIR (NFSSERVER_SAMPLER_DIR).
 Example: NFSSERVER_REQUIRED_EXPORTS=/home nfsserver.sh
 HELP
         exit 0 ;;
@@ -65,9 +66,14 @@ exports=${NFSSERVER_REQUIRED_EXPORTS-${REQUIRED_EXPORTS:-}}
 listeners=${NFSSERVER_REQUIRED_LISTENERS-${REQUIRED_LISTENERS:-}}
 compare=${NFSSERVER_CHECK_CONFIGURED-${CHECK_CONFIGURED:-yes}}
 bytes=${NFSSERVER_GLOBAL_BYTES-${GLOBAL_BYTES:-auto}}
+dirset=${NFSSERVER_SAMPLER_DIR-${SAMPLER_DIR:-auto}}
 case "$compare:$bytes" in
     yes:auto|no:auto|yes:yes|no:yes|yes:no|no:no) ;;
     *) status yellow 'Invalid CHECK_CONFIGURED or GLOBAL_BYTES setting'; exit "$?" ;;
+esac
+case "$dirset" in
+    auto|/*) ;;
+    *) status yellow 'Invalid SAMPLER_DIR setting'; exit "$?" ;;
 esac
 if [ "$bytes" = auto ]; then
     # Upstream nfsd prints the "io" byte counters as 64 bit since Linux
@@ -153,14 +159,42 @@ if grep -Eq '^rdma[[:space:]]' "$work/ports"; then
     done
 fi
 
+# The totals live on tmpfs where possible, so sampling never writes to a
+# disk. nfsserver.sh and nfsserver-sampler.sh carry this function alike.
+sampler_dir() { # sampler_dir SETTING FALLBACK - prints the directory
+    case "$1" in
+        auto)
+            shm=${NFSSERVER_SHM:-/dev/shm}
+            # systemd-logind's RemoveIPC (default yes) deletes every
+            # /dev/shm entry of a non-system user at its last logout
+            # (logind.conf(5), src/shared/clean-ipc.c): only a system
+            # user (UID up to 999) keeps its totals there.
+            if [ "$(id -u)" -le 999 ] && [ -d "$shm" ] && [ -w "$shm" ] &&
+               awk -v d="$shm" '$2 == d && ($3 == "tmpfs" || $3 == "ramfs") {f = 1} END {exit !f}' \
+                   "$proc/mounts" 2>/dev/null; then
+                printf '%s\n' "$shm/nfsserver-$machine"
+            else
+                printf '%s\n' "$2"
+            fi ;;
+        *) printf '%s\n' "${1%/}/nfsserver-$machine" ;;
+    esac
+}
 # 32-bit byte counters: nfsserver-sampler.sh publishes 64-bit totals with
 # the time of its last sample on the uptime clock (1/100 s).
 : > "$work/sampler"
 uptime=
 if [ "$bytes" = auto32 ]; then
-    if [ -e "$state/sampler" ]; then
+    sdir=$(sampler_dir "$dirset" "$state") || exit 1
+    # Outside this private directory (tmpfs is writable for everybody):
+    # read totals only from a directory nobody else can write to.
+    if [ "$sdir" != "$state" ] && [ -e "$sdir" ] &&
+       { [ -L "$sdir" ] || [ ! -d "$sdir" ] ||
+         [ "$(stat -c '%u:%a' "$sdir")" != "$(id -u):700" ]; }; then
+        # One word: the problem list keeps the first field of a line.
+        printf 'SAMPLER_DIR\n' >> "$work/problems"
+    elif [ -e "$sdir/sampler" ]; then
         bytes=sampler
-        cat "$state/sampler" > "$work/sampler" || : > "$work/sampler"
+        cat "$sdir/sampler" > "$work/sampler" || : > "$work/sampler"
         up=
         read -r up _ < "$proc/uptime" || up=
         case "$up" in

@@ -172,6 +172,53 @@ mkdir -m 700 "$state" || exit 1
 ) || fail 'exit status with the lock taken'
 logs 'another sampler is running'
 
+# Totals on tmpfs: /dev/shm (here a stand-in) when /proc/mounts lists it
+# as tmpfs or ramfs, so that sampling never writes to a disk.
+shm="$tmp/shm"
+mkdir -p "$shm" "$tmp/uidbin" "$tmp/custom" || exit 1
+cat > "$tmp/uidbin/id" <<'EOF'
+#!/bin/sh
+echo "$FAKE_UID"
+EOF
+chmod +x "$tmp/uidbin/id" || exit 1
+printf 'tmpfs %s tmpfs rw,nosuid,nodev 0 0\n' "$shm" > "$tmp/proc/mounts"
+scenario '100000 0 0 1' '100100 5 5 2'
+run 2 NFSSERVER_SHM="$shm" || fail 'exit status on tmpfs'
+[ -e "$shm/nfsserver-nfstest/sampler" ] || fail 'no totals on tmpfs'
+[ ! -e "$state/sampler" ] || fail 'totals on disk although tmpfs is there'
+logs "totals in $shm/nfsserver-nfstest\$"
+printf 'none %s ramfs rw 0 0\n' "$shm" > "$tmp/proc/mounts"
+scenario '100000 0 0 1'
+run 1 NFSSERVER_SHM="$shm" || fail 'exit status on ramfs'
+logs "totals in $shm/nfsserver-nfstest\$"
+# A disk file system, or no mount entry at all: XYMONTMP as before.
+printf '/dev/sda1 %s xfs rw 0 0\n' "$shm" > "$tmp/proc/mounts"
+scenario '100000 0 0 1'
+run 1 NFSSERVER_SHM="$shm" || fail 'exit status without tmpfs'
+logs "totals in $state\$"
+# A non-system user: logind's RemoveIPC would delete its /dev/shm entries
+# at its last logout, so it stays in XYMONTMP.
+printf 'tmpfs %s tmpfs rw 0 0\n' "$shm" > "$tmp/proc/mounts"
+rm -rf "$shm/nfsserver-nfstest"
+scenario '100000 0 0 1'
+run 1 NFSSERVER_SHM="$shm" PATH="$tmp/uidbin:$PATH" FAKE_UID=1000 || fail 'exit status as UID 1000'
+logs "totals in $state\$"
+[ ! -e "$shm/nfsserver-nfstest" ] || fail 'a non-system user used tmpfs'
+# Somebody else's (or a too open) directory on tmpfs is refused.
+rm -rf "$shm/nfsserver-nfstest"
+mkdir -m 755 "$shm/nfsserver-nfstest" || exit 1
+scenario '100000 0 0 1'
+if run 1 NFSSERVER_SHM="$shm"; then fail 'used a directory others can read'; fi
+logs "cannot use the private state directory $shm/nfsserver-nfstest\$"
+rm -rf "$shm/nfsserver-nfstest" "$tmp/proc/mounts"
+# An explicit directory, and one that is not absolute.
+scenario '100000 0 0 1'
+run 1 NFSSERVER_SAMPLER_DIR="$tmp/custom/" || fail 'exit status with SAMPLER_DIR'
+[ -e "$tmp/custom/nfsserver-nfstest/sampler" ] || fail 'SAMPLER_DIR not used'
+scenario '100000 0 0 1'
+if run 1 NFSSERVER_SAMPLER_DIR=relative; then fail 'relative SAMPLER_DIR accepted'; fi
+logs 'SAMPLER_DIR must be auto or an absolute path'
+
 # TERM: the totals are only valid while the sampler runs.
 scenario '100000 0 0 1'
 # shellcheck disable=SC2086 # CI supplies "busybox sh".

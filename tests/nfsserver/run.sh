@@ -160,6 +160,35 @@ sampled 170000 0 0; rocky8 6.12.0-55.el10.x86_64
 has '^\[nfsbytes\.rrd\]$'; lacks '^Byte counters'
 rm "$sstate"; rocky8; lacks '^\[nfsbytes\.rrd\]$'
 
+# Both scripts must resolve the totals' directory alike.
+a=$(sed -n '/^sampler_dir() {/,/^}/p' "$here/extensions/nfsserver/nfsserver.sh")
+b=$(sed -n '/^sampler_dir() {/,/^}/p' "$here/extensions/nfsserver/nfsserver-sampler.sh")
+if [ -z "$a" ] || [ "$a" != "$b" ]; then
+    echo 'sampler_dir() differs between nfsserver.sh and nfsserver-sampler.sh' >&2; exit 1
+fi
+# The real sampler puts its totals on tmpfs (a stand-in for /dev/shm),
+# and nfsserver.sh finds them there.
+mkdir -p "$tmp/shm" || exit 1
+printf 'tmpfs %s tmpfs rw,nosuid,nodev 0 0\n' "$tmp/shm" > "$p/mounts"
+(
+    PATH=$fakepath FAKE_KERNEL=4.18.0-553.el8_10.x86_64 NFSSERVER_SHM="$tmp/shm"
+    NFSSERVER_SAMPLER_ANYPARENT=yes NFSSERVER_SAMPLER_LIMIT=1 NFSSERVER_SAMPLER_SLEEP=true
+    export PATH FAKE_KERNEL NFSSERVER_SHM NFSSERVER_SAMPLER_ANYPARENT NFSSERVER_SAMPLER_LIMIT \
+        NFSSERVER_SAMPLER_SLEEP
+    # shellcheck disable=SC2086 # CI supplies "busybox sh".
+    ${TESTSH:-sh} "$here/extensions/nfsserver/nfsserver-sampler.sh" > "$tmp/sampler.log" 2>&1
+) || { cat "$tmp/sampler.log"; exit 1; }
+[ -e "$tmp/shm/nfsserver-nfstest/sampler" ] || { cat "$tmp/sampler.log"; exit 1; }
+[ ! -e "$sstate" ] || exit 1
+( NFSSERVER_SHM="$tmp/shm"; export NFSSERVER_SHM; rocky8 ) || exit 1
+has '^status nfstest.nfsserver green'; has '^Byte counters: 32 bit, sampled every 1 s'
+# Totals in a directory that others could write to are not read.
+chmod 755 "$tmp/shm/nfsserver-nfstest" || exit 1
+( NFSSERVER_SHM="$tmp/shm"; export NFSSERVER_SHM; rocky8 ) || exit 1
+has '^status nfstest.nfsserver yellow .* Cannot read or parse SAMPLER_DIR$'
+lacks '^Byte counters'
+rm -rf "$tmp/shm" "$p/mounts"
+
 # A run that hangs in the kernel must not make the next ones queue up.
 (
     exec 9< "$tmp/nfsserver-nfstest" || exit 1
